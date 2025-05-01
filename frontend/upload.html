@@ -261,14 +261,33 @@
                     
                     <div class="mb-4">
                         <h3 class="font-semibold mb-2">Ownership Structure</h3>
-                        <p class="text-sm text-gray-600 mb-2">The ownership Excel file should contain the following columns:</p>
+                        <p class="text-sm text-gray-600 mb-2">The ownership Excel file follows a hierarchical structure (client → group → portfolio → account) and should include:</p>
+                        
+                        <p class="text-sm text-gray-600 mb-2"><strong>First 3 rows (metadata):</strong></p>
+                        <ul class="list-disc pl-6 text-sm text-gray-600 mb-2">
+                            <li>Row 1: View Name (e.g., "NORI Ownership")</li>
+                            <li>Row 2: Date Range (e.g., "05-01-2025 to 05-01-2025") - important for historical tracking</li>
+                            <li>Row 3: Portfolio coverage (e.g., "All clients")</li>
+                        </ul>
+                        
+                        <p class="text-sm text-gray-600 mb-2"><strong>Column structure (Row 4 onwards):</strong></p>
                         <ul class="list-disc pl-6 text-sm text-gray-600">
-                            <li>holding_account: The name of the financial institution</li>
-                            <li>holding_account_number: Unique identifier for the account</li>
-                            <li>top_level_client: The ultimate owner client name</li>
-                            <li>entity_id: Unique identifier for the entity</li>
-                            <li>portfolio: The portfolio name</li>
-                            <li>groups: Optional group classifications (comma-separated)</li>
+                            <li>Client: Starting with client name, then indenting for groups/accounts under that client</li>
+                            <li>Entity ID: Unique identifier for the entity</li>
+                            <li>Holding Account Number: Account number of the financial institution</li>
+                            <li>Portfolio: The portfolio name the account belongs to (accounts can only be in ONE portfolio)</li>
+                            <li>Group ID: Group identification number (accounts can be in MULTIPLE groups)</li>
+                            <li>Data Inception Date: When the data for the account/client/group was created</li>
+                            <li>% Ownership: How much of the account the client owns</li>
+                            <li>Grouping Attribute Name: Identifies what each row represents (Client, Group, or Holding Account)</li>
+                        </ul>
+                        
+                        <p class="text-sm font-medium text-gray-700 mt-2">Important notes:</p>
+                        <ul class="list-disc pl-6 text-sm text-gray-600">
+                            <li>Accounts can only belong to ONE portfolio but can be in MULTIPLE groups</li>
+                            <li>The hierarchy must be maintained: client → group → portfolio → account</li>
+                            <li>Date ranges will be stored for historical reference</li>
+                            <li>The upload will store both the current data and maintain historical records</li>
                         </ul>
                     </div>
                     
@@ -291,6 +310,13 @@
                             <li>adjusted_value: Position value</li>
                             <li>date: Position date (YYYY-MM-DD)</li>
                         </ul>
+                        
+                        <p class="text-sm font-medium text-gray-700 mt-2">Important notes:</p>
+                        <ul class="list-disc pl-6 text-sm text-gray-600">
+                            <li>The date field is critical and should be preserved for historical tracking</li>
+                            <li>All uploaded data dumps will be stored in their entirety for historical reference</li>
+                            <li>The system will maintain records of all uploads with their respective dates</li>
+                        </ul>
                     </div>
                     
                     <div>
@@ -302,6 +328,14 @@
                             <li>asset_class: Asset class (Equity, Fixed Income, Alternative)</li>
                             <li>vol: Volatility measure</li>
                             <li>beta/duration/beta_to_gold: Risk measure (depends on asset class)</li>
+                            <li>as_of_date: Date when risk statistics were calculated (YYYY-MM-DD)</li>
+                        </ul>
+                        
+                        <p class="text-sm font-medium text-gray-700 mt-2">Important notes:</p>
+                        <ul class="list-disc pl-6 text-sm text-gray-600">
+                            <li>Risk statistics will vary based on asset class (Equity: beta/vol, Fixed Income: duration/vol, Alternatives: beta_to_gold/vol)</li>
+                            <li>The system stores the upload date and the as_of_date for historical reference</li>
+                            <li>Risk statistics should be updated regularly as market conditions change</li>
                         </ul>
                     </div>
                 </div>

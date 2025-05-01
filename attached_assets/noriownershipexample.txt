@@ -1,0 +1,184 @@
+View Name:	NORI Ownership						
+Date Range:	05-01-2025 to 05-01-2025						
+Portfolio:	All clients						
+Client	Entity ID	Holding Account Number	Portfolio	Group ID	Data Inception Date	% Ownership	Grouping Attribute Name
+ The Linden East II Trust (Abigail Wexner)	27779629		The Linden East II Trust		Dec 24, 2022		Client
+ Wexner Grandchildren Trusts			The Linden East II Trust	1776240	Dec 24, 2022		Group
+Linden East II Trust Custom Muni Bond Account	18588203	G36471003	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Linden East II Trust Edgewood Large Cap Growth Account	18588276	G22603007	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Linden East II Trust JP Morgan Customized Municipal Bond Account PTC	134313231	T20455009	The Linden East II Trust		Apr 25, 2025	100.00%	Holding Account
+Linden East II Trust JP Morgan Equity Income Account PTC	134313206	T20454002	The Linden East II Trust		Apr 25, 2025	100.00%	Holding Account
+Linden East II Trust JP Morgan Managed Equity Account PTC	134313238	T20464001	The Linden East II Trust		Apr 25, 2025	100.00%	Holding Account
+Linden East II Trust JP Morgan Parametric Russell 1000 Tax Loss Harvesting Account PTC	134313224	T20465008	The Linden East II Trust		Apr 25, 2025	100.00%	Holding Account
+Linden East II Trust JP Morgan Self Directed Brokerage Account PTC	134313217	D08701005	The Linden East II Trust		-	100.00%	Holding Account
+Linden East II Trust JP Morgan Sustainable Equity Account PTC	134313215	T20456007	The Linden East II Trust		Apr 25, 2025	100.00%	Holding Account
+Linden East II Trust JPM Equity Income Account	18588270	G22566006	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Linden East II Trust Managed Equity Account	18588196	P67377252	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Linden East II Trust Parametric S&P 500 Tax Loss Harvesting Account	18588274	G17882004	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Linden East II Trust Proficio Investments	27652934	-	The Linden East II Trust		Jun 5, 2024	100.00%	Holding Account
+Linden East II Trust Self Directed Account	18588197	P67377005	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Linden East II Trust Sustainable Equity Account	18588283	G22602009	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Linden East II Trust WCM Quality Global Growth Account	18588324	G32366009	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Wexner ALL Assets			The Linden East II Trust	1733391	Dec 24, 2022		Group
+Linden East II Trust Custom Muni Bond Account	18588203	G36471003	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Linden East II Trust Edgewood Large Cap Growth Account	18588276	G22603007	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Linden East II Trust JP Morgan Customized Municipal Bond Account PTC	134313231	T20455009	The Linden East II Trust		Apr 25, 2025	100.00%	Holding Account
+Linden East II Trust JP Morgan Equity Income Account PTC	134313206	T20454002	The Linden East II Trust		Apr 25, 2025	100.00%	Holding Account
+Linden East II Trust JP Morgan Managed Equity Account PTC	134313238	T20464001	The Linden East II Trust		Apr 25, 2025	100.00%	Holding Account
+Linden East II Trust JP Morgan Parametric Russell 1000 Tax Loss Harvesting Account PTC	134313224	T20465008	The Linden East II Trust		Apr 25, 2025	100.00%	Holding Account
+Linden East II Trust JP Morgan Self Directed Brokerage Account PTC	134313217	D08701005	The Linden East II Trust		-	100.00%	Holding Account
+Linden East II Trust JP Morgan Sustainable Equity Account PTC	134313215	T20456007	The Linden East II Trust		Apr 25, 2025	100.00%	Holding Account
+Linden East II Trust JPM Equity Income Account	18588270	G22566006	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Linden East II Trust Managed Equity Account	18588196	P67377252	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Linden East II Trust Parametric S&P 500 Tax Loss Harvesting Account	18588274	G17882004	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Linden East II Trust Proficio Investments	27652934	-	The Linden East II Trust		Jun 5, 2024	100.00%	Holding Account
+Linden East II Trust Self Directed Account	18588197	P67377005	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Linden East II Trust Sustainable Equity Account	18588283	G22602009	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+Linden East II Trust WCM Quality Global Growth Account	18588324	G32366009	The Linden East II Trust		Dec 24, 2022	100.00%	Holding Account
+18 Sole LLC	21450199	-	18 Sole LLC		Mar 1, 2023		Client
+18 Sole LLC Reporting			18 Sole LLC	1801747	Mar 1, 2023		Group
+18 Sole HarbourVest Access - Dover Street XI LLC	22584854	-	18 Sole LLC		Mar 1, 2023	100.00%	Holding Account
+18 Sole LLC WAM Investment 	21450185	-	18 Sole LLC		Mar 21, 2023	100.00%	Holding Account
+2J3E INV LLC	133726747	-	2J3E INV LLC		Mar 25, 2025		Client
+Aaron Abrahms	4577258				Jun 29, 2018		Client
+Aaron Abrahms Family ALL Assets				1520174	Jun 29, 2018		Group
+Aaron Abrahms Bene Dec'd IRA	14400096	663039452	Abrahms, Aaron Reporting		Mar 24, 2022	100.00%	Holding Account
+Aaron Abrahms Outside Assets	5371116	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Illiquid 100%		Jun 29, 2018	100.00%	Holding Account
+Aaron Abrahms Parametric SMA	14378497	663039448	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Mar 9, 2022	100.00%	Holding Account
+Aaron Abrahms PPVUL Winged Keel 	14465850	-	Abrahms, Aaron Illiquid 100%, Abrahms, Aaron Family 100%		Nov 30, 2021	100.00%	Holding Account
+Aaron Abrahms Proficio Illiquid Investments	13932664	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Illiquid 100%		Dec 28, 2021	100.00%	Holding Account
+Aaron Abrahms Proficio Liquid Investments 	13423315	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Dec 28, 2021	100.00%	Holding Account
+Aaron Abrahms Rev Trust Account 	4285800	663003348	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Oct 18, 2018	100.00%	Holding Account
+Aaron Abrahms Roth IRA	4286586	663003595	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Oct 18, 2018	100.00%	Holding Account
+Aaron Abrahms SEP IRA	12441667	663038156	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Jan 3, 2022	100.00%	Holding Account
+Aaron Abrahms Traditional IRA	4286578	663003594	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Oct 18, 2018	100.00%	Holding Account
+Aaron Abrahms Winged Keel 	15775120	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Illiquid 100%		Jan 1, 2022	100.00%	Holding Account
+Abrahms Family Hard Assets 	15775119	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Illiquid 100%		Jan 1, 2022	100.00%	Holding Account
+Aaron Abrahms Illiquid (Proficio Only)			Abrahms, Aaron Family 100%, Abrahms, Aaron Illiquid 100%	2756688	Dec 28, 2021		Group
+Aaron Abrahms Proficio Illiquid Investments	13932664	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Illiquid 100%		Dec 28, 2021	100.00%	Holding Account
+Abrahms, Aaron Illiquid			Abrahms, Aaron Family 100%, Abrahms, Aaron Illiquid 100%	1414841	Jun 29, 2018		Group
+Aaron Abrahms Outside Assets	5371116	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Illiquid 100%		Jun 29, 2018	100.00%	Holding Account
+Aaron Abrahms PPVUL Winged Keel 	14465850	-	Abrahms, Aaron Illiquid 100%, Abrahms, Aaron Family 100%		Nov 30, 2021	100.00%	Holding Account
+Aaron Abrahms Proficio Illiquid Investments	13932664	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Illiquid 100%		Dec 28, 2021	100.00%	Holding Account
+Aaron Abrahms Winged Keel 	15775120	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Illiquid 100%		Jan 1, 2022	100.00%	Holding Account
+Abrahms Family Hard Assets 	15775119	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Illiquid 100%		Jan 1, 2022	100.00%	Holding Account
+Abrahms, Aaron Liquid				107868	Oct 18, 2018		Group
+Aaron Abrahms Bene Dec'd IRA	14400096	663039452	Abrahms, Aaron Reporting		Mar 24, 2022	100.00%	Holding Account
+Aaron Abrahms Parametric SMA	14378497	663039448	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Mar 9, 2022	100.00%	Holding Account
+Aaron Abrahms Proficio Liquid Investments 	13423315	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Dec 28, 2021	100.00%	Holding Account
+Aaron Abrahms Rev Trust Account 	4285800	663003348	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Oct 18, 2018	100.00%	Holding Account
+Aaron Abrahms Roth IRA	4286586	663003595	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Oct 18, 2018	100.00%	Holding Account
+Aaron Abrahms SEP IRA	12441667	663038156	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Jan 3, 2022	100.00%	Holding Account
+Aaron Abrahms Traditional IRA	4286578	663003594	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Oct 18, 2018	100.00%	Holding Account
+Abrahms, Aaron Liquid + Illiquid				153540	Jun 29, 2018		Group
+Aaron Abrahms Bene Dec'd IRA	14400096	663039452	Abrahms, Aaron Reporting		Mar 24, 2022	100.00%	Holding Account
+Aaron Abrahms Outside Assets	5371116	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Illiquid 100%		Jun 29, 2018	100.00%	Holding Account
+Aaron Abrahms Parametric SMA	14378497	663039448	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Mar 9, 2022	100.00%	Holding Account
+Aaron Abrahms PPVUL Winged Keel 	14465850	-	Abrahms, Aaron Illiquid 100%, Abrahms, Aaron Family 100%		Nov 30, 2021	100.00%	Holding Account
+Aaron Abrahms Proficio Illiquid Investments	13932664	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Illiquid 100%		Dec 28, 2021	100.00%	Holding Account
+Aaron Abrahms Proficio Liquid Investments 	13423315	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Dec 28, 2021	100.00%	Holding Account
+Aaron Abrahms Rev Trust Account 	4285800	663003348	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Oct 18, 2018	100.00%	Holding Account
+Aaron Abrahms Roth IRA	4286586	663003595	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Oct 18, 2018	100.00%	Holding Account
+Aaron Abrahms SEP IRA	12441667	663038156	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Jan 3, 2022	100.00%	Holding Account
+Aaron Abrahms Traditional IRA	4286578	663003594	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Oct 18, 2018	100.00%	Holding Account
+Abrahms, Aaron Proficio Reporting				1737889	Oct 18, 2018		Group
+Aaron Abrahms Parametric SMA	14378497	663039448	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Mar 9, 2022	100.00%	Holding Account
+Aaron Abrahms Proficio Illiquid Investments	13932664	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Illiquid 100%		Dec 28, 2021	100.00%	Holding Account
+Aaron Abrahms Proficio Liquid Investments 	13423315	-	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Dec 28, 2021	100.00%	Holding Account
+Aaron Abrahms Rev Trust Account 	4285800	663003348	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Oct 18, 2018	100.00%	Holding Account
+Aaron Abrahms Roth IRA	4286586	663003595	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Oct 18, 2018	100.00%	Holding Account
+Aaron Abrahms SEP IRA	12441667	663038156	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Jan 3, 2022	100.00%	Holding Account
+Aaron Abrahms Traditional IRA	4286578	663003594	Abrahms, Aaron Family 100%, Abrahms, Aaron Reporting 100%		Oct 18, 2018	100.00%	Holding Account
+Abrahms, Phoebe 			Abrahms, Phoebe	659518	Oct 14, 2019		Group
+Phoebe Abrahms UTMA	7123561	663025654	Abrahms, Phoebe		Oct 14, 2019	100.00%	Holding Account
+Abigail Wexner	18250020		-		Jun 12, 2008		Client
+Abigail & Leslie Wexner			-	1776198	Jun 12, 2008		Group
+Abigail & Leslie Wexner JTWROS JP Morgan Savings Account (6364)	24723279	-	Abigail Wexner		Feb 28, 2023	100.00%	Holding Account
+Abigail Wexner Individual Account	18493775	W42869003	Abigail Wexner		Dec 21, 2022	100.00%	Holding Account
+Abigail Wexner Individual Fidelity Main Account	133745338	663055467	-		Mar 27, 2025	100.00%	Holding Account
+Abigail Wexner JP Morgan Savings Account (4212)	21173221	-	Abigail Wexner		Feb 23, 2023	100.00%	Holding Account
+Abigail Wexner Legacy Private Investments	24250013	-	Abigail Wexner		Jun 12, 2008	100.00%	Holding Account
+Linden East Trust All Assets			The Linden East Trust	2936119	Jun 30, 2022		Group
+Linden East Legacy Private Investments	20976725	-	The Linden East Trust		Jun 30, 2022	100.00%	Holding Account
+Linden East Trust JP Morgan Savings Account (5396)	21173225	-	The Linden East Trust		Feb 23, 2023	100.00%	Holding Account
+The Linden East Trust Muni Bond Account	18493778	G47903002	The Linden East Trust		Dec 21, 2022	100.00%	Holding Account
+The Linden East Trust Preferreds Account	18493776	F22790003	The Linden East Trust		Dec 21, 2022	100.00%	Holding Account
+The Linden East Trust Self Directed Account	18493777	M46297004	The Linden East Trust		Dec 21, 2022	100.00%	Holding Account
+Linden Holdings, LLC Insurance Portfolio (PPLI & Traditional)				1719683	Jun 30, 2022		Group
+Linden Holdings, LLC PPLI Winged Keel	18250019	-	The Linden East Trust		Jun 30, 2022	100.00%	Holding Account
+Wexner Traditional Life Insurance Policies	18836390	-	Abigail Wexner		Dec 31, 2022	100.00%	Holding Account
+The Linden Trusts				1776199	Jun 30, 2022		Group
+Linden East Legacy Private Investments	20976725	-	The Linden East Trust		Jun 30, 2022	100.00%	Holding Account
+Linden East Trust JP Morgan Savings Account (5396)	21173225	-	The Linden East Trust		Feb 23, 2023	100.00%	Holding Account
+Linden Holdings, LLC PPLI Winged Keel	18250019	-	The Linden East Trust		Jun 30, 2022	100.00%	Holding Account
+The Linden East Trust Muni Bond Account	18493778	G47903002	The Linden East Trust		Dec 21, 2022	100.00%	Holding Account
+The Linden East Trust Preferreds Account	18493776	F22790003	The Linden East Trust		Dec 21, 2022	100.00%	Holding Account
+The Linden East Trust Self Directed Account	18493777	M46297004	The Linden East Trust		Dec 21, 2022	100.00%	Holding Account
+Wexner Traditional Life Insurance Policies	18836390	-	Abigail Wexner		Dec 31, 2022	100.00%	Holding Account
+The Linden Trusts Outside Interests (Non JPM, Non Proficio)			The Linden East Trust	2309185	Jun 30, 2022		Group
+Linden East Legacy Private Investments	20976725	-	The Linden East Trust		Jun 30, 2022	100.00%	Holding Account
+Wexner ALL Assets			-	1733391	Jun 12, 2008		Group
+Abigail & Leslie Wexner JTWROS JP Morgan Savings Account (6364)	24723279	-	Abigail Wexner		Feb 28, 2023	100.00%	Holding Account
+Abigail Wexner Individual Account	18493775	W42869003	Abigail Wexner		Dec 21, 2022	100.00%	Holding Account
+Abigail Wexner Individual Fidelity Main Account	133745338	663055467	-		Mar 27, 2025	100.00%	Holding Account
+Abigail Wexner JP Morgan Savings Account (4212)	21173221	-	Abigail Wexner		Feb 23, 2023	100.00%	Holding Account
+Abigail Wexner Legacy Private Investments	24250013	-	Abigail Wexner		Jun 12, 2008	100.00%	Holding Account
+Linden East Legacy Private Investments	20976725	-	The Linden East Trust		Jun 30, 2022	100.00%	Holding Account
+Linden East Trust JP Morgan Savings Account (5396)	21173225	-	The Linden East Trust		Feb 23, 2023	100.00%	Holding Account
+Linden Holdings, LLC PPLI Winged Keel	18250019	-	The Linden East Trust		Jun 30, 2022	100.00%	Holding Account
+The Linden East Trust Muni Bond Account	18493778	G47903002	The Linden East Trust		Dec 21, 2022	100.00%	Holding Account
+The Linden East Trust Preferreds Account	18493776	F22790003	The Linden East Trust		Dec 21, 2022	100.00%	Holding Account
+The Linden East Trust Self Directed Account	18493777	M46297004	The Linden East Trust		Dec 21, 2022	100.00%	Holding Account
+Wexner Traditional Life Insurance Policies	18836390	-	Abigail Wexner		Dec 31, 2022	100.00%	Holding Account
+Wexner, Leslie & Abigail Proficio Managed Assets			Wexner, Leslie & Abigail Proficio Managed	2720391	Mar 27, 2025		Group
+Abigail Wexner Individual Fidelity Main Account	133745338	663055467	-		Mar 27, 2025	100.00%	Holding Account
+ACK Investments LLC 	21450196		-				Client
+Adam Beer	24804218		-		Dec 19, 2023		Client
+Adam Beer All Assets			-	2567003	Dec 19, 2023		Group
+Adam Beer Eaton Vance Muni Bond Account	24795690	663049170	Beer, Adam		Dec 19, 2023	100.00%	Holding Account
+Adam Beer Inherited IRA Fidelity Account	30175659	663053477	Beer, Adam		Jan 17, 2025	100.00%	Holding Account
+Adam Beer Main Account 	24795693	663049169	Beer, Adam		Dec 22, 2023	100.00%	Holding Account
+Adam Beer Parametric Account	24795689	663049171	Beer, Adam		Dec 19, 2023	100.00%	Holding Account
+Adam Beer Rollover IRA Account	24795691	663049162	Beer, Adam		Dec 22, 2023	100.00%	Holding Account
+Adam Beer Roth IRA Account	24795692	663049163	Beer, Adam		Dec 20, 2023	100.00%	Holding Account
+Charlotte Beer 529 Fidelity Account	25271207	603346474	-		Jan 29, 2024	100.00%	Holding Account
+Elizabeth Beer 529 Fidelity Account	25271248	603249908	-		Jan 29, 2024	100.00%	Holding Account
+Adam Ephraim	9857565	663032902	Adam Ephraim		Feb 8, 2021		Client
+Adam Ephraim			Adam Ephraim	1126931	Feb 8, 2021		Group
+Adam Ephraim Account	9823447	663032902	Adam Ephraim		Feb 8, 2021	100.00%	Holding Account
+Ephraim Children			Adam Ephraim	1129106	Feb 8, 2021		Group
+Adam Ephraim Account	9823447	663032902	Adam Ephraim		Feb 8, 2021	100.00%	Holding Account
+Adam Haber	4577271		Haber, Adam		Oct 18, 2018		Client
+Haber Children Trusts (1999, 2011, Crummey)			Haber Children	107873	Oct 18, 2018		Group
+Adam Haber 529 Account #1	4577240	603523968	Haber Children		Oct 18, 2018	100.00%	Holding Account
+Adam Haber 529 Account #2	4285596	623307718	Haber Children		Oct 18, 2018	100.00%	Holding Account
+Adam Haber Crummey Trust	4287577	X01632201	Haber Children		Oct 18, 2018	100.00%	Holding Account
+Adam Haber OLD UTMA	4577235	Z15097004	Haber Children		Oct 18, 2018	100.00%	Holding Account
+Haber, Adam Liquid Portfolio			Haber, Adam Liquid Portfolio	156376	Oct 18, 2018		Group
+Adam Haber Brokerage	4285563	663000825	Haber, Adam Liquid Portfolio		Oct 18, 2018	100.00%	Holding Account
+Adam Haber Proficio Alts SMA 	8906337	-	Haber, Adam Liquid Portfolio		Sep 1, 2020	100.00%	Holding Account
+Adam Haber Roth IRA	7584847	663026883	Haber, Adam Liquid Portfolio		Feb 11, 2025	100.00%	Holding Account
+Adam Haber Traditional IRA	5663951	663023677	Haber, Adam Liquid Portfolio		Feb 15, 2019	100.00%	Holding Account
+Adam Sussman & Kellie Lim	8957990		Sussman, Adam		Sep 3, 2020		Client
+IPO Portfolios			Sussman, Adam	2729195	Sep 3, 2020		Group
+Adam Sussman & Kellie Lim EV Muni SMA	9112201	663030951	Sussman, Adam		Oct 2, 2020	100.00%	Holding Account
+Adam Sussman & Kellie Lim JWROS	8948123	663030456	Sussman, Adam		Sep 3, 2020	100.00%	Holding Account
+Adam Sussman & Kellie Lim Outside Proficio Investments	10423683	-	Sussman, Adam		Apr 12, 2021	100.00%	Holding Account
+Adam Sussman & Kellie Lim Parametric SMA	9112202	663030950	Sussman, Adam		Oct 2, 2020	100.00%	Holding Account
+Adam Sussman & Kellie Lim Proficio Alts SMA	10212441	-	Sussman, Adam		Oct 23, 2020	100.00%	Holding Account
+Adam Sussman & Kellie Lim Proficio Investments 	9225805	-	Sussman, Adam		Oct 26, 2020	100.00%	Holding Account
+Adam Sussman & Kellie Lim WAM Investment 	21481185	-	Sussman, Adam		Mar 22, 2023	100.00%	Holding Account
+HachiKo LLC EV Muni SMA	13827995	663039097	Sussman, Adam		Jan 19, 2022	100.00%	Holding Account
+HachiKo LLC Main Account	13827997	663039095	Sussman, Adam		Jan 19, 2022	100.00%	Holding Account
+HachiKo LLC Parametric SMA	13827996	663039096	Sussman, Adam		Jan 19, 2022	100.00%	Holding Account
+Sussman Lim Liquid + Illiquid Portfolio			Sussman, Adam	939569	Sep 3, 2020		Group
+Adam Sussman & Kellie Lim EV Muni SMA	9112201	663030951	Sussman, Adam		Oct 2, 2020	100.00%	Holding Account
+Adam Sussman & Kellie Lim JWROS	8948123	663030456	Sussman, Adam		Sep 3, 2020	100.00%	Holding Account
+Adam Sussman & Kellie Lim Outside Proficio Investments	10423683	-	Sussman, Adam		Apr 12, 2021	100.00%	Holding Account
+Adam Sussman & Kellie Lim Parametric SMA	9112202	663030950	Sussman, Adam		Oct 2, 2020	100.00%	Holding Account
+Adam Sussman & Kellie Lim Proficio Alts SMA	10212441	-	Sussman, Adam		Oct 23, 2020	100.00%	Holding Account
+Adam Sussman & Kellie Lim Proficio Investments 	9225805	-	Sussman, Adam		Oct 26, 2020	100.00%	Holding Account
+Adam Sussman & Kellie Lim WAM Investment 	21481185	-	Sussman, Adam		Mar 22, 2023	100.00%	Holding Account
+HachiKo LLC EV Muni SMA	13827995	663039097	Sussman, Adam		Jan 19, 2022	100.00%	Holding Account
+HachiKo LLC Main Account	13827997	663039095	Sussman, Adam		Jan 19, 2022	100.00%	Holding Account
+HachiKo LLC Parametric SMA	13827996	663039096	Sussman, Adam		Jan 19, 2022	100.00%	Holding Account
