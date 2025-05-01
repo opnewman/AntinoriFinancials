@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANTINORI Financial Portfolio Reporting - File Upload</title>
+    
+    <!-- Fonts - Inter and JetBrains Mono -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+    
+    <!-- Tailwind CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    <style>
+        /* Base styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            color: #1E293B;
+            background-color: #F8FAFC;
+        }
+
+        /* Typography */
+        h1, h2, h3, h4, h5, h6 {
+            font-weight: 600;
+        }
+
+        code, pre {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Custom colors */
+        .bg-primary-green {
+            background-color: #14532D;
+        }
+
+        .text-primary-green {
+            color: #14532D;
+        }
+
+        .bg-secondary-navy {
+            background-color: #0F172A;
+        }
+
+        .text-secondary-navy {
+            color: #0F172A;
+        }
+
+        .bg-accent-green {
+            background-color: #22C55E;
+        }
+
+        .text-accent-green {
+            color: #22C55E;
+        }
+
+        /* Upload card */
+        .upload-card {
+            transition: all 0.3s ease;
+            border: 2px dashed #CBD5E1;
+        }
+
+        .upload-card:hover {
+            border-color: #14532D;
+        }
+
+        /* Drag and drop zone */
+        .drag-active {
+            border-color: #22C55E;
+            background-color: rgba(34, 197, 94, 0.05);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen flex flex-col">
+        <!-- Navigation Bar -->
+        <nav class="bg-green-900 text-white shadow-md">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center h-16">
+                    <!-- Logo and Brand -->
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0 font-bold text-xl tracking-tight">
+                            <a href="index.html" class="flex items-center">
+                                <i class="fas fa-chart-line mr-2"></i>
+                                ANTINORI
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <!-- Navigation Items -->
+                    <div class="hidden md:block">
+                        <div class="ml-10 flex items-center space-x-4">
+                            <a href="index.html" class="px-3 py-2 rounded-md text-sm font-medium text-gray-200 hover:bg-green-800 hover:text-white">
+                                <i class="fas fa-dashboard mr-2"></i>
+                                Dashboard
+                            </a>
+                            <a href="upload.html" class="px-3 py-2 rounded-md text-sm font-medium bg-green-800 text-white">
+                                <i class="fas fa-upload mr-2"></i>
+                                Upload Files
+                            </a>
+                            <a href="#" class="px-3 py-2 rounded-md text-sm font-medium text-gray-200 hover:bg-green-800 hover:text-white">
+                                <i class="fas fa-file-text mr-2"></i>
+                                Reports
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <!-- Mobile menu button -->
+                    <div class="md:hidden">
+                        <button class="inline-flex items-center justify-center p-2 rounded-md text-gray-200 hover:text-white hover:bg-green-800 focus:outline-none">
+                            <i class="fas fa-bars"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        
+        <!-- Main Content -->
+        <main class="flex-grow p-4 md:p-6">
+            <div class="container mx-auto">
+                <!-- Page Header -->
+                <div class="mb-6">
+                    <h1 class="text-2xl font-bold text-green-900">Upload Financial Data</h1>
+                    <p class="text-gray-600">Upload files to update portfolio data in the ANTINORI system</p>
+                </div>
+                
+                <!-- Upload Containers -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <!-- Ownership Structure Upload -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <div class="mb-4">
+                            <h2 class="text-xl font-semibold text-green-800">
+                                <i class="fas fa-sitemap mr-2"></i>
+                                Ownership Structure
+                            </h2>
+                            <p class="text-sm text-gray-500">Upload ownership hierarchy data in Excel format (.xlsx)</p>
+                        </div>
+                        
+                        <div id="ownership-dropzone" class="upload-card rounded-lg p-8 text-center cursor-pointer mb-4">
+                            <div class="mb-3">
+                                <i class="fas fa-upload text-4xl text-gray-400"></i>
+                            </div>
+                            <p class="mb-2 text-sm font-medium">Drag and drop file here or click to browse</p>
+                            <p class="text-xs text-gray-500">Accepts .xlsx files only</p>
+                            
+                            <input type="file" id="ownership-file" accept=".xlsx" class="hidden" />
+                        </div>
+                        
+                        <div id="ownership-file-info" class="hidden mb-4 p-3 bg-gray-50 rounded border border-gray-200">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <i class="fas fa-file-excel text-green-700 mr-2"></i>
+                                    <div>
+                                        <p id="ownership-filename" class="text-sm font-medium"></p>
+                                        <p id="ownership-filesize" class="text-xs text-gray-500"></p>
+                                    </div>
+                                </div>
+                                <button id="ownership-remove-btn" class="text-red-500 hover:text-red-700">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <button id="ownership-upload-btn" class="w-full py-2 px-4 bg-green-700 text-white rounded-md font-medium hover:bg-green-800 transition duration-300 flex items-center justify-center">
+                            <i class="fas fa-cloud-upload-alt mr-2"></i>
+                            Upload Ownership Structure
+                        </button>
+                    </div>
+                    
+                    <!-- Data Dump Upload -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <div class="mb-4">
+                            <h2 class="text-xl font-semibold text-green-800">
+                                <i class="fas fa-database mr-2"></i>
+                                Financial Data Dump
+                            </h2>
+                            <p class="text-sm text-gray-500">Upload financial position data in Excel format (.xlsx)</p>
+                        </div>
+                        
+                        <div id="data-dump-dropzone" class="upload-card rounded-lg p-8 text-center cursor-pointer mb-4">
+                            <div class="mb-3">
+                                <i class="fas fa-upload text-4xl text-gray-400"></i>
+                            </div>
+                            <p class="mb-2 text-sm font-medium">Drag and drop file here or click to browse</p>
+                            <p class="text-xs text-gray-500">Accepts .xlsx files only</p>
+                            
+                            <input type="file" id="data-dump-file" accept=".xlsx" class="hidden" />
+                        </div>
+                        
+                        <div id="data-dump-file-info" class="hidden mb-4 p-3 bg-gray-50 rounded border border-gray-200">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <i class="fas fa-file-excel text-green-700 mr-2"></i>
+                                    <div>
+                                        <p id="data-dump-filename" class="text-sm font-medium"></p>
+                                        <p id="data-dump-filesize" class="text-xs text-gray-500"></p>
+                                    </div>
+                                </div>
+                                <button id="data-dump-remove-btn" class="text-red-500 hover:text-red-700">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <button id="data-dump-upload-btn" class="w-full py-2 px-4 bg-green-700 text-white rounded-md font-medium hover:bg-green-800 transition duration-300 flex items-center justify-center">
+                            <i class="fas fa-cloud-upload-alt mr-2"></i>
+                            Upload Financial Data
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Risk Statistics Upload -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <div class="mb-4">
+                        <h2 class="text-xl font-semibold text-green-800">
+                            <i class="fas fa-chart-bar mr-2"></i>
+                            Security Risk Statistics
+                        </h2>
+                        <p class="text-sm text-gray-500">Upload risk metrics data for securities in Excel format (.xlsx)</p>
+                    </div>
+                    
+                    <div id="risk-stats-dropzone" class="upload-card rounded-lg p-8 text-center cursor-pointer mb-4">
+                        <div class="mb-3">
+                            <i class="fas fa-upload text-4xl text-gray-400"></i>
+                        </div>
+                        <p class="mb-2 text-sm font-medium">Drag and drop file here or click to browse</p>
+                        <p class="text-xs text-gray-500">Accepts .xlsx files only</p>
+                        
+                        <input type="file" id="risk-stats-file" accept=".xlsx" class="hidden" />
+                    </div>
+                    
+                    <div id="risk-stats-file-info" class="hidden mb-4 p-3 bg-gray-50 rounded border border-gray-200">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <i class="fas fa-file-excel text-green-700 mr-2"></i>
+                                <div>
+                                    <p id="risk-stats-filename" class="text-sm font-medium"></p>
+                                    <p id="risk-stats-filesize" class="text-xs text-gray-500"></p>
+                                </div>
+                            </div>
+                            <button id="risk-stats-remove-btn" class="text-red-500 hover:text-red-700">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <button id="risk-stats-upload-btn" class="w-full py-2 px-4 bg-green-700 text-white rounded-md font-medium hover:bg-green-800 transition duration-300 flex items-center justify-center">
+                        <i class="fas fa-cloud-upload-alt mr-2"></i>
+                        Upload Risk Statistics
+                    </button>
+                </div>
+                
+                <!-- Upload Instructions -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold text-green-800 mb-4">
+                        <i class="fas fa-info-circle mr-2"></i>
+                        Upload Instructions
+                    </h2>
+                    
+                    <div class="mb-4">
+                        <h3 class="font-semibold mb-2">Ownership Structure</h3>
+                        <p class="text-sm text-gray-600 mb-2">The ownership Excel file should contain the following columns:</p>
+                        <ul class="list-disc pl-6 text-sm text-gray-600">
+                            <li>holding_account: The name of the financial institution</li>
+                            <li>holding_account_number: Unique identifier for the account</li>
+                            <li>top_level_client: The ultimate owner client name</li>
+                            <li>entity_id: Unique identifier for the entity</li>
+                            <li>portfolio: The portfolio name</li>
+                            <li>groups: Optional group classifications (comma-separated)</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <h3 class="font-semibold mb-2">Financial Data Dump</h3>
+                        <p class="text-sm text-gray-600 mb-2">The financial data Excel file should contain the following columns:</p>
+                        <ul class="list-disc pl-6 text-sm text-gray-600">
+                            <li>position: Position name or description</li>
+                            <li>top_level_client: The ultimate owner client name</li>
+                            <li>holding_account: The name of the financial institution</li>
+                            <li>holding_account_number: Unique identifier for the account</li>
+                            <li>portfolio: The portfolio name</li>
+                            <li>cusip: CUSIP identifier for the security</li>
+                            <li>ticker_symbol: Trading symbol for the security</li>
+                            <li>asset_class: Primary asset classification</li>
+                            <li>second_level: Secondary asset classification</li>
+                            <li>third_level: Tertiary asset classification</li>
+                            <li>adv_classification: ADV classification</li>
+                            <li>liquid_vs_illiquid: Liquidity classification</li>
+                            <li>adjusted_value: Position value</li>
+                            <li>date: Position date (YYYY-MM-DD)</li>
+                        </ul>
+                    </div>
+                    
+                    <div>
+                        <h3 class="font-semibold mb-2">Risk Statistics</h3>
+                        <p class="text-sm text-gray-600 mb-2">The risk statistics Excel file should contain the following columns:</p>
+                        <ul class="list-disc pl-6 text-sm text-gray-600">
+                            <li>position: Position name (matching data dump)</li>
+                            <li>ticker_symbol: Trading symbol (matching data dump)</li>
+                            <li>asset_class: Asset class (Equity, Fixed Income, Alternative)</li>
+                            <li>vol: Volatility measure</li>
+                            <li>beta/duration/beta_to_gold: Risk measure (depends on asset class)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <!-- Footer -->
+        <footer class="bg-gray-800 text-white py-4 text-center text-sm">
+            <div class="container mx-auto">
+                <p>ANTINORI Financial Portfolio Reporting System &copy; 2025</p>
+                <p class="text-gray-400 text-xs mt-1">
+                    Powered by Tauri, React, Java/SpringBoot, and PostgreSQL
+                </p>
+            </div>
+        </footer>
+    </div>
+    
+    <!-- Scripts for upload functionality -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set up file uploaders
+            setupFileUploader('ownership', '/api/upload/ownership');
+            setupFileUploader('data-dump', '/api/upload/data-dump');
+            setupFileUploader('risk-stats', '/api/upload/risk-stats');
+            
+            function setupFileUploader(prefix, endpoint) {
+                const dropzone = document.getElementById(`${prefix}-dropzone`);
+                const fileInput = document.getElementById(`${prefix}-file`);
+                const fileInfo = document.getElementById(`${prefix}-file-info`);
+                const filename = document.getElementById(`${prefix}-filename`);
+                const filesize = document.getElementById(`${prefix}-filesize`);
+                const removeBtn = document.getElementById(`${prefix}-remove-btn`);
+                const uploadBtn = document.getElementById(`${prefix}-upload-btn`);
+                
+                // Click to browse files
+                dropzone.addEventListener('click', function() {
+                    fileInput.click();
+                });
+                
+                // File drag events
+                dropzone.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    dropzone.classList.add('drag-active');
+                });
+                
+                dropzone.addEventListener('dragleave', function() {
+                    dropzone.classList.remove('drag-active');
+                });
+                
+                dropzone.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    dropzone.classList.remove('drag-active');
+                    
+                    if (e.dataTransfer.files.length) {
+                        fileInput.files = e.dataTransfer.files;
+                        handleFileSelected();
+                    }
+                });
+                
+                // File selection change
+                fileInput.addEventListener('change', handleFileSelected);
+                
+                function handleFileSelected() {
+                    if (fileInput.files.length) {
+                        const file = fileInput.files[0];
+                        const fileSizeInKB = Math.round(file.size / 1024);
+                        
+                        // Update file info
+                        filename.textContent = file.name;
+                        filesize.textContent = `${fileSizeInKB} KB`;
+                        fileInfo.classList.remove('hidden');
+                        dropzone.classList.add('hidden');
+                    }
+                }
+                
+                // Remove selected file
+                removeBtn.addEventListener('click', function() {
+                    fileInput.value = '';
+                    fileInfo.classList.add('hidden');
+                    dropzone.classList.remove('hidden');
+                });
+                
+                // Upload file
+                uploadBtn.addEventListener('click', function() {
+                    if (!fileInput.files.length) {
+                        alert('Please select a file to upload');
+                        return;
+                    }
+                    
+                    const file = fileInput.files[0];
+                    
+                    // Validate file type
+                    if (!file.name.endsWith('.xlsx')) {
+                        alert('Please upload an Excel (.xlsx) file');
+                        return;
+                    }
+                    
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    
+                    // Show loading state
+                    uploadBtn.disabled = true;
+                    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Uploading...';
+                    
+                    // Upload file to server
+                    fetch(endpoint, {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Show success message
+                            alert(`Successfully uploaded ${file.name}. Processed ${data.rows_processed} rows.`);
+                            
+                            // Reset the form
+                            fileInput.value = '';
+                            fileInfo.classList.add('hidden');
+                            dropzone.classList.remove('hidden');
+                        } else {
+                            // Show error message
+                            alert(`Error uploading ${file.name}: ${data.message}`);
+                        }
+                    })
+                    .catch(error => {
+                        alert(`Error uploading file: ${error.message}`);
+                    })
+                    .finally(() => {
+                        // Reset button state
+                        uploadBtn.disabled = false;
+                        uploadBtn.innerHTML = `<i class="fas fa-cloud-upload-alt mr-2"></i> Upload ${prefix.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}`;
+                    });
+                });
+            }
+        });
+    </script>
+</body>
+</html>
