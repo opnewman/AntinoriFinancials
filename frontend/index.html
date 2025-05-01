@@ -17,36 +17,387 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
-    <!-- Custom Styles -->
-    <link rel="stylesheet" href="./src/styles.css">
+    <style>
+        /* Base styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            color: #1E293B;
+            background-color: #F8FAFC;
+        }
+
+        /* Typography */
+        h1, h2, h3, h4, h5, h6 {
+            font-weight: 600;
+        }
+
+        code, pre {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Custom colors */
+        .bg-primary-green {
+            background-color: #14532D;
+        }
+
+        .text-primary-green {
+            color: #14532D;
+        }
+
+        .bg-secondary-navy {
+            background-color: #0F172A;
+        }
+
+        .text-secondary-navy {
+            color: #0F172A;
+        }
+
+        .bg-accent-green {
+            background-color: #22C55E;
+        }
+
+        .text-accent-green {
+            color: #22C55E;
+        }
+
+        /* Financial metrics */
+        .metric-up {
+            color: #10B981;
+        }
+
+        .metric-down {
+            color: #EF4444;
+        }
+
+        /* Stats cards */
+        .stats-card {
+            transition: all 0.3s ease;
+        }
+
+        .stats-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Chart containers */
+        .chart-container {
+            height: 300px;
+            width: 100%;
+            position: relative;
+        }
+    </style>
 </head>
-<body class="bg-white text-slate-800 font-sans min-h-screen">
-    <div id="root"></div>
+<body class="bg-gray-50">
+    <div class="min-h-screen flex flex-col">
+        <!-- Navigation Bar -->
+        <nav class="bg-green-900 text-white shadow-md">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center h-16">
+                    <!-- Logo and Brand -->
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0 font-bold text-xl tracking-tight">
+                            <a href="#" class="flex items-center">
+                                <i class="fas fa-chart-line mr-2"></i>
+                                ANTINORI
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <!-- Navigation Items -->
+                    <div class="hidden md:block">
+                        <div class="ml-10 flex items-center space-x-4">
+                            <a href="#" class="px-3 py-2 rounded-md text-sm font-medium bg-green-800 text-white">
+                                <i class="fas fa-dashboard mr-2"></i>
+                                Dashboard
+                            </a>
+                            <a href="#" class="px-3 py-2 rounded-md text-sm font-medium text-gray-200 hover:bg-green-800 hover:text-white">
+                                <i class="fas fa-upload mr-2"></i>
+                                Upload Files
+                            </a>
+                            <a href="#" class="px-3 py-2 rounded-md text-sm font-medium text-gray-200 hover:bg-green-800 hover:text-white">
+                                <i class="fas fa-file-text mr-2"></i>
+                                Reports
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <!-- Mobile menu button -->
+                    <div class="md:hidden">
+                        <button class="inline-flex items-center justify-center p-2 rounded-md text-gray-200 hover:text-white hover:bg-green-800 focus:outline-none">
+                            <i class="fas fa-bars"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        
+        <!-- Main Content -->
+        <main class="flex-grow p-4 md:p-6">
+            <div class="container mx-auto">
+                <!-- Portfolio Selection Tools -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h2 class="text-xl font-bold mb-4">Portfolio Report Generator</h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                        <div>
+                            <label for="reportDate" class="block text-sm font-medium text-gray-700 mb-1">
+                                Report Date
+                            </label>
+                            <input
+                                type="date"
+                                id="reportDate"
+                                value="2025-05-01"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                            />
+                        </div>
+                        
+                        <div>
+                            <label for="reportLevel" class="block text-sm font-medium text-gray-700 mb-1">
+                                Report Level
+                            </label>
+                            <select
+                                id="reportLevel"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                            >
+                                <option value="client">Client</option>
+                                <option value="portfolio" selected>Portfolio</option>
+                                <option value="group">Group</option>
+                                <option value="account">Account</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label for="levelKey" class="block text-sm font-medium text-gray-700 mb-1">
+                                Select Portfolio
+                            </label>
+                            <select
+                                id="levelKey"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                            >
+                                <option value="Portfolio 1" selected>Portfolio 1</option>
+                                <option value="Portfolio 2">Portfolio 2</option>
+                            </select>
+                        </div>
+                        
+                        <div class="flex items-end">
+                            <button
+                                class="w-full py-2 px-4 rounded-md font-medium bg-green-700 text-white hover:bg-green-800"
+                            >
+                                <i class="fas fa-chart-line mr-2"></i>
+                                Generate Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Portfolio Overview -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold">Portfolio Overview</h2>
+                        <div class="text-right">
+                            <div class="text-sm text-gray-500">Report Date</div>
+                            <div class="text-lg font-semibold">2025-05-01</div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-4">
+                        <div class="bg-gray-50 p-4 rounded-lg stats-card">
+                            <div class="text-sm text-gray-500 mb-1">Total Value</div>
+                            <div class="text-2xl font-bold text-green-800">
+                                $5,000,000.00
+                            </div>
+                        </div>
+                        
+                        <div class="bg-gray-50 p-4 rounded-lg stats-card">
+                            <div class="text-sm text-gray-500 mb-1">1D Performance</div>
+                            <div class="text-2xl font-bold text-green-600">
+                                +1.00%
+                            </div>
+                        </div>
+                        
+                        <div class="bg-gray-50 p-4 rounded-lg stats-card">
+                            <div class="text-sm text-gray-500 mb-1">MTD Performance</div>
+                            <div class="text-2xl font-bold text-green-600">
+                                +3.00%
+                            </div>
+                        </div>
+                        
+                        <div class="bg-gray-50 p-4 rounded-lg stats-card">
+                            <div class="text-sm text-gray-500 mb-1">YTD Performance</div>
+                            <div class="text-2xl font-bold text-green-600">
+                                +9.00%
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Charts Section -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <!-- Asset Allocation Chart -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <h3 class="text-lg font-semibold mb-3">Asset Allocation</h3>
+                        <div class="chart-container">
+                            <canvas id="allocationChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <!-- Liquidity Chart -->
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <h3 class="text-lg font-semibold mb-3">Liquidity Profile</h3>
+                        <div class="chart-container">
+                            <canvas id="liquidityChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Performance Chart -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h3 class="text-lg font-semibold mb-3">Performance</h3>
+                    <div class="chart-container">
+                        <canvas id="performanceChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Risk Metrics -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h3 class="text-lg font-semibold mb-3">Risk Metrics</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Metric</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Volatility</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">12.50%</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Sharpe Ratio</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">1.80</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Beta</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">0.85</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <!-- Footer -->
+        <footer class="bg-gray-800 text-white py-4 text-center text-sm">
+            <div class="container mx-auto">
+                <p>ANTINORI Financial Portfolio Reporting System &copy; 2025</p>
+                <p class="text-gray-400 text-xs mt-1">
+                    Powered by Flask, React, and PostgreSQL
+                </p>
+            </div>
+        </footer>
+    </div>
     
-    <!-- React and ReactDOM -->
-    <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
-    
-    <!-- React Router -->
-    <script src="https://unpkg.com/react-router-dom@5.3.0/umd/react-router-dom.min.js"></script>
-    
-    <!-- Babel -->
-    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
-    
-    <!-- Axios -->
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    
-    <!-- Application Scripts -->
-    <script type="text/babel" src="./src/components/NavigationBar.jsx"></script>
-    <script type="text/babel" src="./src/components/Chart.jsx"></script>
-    <script type="text/babel" src="./src/components/ReportTable.jsx"></script>
-    <script type="text/babel" src="./src/components/FileUploader.jsx"></script>
-    <script type="text/babel" src="./src/components/Dashboard.jsx"></script>
-    <script type="text/babel" src="./src/api.js"></script>
-    <script type="text/babel" src="./src/App.jsx"></script>
-    
-    <script type="text/babel">
-        ReactDOM.render(<App />, document.getElementById('root'));
+    <!-- Initialize Charts -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Asset Allocation Chart
+            const allocationCtx = document.getElementById('allocationChart').getContext('2d');
+            new Chart(allocationCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Equities', 'Fixed Income', 'Alternatives', 'Cash'],
+                    datasets: [{
+                        data: [45.5, 30.0, 15.5, 9.0],
+                        backgroundColor: ['#4C72B0', '#55A868', '#C44E52', '#8172B3'],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                font: {
+                                    family: 'Inter, sans-serif'
+                                }
+                            }
+                        }
+                    },
+                    cutout: '60%'
+                }
+            });
+            
+            // Liquidity Chart
+            const liquidityCtx = document.getElementById('liquidityChart').getContext('2d');
+            new Chart(liquidityCtx, {
+                type: 'pie',
+                data: {
+                    labels: ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'],
+                    datasets: [{
+                        data: [60.0, 15.0, 10.0, 10.0, 5.0],
+                        backgroundColor: ['#4C72B0', '#55A868', '#C44E52', '#8172B3', '#CCB974'],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                font: {
+                                    family: 'Inter, sans-serif'
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Performance Chart
+            const performanceCtx = document.getElementById('performanceChart').getContext('2d');
+            new Chart(performanceCtx, {
+                type: 'line',
+                data: {
+                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                    datasets: [{
+                        label: 'Performance (%)',
+                        data: [1.2, 0.8, -0.5, 1.5, 2.0, 1.0, 1.8, 0.7, -1.0, 2.5, 1.0, 1.0],
+                        borderColor: '#4C72B0',
+                        backgroundColor: 'rgba(76, 114, 176, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        });
     </script>
 </body>
 </html>
