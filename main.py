@@ -1,6 +1,6 @@
 import logging
 import os
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from werkzeug.utils import secure_filename
 import datetime
 
@@ -16,11 +16,21 @@ from src.database import init_db, get_db
 init_db()
 
 # Initialize Flask app
-app = Flask(__name__)
+app = Flask(__name__, static_folder='frontend')
 
-# Root endpoint
+# Root endpoint - serve frontend
 @app.route("/")
 def root():
+    return send_from_directory('frontend', 'index.html')
+
+# Serve frontend static files
+@app.route('/<path:path>')
+def serve_static(path):
+    return send_from_directory('frontend', path)
+
+# API root endpoint
+@app.route("/api")
+def api_root():
     return jsonify({"message": "ANTINORI Financial Portfolio Reporting API"})
 
 # Health check endpoint

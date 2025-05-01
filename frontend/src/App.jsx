@@ -1,5 +1,4 @@
 const { BrowserRouter, Switch, Route, Redirect } = ReactRouterDOM;
-import api from './api.js';
 
 const App = () => {
     const [loading, setLoading] = React.useState(true);

@@ -1,7 +1,8 @@
 /**
  * API service for ANTINORI Financial Portfolio Reporting
  */
-import axios from 'axios';
+// Using the already loaded axios from CDN
+// No need to import
 
 const API_BASE_URL = 'http://localhost:5000';
 
@@ -132,5 +133,3 @@ const api = {
         }
     }
 };
-
-export default api;
