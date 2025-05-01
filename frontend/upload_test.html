@@ -93,20 +93,45 @@
             const formData = new FormData(this);
             
             try {
+                // Show upload progress
+                resultDiv.innerHTML = 'Uploading file... (this may take a few moments for large files)';
+                
+                // Send the request
                 const response = await fetch('/api/upload/ownership', {
                     method: 'POST',
                     body: formData
                 });
                 
-                const data = await response.json();
+                // Check if response is valid
+                if (!response.ok) {
+                    // Try to get error message
+                    try {
+                        const errorData = await response.json();
+                        resultDiv.innerHTML = `<span class="error">Server Error (${response.status}):</span>\n${JSON.stringify(errorData, null, 2)}`;
+                    } catch (jsonError) {
+                        // If we can't parse JSON, show the text 
+                        const errorText = await response.text();
+                        resultDiv.innerHTML = `<span class="error">Server Error (${response.status}):</span>\n<pre>${errorText}</pre>`;
+                    }
+                    return;
+                }
                 
-                if (data.success) {
-                    resultDiv.innerHTML = `<span class="success">Success!</span>\n${JSON.stringify(data, null, 2)}`;
-                } else {
-                    resultDiv.innerHTML = `<span class="error">Error:</span>\n${JSON.stringify(data, null, 2)}`;
+                // Parse JSON response with error handling
+                try {
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        resultDiv.innerHTML = `<span class="success">Success!</span>\n${JSON.stringify(data, null, 2)}`;
+                    } else {
+                        resultDiv.innerHTML = `<span class="error">Error:</span>\n${JSON.stringify(data, null, 2)}`;
+                    }
+                } catch (jsonError) {
+                    // If JSON parsing fails, show raw response
+                    const rawText = await response.text();
+                    resultDiv.innerHTML = `<span class="error">Error parsing response:</span>\n<pre>${rawText.substring(0, 1000)}${rawText.length > 1000 ? '...(truncated)' : ''}</pre>`;
                 }
             } catch (error) {
-                resultDiv.innerHTML = `<span class="error">Error:</span>\n${error.message}`;
+                resultDiv.innerHTML = `<span class="error">Network Error:</span>\n${error.message}`;
             }
         });
         
@@ -116,13 +141,49 @@
             resultDiv.innerHTML = 'Loading ownership tree...';
             
             try {
-                const response = await fetch('/api/ownership-tree');
+                // Add a force_refresh option to bypass cache on demand
+                const useCache = true; // Set to false to force refresh
+                const url = useCache ? '/api/ownership-tree' : '/api/ownership-tree?force_refresh=true';
                 
-                const data = await response.json();
+                const response = await fetch(url);
                 
-                resultDiv.innerHTML = `<span class="success">Response:</span>\n${JSON.stringify(data, null, 2)}`;
+                // Handle errors first
+                if (!response.ok) {
+                    try {
+                        const errorData = await response.json();
+                        resultDiv.innerHTML = `<span class="error">Server Error (${response.status}):</span>\n${JSON.stringify(errorData, null, 2)}`;
+                    } catch (jsonError) {
+                        const errorText = await response.text();
+                        resultDiv.innerHTML = `<span class="error">Server Error (${response.status}):</span>\n<pre>${errorText}</pre>`;
+                    }
+                    return;
+                }
+                
+                // Try to parse the JSON response
+                try {
+                    const data = await response.json();
+                    
+                    // Show processing time and cache status if available
+                    let statsInfo = '';
+                    if (data.processing_time_seconds !== undefined) {
+                        statsInfo += `\nProcessing time: ${data.processing_time_seconds} seconds`;
+                    }
+                    if (data.from_cache !== undefined) {
+                        statsInfo += `\nFrom cache: ${data.from_cache}`;
+                    }
+                    if (data.client_count !== undefined) {
+                        statsInfo += `\nClients: ${data.client_count}, Records: ${data.total_records || 'N/A'}`;
+                    }
+                    
+                    // Format the output with some stats at the top
+                    resultDiv.innerHTML = `<span class="success">Response:</span>${statsInfo}\n\n${JSON.stringify(data, null, 2)}`;
+                } catch (jsonError) {
+                    // If JSON parsing fails, show raw response
+                    const rawText = await response.text();
+                    resultDiv.innerHTML = `<span class="error">Error parsing response:</span>\n<pre>${rawText.substring(0, 1000)}${rawText.length > 1000 ? '...(truncated)' : ''}</pre>`;
+                }
             } catch (error) {
-                resultDiv.innerHTML = `<span class="error">Error:</span>\n${error.message}`;
+                resultDiv.innerHTML = `<span class="error">Network Error:</span>\n${error.message}`;
             }
         });
     </script>

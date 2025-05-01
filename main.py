@@ -387,59 +387,98 @@ def upload_ownership_tree():
                                 portfolio = getattr(row, 'Portfolio', None) or None
                                 group_id = getattr(row, 'Group ID', None) or None
                                 
-                                # Handle date values
+                                # Handle date values more carefully
                                 parsed_date = None
                                 if hasattr(row, 'parsed_date'):
-                                    parsed_date = getattr(row, 'parsed_date')
-                                    if pd.notna(parsed_date):
-                                        if isinstance(parsed_date, datetime.datetime):
-                                            parsed_date = parsed_date.date()
+                                    date_val = getattr(row, 'parsed_date')
+                                    if pd.notna(date_val) and date_val is not None:
+                                        try:
+                                            if isinstance(date_val, datetime.datetime):
+                                                parsed_date = date_val.date()
+                                            elif isinstance(date_val, str):
+                                                parsed_date = datetime.datetime.strptime(date_val, '%Y-%m-%d').date()
+                                        except (ValueError, TypeError):
+                                            parsed_date = None
                                 
-                                # Handle ownership percentage
+                                # Handle ownership percentage with safety checks
                                 ownership_pct = None
                                 if hasattr(row, 'ownership_percentage'):
-                                    ownership_pct = getattr(row, 'ownership_percentage')
-                                    if pd.notna(ownership_pct):
-                                        ownership_pct = float(ownership_pct)
+                                    pct_val = getattr(row, 'ownership_percentage')
+                                    if pd.notna(pct_val) and pct_val is not None:
+                                        try:
+                                            ownership_pct = float(pct_val)
+                                        except (ValueError, TypeError):
+                                            ownership_pct = None
                                 
-                                # Get grouping attribute
-                                grouping_attr = getattr(row, 'Grouping Attribute Name', 'Unknown') or 'Unknown'
+                                # Get grouping attribute with fallback
+                                try:
+                                    grouping_attr = getattr(row, 'Grouping Attribute Name', 'Unknown')
+                                    if not grouping_attr or pd.isna(grouping_attr):
+                                        grouping_attr = 'Unknown'
+                                except:
+                                    grouping_attr = 'Unknown'
                                 
-                                # Create dictionary for bulk insert
-                                record = {
-                                    'client': client,
-                                    'entity_id': entity_id,
-                                    'holding_account_number': holding_account_number,
-                                    'portfolio': portfolio,
-                                    'group_id': group_id,
-                                    'data_inception_date': parsed_date,
-                                    'ownership_percentage': ownership_pct,
-                                    'grouping_attribute_name': grouping_attr,
-                                    'metadata_id': metadata_id,
-                                    'upload_date': datetime.date.today()
-                                }
-                                
-                                records.append(record)
-                                rows_inserted += 1
-                                
-                                # Insert in batches
-                                if len(records) >= batch_size:
-                                    # Use raw SQL insert for maximum speed
-                                    db.execute(OwnershipItem.__table__.insert(), records)
-                                    db.commit()
-                                    logger.info(f"Inserted batch, total: {rows_inserted}")
-                                    records = []  # Clear the batch
+                                # Clean and validate all fields before insertion
+                                # Make sure we don't have any problematic values
+                                if grouping_attr and isinstance(grouping_attr, str) and len(grouping_attr) <= 100:
+                                    # Create dictionary for bulk insert with explicit type conversion
+                                    record = {
+                                        'client': str(client)[:100] if client else '',
+                                        'entity_id': str(entity_id)[:50] if entity_id else None,
+                                        'holding_account_number': str(holding_account_number)[:50] if holding_account_number else None,
+                                        'portfolio': str(portfolio)[:100] if portfolio else None,
+                                        'group_id': str(group_id)[:50] if group_id else None,
+                                        'data_inception_date': parsed_date,
+                                        'ownership_percentage': ownership_pct,
+                                        'grouping_attribute_name': str(grouping_attr)[:50],
+                                        'metadata_id': metadata_id,
+                                        'upload_date': datetime.date.today()
+                                    }
+                                    
+                                    records.append(record)
+                                    rows_inserted += 1
+                                    
+                                    # Insert in batches with proper error handling
+                                    if len(records) >= batch_size:
+                                        try:
+                                            # Use raw SQL insert for maximum speed
+                                            db.execute(OwnershipItem.__table__.insert(), records)
+                                            db.commit()
+                                            logger.info(f"Inserted batch, total: {rows_inserted}")
+                                            records = []  # Clear the batch
+                                        except Exception as e:
+                                            db.rollback()
+                                            logger.error(f"Error during batch insert: {str(e)}")
+                                            # Try inserting one by one to identify problematic records
+                                            for idx, rec in enumerate(records):
+                                                try:
+                                                    db.execute(OwnershipItem.__table__.insert(), [rec])
+                                                    db.commit()
+                                                except Exception as e2:
+                                                    logger.error(f"Problem with record {idx}: {str(e2)}")
+                                            records = []  # Clear the batch after recovery attempt
                             
                         except Exception as e:
                             error_msg = f"Error processing row {i+5}: {str(e)}"
                             errors.append(error_msg)
                             logger.error(error_msg)
                     
-                    # Insert any remaining records
+                    # Insert any remaining records with proper error handling
                     if records:
-                        db.execute(OwnershipItem.__table__.insert(), records)
-                        db.commit()
-                        logger.info(f"Inserted final batch, total: {rows_inserted}")
+                        try:
+                            db.execute(OwnershipItem.__table__.insert(), records)
+                            db.commit()
+                            logger.info(f"Inserted final batch, total: {rows_inserted}")
+                        except Exception as e:
+                            db.rollback()
+                            logger.error(f"Error during final batch insert: {str(e)}")
+                            # Try inserting one by one to identify problematic records
+                            for idx, rec in enumerate(records):
+                                try:
+                                    db.execute(OwnershipItem.__table__.insert(), [rec])
+                                    db.commit()
+                                except Exception as e2:
+                                    logger.error(f"Problem with record {idx}: {str(e2)}")
                 
                 except Exception as e:
                     db.rollback()
