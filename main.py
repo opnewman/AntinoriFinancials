@@ -613,20 +613,22 @@ def get_ownership_tree():
             
             # Use database-level aggregation for faster data extraction
             # First, get the count of clients and total records for statistics
+            # Only count entries marked as "Client" in grouping_attribute_name
             client_count = db.query(func.count(distinct(OwnershipItem.client))).filter(
-                OwnershipItem.metadata_id == latest_metadata.id
+                OwnershipItem.metadata_id == latest_metadata.id,
+                OwnershipItem.grouping_attribute_name == "Client"
             ).scalar()
             
             total_records = db.query(func.count(OwnershipItem.id)).filter(
                 OwnershipItem.metadata_id == latest_metadata.id
             ).scalar()
             
-            # Get clients (top level) with a single query
-            # Note: We need to handle the case where grouping_attribute_name might be "Unknown"
+            # Get only actual clients based on the grouping_attribute_name
             client_rows = db.query(
                 OwnershipItem.client
             ).filter(
-                OwnershipItem.metadata_id == latest_metadata.id
+                OwnershipItem.metadata_id == latest_metadata.id,
+                OwnershipItem.grouping_attribute_name == "Client"
             ).distinct().all()
             
             # Sort and limit to first 100 clients for initial testing 
