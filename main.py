@@ -37,6 +37,11 @@ def serve_static(path):
 def test_page():
     return send_from_directory('frontend', 'upload_test.html')
 
+# Ownership tree visualization page
+@app.route('/ownership-tree')
+def ownership_tree_page():
+    return send_from_directory('frontend', 'ownership-tree.html')
+
 # API root endpoint
 @app.route("/api")
 def api_root():
