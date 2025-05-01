@@ -556,7 +556,7 @@ def get_ownership_tree():
     try:
         from src.models.models import OwnershipMetadata, OwnershipItem
         from src.database import get_db_connection
-        from collections import defaultdict
+        from collections import defaultdict, namedtuple
         from sqlalchemy import func, distinct
         import time
         import hashlib
@@ -640,6 +640,14 @@ def get_ownership_tree():
                 OwnershipItem.grouping_attribute_name == "Client"
             ).scalar()
             
+            # Initialize sets to store client identification info
+            # These will be used later for filtering
+            potential_true_clients = set()
+            likely_accounts = set()
+            
+            # Create a namedtuple to match the format of our client query results
+            ClientRow = namedtuple('ClientRow', ['client'])
+            
             # If we have "Client" entries, use them
             if client_count_check > 0:
                 logger.info(f"Found {client_count_check} entries with grouping_attribute_name = 'Client'")
@@ -649,70 +657,132 @@ def get_ownership_tree():
                     OwnershipItem.metadata_id == latest_metadata.id,
                     OwnershipItem.grouping_attribute_name == "Client"
                 ).distinct().all()
-            # If no "Client" entries, extract clients using smarter logic
-            else:
-                logger.info("No Client entries found, using smart identification logic")
                 
-                # Let's examine the data to find patterns that indicate true clients
-                # 1. Get all distinct portfolio values
-                portfolios = db.query(
+                # Also add these to our potential_true_clients set
+                for row in client_rows:
+                    if row.client:
+                        potential_true_clients.add(row.client)
+            # If no "Client" entries, we need an advanced approach to identify true clients
+            else:
+                logger.info("No 'Client' grouping attribute found, using advanced identification logic")
+                
+                # STEP 1: Build a full relationship map of the data
+                # This will help us identify the true hierarchy
+                
+                # Get all unique portfolios first
+                all_portfolios = db.query(
                     distinct(OwnershipItem.portfolio)
                 ).filter(
                     OwnershipItem.metadata_id == latest_metadata.id,
                     OwnershipItem.portfolio != None,
                     OwnershipItem.portfolio != ''
                 ).all()
-                portfolio_names = [p[0] for p in portfolios if p[0]]
                 
-                # 2. Find clients that have the same name as portfolios (these are likely parent clients)
-                potential_parent_clients = db.query(
-                    OwnershipItem.client
-                ).filter(
-                    OwnershipItem.metadata_id == latest_metadata.id,
-                    OwnershipItem.client.in_(portfolio_names)
-                ).distinct().all()
+                # Map to track clients that appear as portfolio names
+                portfolio_to_clients = defaultdict(set)
+                client_to_portfolios = defaultdict(set)
                 
-                # 3. Find client entries that have entries with the same portfolio but no entity_id
-                # These patterns typically indicate top-level clients
-                parent_client_query = db.query(
-                    OwnershipItem.client
-                ).filter(
-                    OwnershipItem.metadata_id == latest_metadata.id,
-                    OwnershipItem.entity_id.isnot(None),
-                    (OwnershipItem.holding_account_number == None) | (OwnershipItem.holding_account_number == '')
-                ).distinct()
-                
-                # 4. Find clients that have portfolios associated with multiple other entries
-                # This often suggests they're parent clients
-                client_count_map = {}
-                portfolio_count_query = db.query(
+                # Get mappings between clients and portfolios
+                client_portfolio_mapping = db.query(
                     OwnershipItem.client,
-                    func.count(distinct(OwnershipItem.portfolio)).label('portfolio_count')
+                    OwnershipItem.portfolio
                 ).filter(
                     OwnershipItem.metadata_id == latest_metadata.id,
                     OwnershipItem.portfolio != None,
                     OwnershipItem.portfolio != ''
-                ).group_by(OwnershipItem.client).all()
+                ).all()
                 
-                for row in portfolio_count_query:
-                    client_count_map[row.client] = row.portfolio_count
+                for mapping in client_portfolio_mapping:
+                    if mapping.client and mapping.portfolio:
+                        portfolio_to_clients[mapping.portfolio].add(mapping.client)
+                        client_to_portfolios[mapping.client].add(mapping.portfolio)
                 
-                # Combine our findings - client records without holding_account_number
-                client_rows = db.query(
+                # STEP 2: Identify leaf nodes (likely accounts)
+                # Accounts typically have holding_account_number, entity_id, and appear as leaf nodes
+                likely_accounts = set()
+                
+                account_candidates = db.query(
                     OwnershipItem.client
                 ).filter(
                     OwnershipItem.metadata_id == latest_metadata.id,
+                    OwnershipItem.holding_account_number != None,
+                    OwnershipItem.holding_account_number != ''
+                ).distinct().all()
+                
+                for candidate in account_candidates:
+                    if candidate.client:
+                        likely_accounts.add(candidate.client)
+                
+                # STEP 3: Identify portfolio-level entities
+                # These are entries that have the same name as a portfolio, indicating they're parent-level
+                portfolio_names = [p[0] for p in all_portfolios if p[0]]
+                
+                # STEP 4: Identify potential true clients
+                # A true client is any entity that:
+                # - Has entity_id but no holding_account_number, OR
+                # - Is referenced as a portfolio by other entities, OR
+                # - Has entries with group_id referencing it
+                
+                potential_true_clients = set()
+                
+                # Entities with entity_id but no holding_account_number
+                entity_id_clients = db.query(
+                    OwnershipItem.client
+                ).filter(
+                    OwnershipItem.metadata_id == latest_metadata.id,
+                    OwnershipItem.entity_id != None,
+                    OwnershipItem.entity_id != '',
                     (OwnershipItem.holding_account_number == None) | (OwnershipItem.holding_account_number == '')
                 ).distinct().all()
                 
-                # If we don't find any clients with this approach, fall back to just taking distinct clients
+                for client in entity_id_clients:
+                    if client.client:
+                        potential_true_clients.add(client.client)
+                
+                # Add clients that match portfolio names or have group_id references
+                for portfolio in portfolio_names:
+                    if portfolio in client_to_portfolios:
+                        potential_true_clients.add(portfolio)
+                
+                # Get group references
+                group_references = db.query(
+                    OwnershipItem.client
+                ).filter(
+                    OwnershipItem.metadata_id == latest_metadata.id,
+                    OwnershipItem.group_id != None,
+                    OwnershipItem.group_id != ''
+                ).distinct().all()
+                
+                for ref in group_references:
+                    if ref.client:
+                        potential_true_clients.add(ref.client)
+                
+                # STEP 5: Apply hierarchical filtering
+                # Remove likely_accounts from potential_true_clients if they're in both sets
+                true_clients = potential_true_clients - likely_accounts
+                
+                if true_clients:
+                    logger.info(f"Identified {len(true_clients)} true clients using advanced hierarchical logic")
+                    # Create client rows from the identified true clients
+                    client_rows = [ClientRow(client=client) for client in true_clients]
+                else:
+                    # As a fallback, get clients that don't have holding account numbers
+                    logger.info("No clear clients identified, falling back to non-account entities")
+                    client_rows = db.query(
+                        OwnershipItem.client
+                    ).filter(
+                        OwnershipItem.metadata_id == latest_metadata.id,
+                        (OwnershipItem.holding_account_number == None) | (OwnershipItem.holding_account_number == '')
+                    ).distinct().all()
+                    
+                # If we still don't have any clients, take a small subset as a last resort
                 if len(client_rows) == 0:
-                    logger.info("No clients identified with smart logic, falling back to distinct clients")
+                    logger.info("No clients identified with advanced logic, falling back to top 20 distinct clients")
                     client_rows = db.query(
                         OwnershipItem.client
                     ).filter(
                         OwnershipItem.metadata_id == latest_metadata.id
-                    ).distinct().all()
+                    ).distinct().limit(20).all()
             
             # Sort and limit to first 100 clients for initial testing 
             # (to avoid overwhelming the browser)
@@ -929,28 +999,19 @@ def get_ownership_tree():
                     if portfolio_node["children"]:
                         client_node["children"].append(portfolio_node)
                 
-                # Filter to only include true clients at the top level
-                # A client is considered a true client if either:
-                # 1. It has at least one child group or portfolio, OR
-                # 2. It doesn't have a holding_account_number associated with it
+                # Only include nodes that represent actual parent clients
+                # A node must have at least one of:
+                # 1. Children groups/portfolios, OR
+                # 2. Be specifically identified as a true client in our hierarchical analysis
                 
-                if client_node["children"] or client_name in client_to_direct_portfolios:
-                    # Client has children, so definitely include it
+                # We'll only add nodes that have children - this ensures we're showing a proper hierarchy
+                if client_node["children"]:
+                    # Has child groups/portfolios, definitely a parent client
                     tree["children"].append(client_node)
-                else:
-                    # Check if it's likely an account rather than a client
-                    # by looking for holding account numbers
-                    has_holding_account = False
-                    account_check = db.query(func.count()).filter(
-                        OwnershipItem.metadata_id == latest_metadata.id,
-                        OwnershipItem.client == client_name,
-                        OwnershipItem.holding_account_number != None,
-                        OwnershipItem.holding_account_number != ''
-                    ).scalar()
-                    
-                    if account_check == 0:
-                        # No holding account number, likely a true client
-                        tree["children"].append(client_node)
+                elif client_name in potential_true_clients and client_name not in likely_accounts:
+                    # Identified as a true client in our analysis and not a likely account
+                    # This handles special cases for top-level clients without children in this dataset
+                    tree["children"].append(client_node)
             
             # Calculate time
             end_time = time.time()
