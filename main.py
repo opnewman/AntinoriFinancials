@@ -1,6 +1,7 @@
 import logging
 import os
 from flask import Flask, jsonify, request, send_from_directory
+from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import datetime
 
@@ -17,6 +18,9 @@ init_db()
 
 # Initialize Flask app
 app = Flask(__name__, static_folder='frontend')
+
+# Enable CORS for all routes
+CORS(app)
 
 # Root endpoint - serve frontend
 @app.route("/")

@@ -4,7 +4,8 @@
 // Using the already loaded axios from CDN
 // No need to import
 
-const API_BASE_URL = 'http://localhost:5000';
+// Use relative URL to avoid CORS issues in different environments
+const API_BASE_URL = '';
 
 const api = {
     /**
