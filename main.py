@@ -613,23 +613,55 @@ def get_ownership_tree():
             
             # Use database-level aggregation for faster data extraction
             # First, get the count of clients and total records for statistics
-            # Only count entries marked as "Client" in grouping_attribute_name
-            client_count = db.query(func.count(distinct(OwnershipItem.client))).filter(
+            # Check if we have any "Client" labeled entries
+            client_with_label_count = db.query(func.count(distinct(OwnershipItem.client))).filter(
                 OwnershipItem.metadata_id == latest_metadata.id,
                 OwnershipItem.grouping_attribute_name == "Client"
             ).scalar()
+            
+            # If we found "Client" entries, use that count
+            if client_with_label_count > 0:
+                client_count = client_with_label_count
+            # Otherwise, count all distinct clients
+            else:
+                client_count = db.query(func.count(distinct(OwnershipItem.client))).filter(
+                    OwnershipItem.metadata_id == latest_metadata.id
+                ).scalar()
+                
+            logger.info(f"Total client count: {client_count}")
             
             total_records = db.query(func.count(OwnershipItem.id)).filter(
                 OwnershipItem.metadata_id == latest_metadata.id
             ).scalar()
             
-            # Get only actual clients based on the grouping_attribute_name
-            client_rows = db.query(
-                OwnershipItem.client
-            ).filter(
+            # Check if we have any entries with grouping_attribute_name = "Client"
+            client_count_check = db.query(func.count()).filter(
                 OwnershipItem.metadata_id == latest_metadata.id,
                 OwnershipItem.grouping_attribute_name == "Client"
-            ).distinct().all()
+            ).scalar()
+            
+            # If we have "Client" entries, use them
+            if client_count_check > 0:
+                logger.info(f"Found {client_count_check} entries with grouping_attribute_name = 'Client'")
+                client_rows = db.query(
+                    OwnershipItem.client
+                ).filter(
+                    OwnershipItem.metadata_id == latest_metadata.id,
+                    OwnershipItem.grouping_attribute_name == "Client"
+                ).distinct().all()
+            # If no "Client" entries, extract clients from first column
+            else:
+                logger.info("No Client entries found, using first-level items with no parent")
+                # We'll identify clients as entries that:
+                # 1. Don't have a parent reference (i.e., not in a group)
+                # 2. Are referenced by other entries
+                
+                # First, get all distinct clients (first column values)
+                client_rows = db.query(
+                    OwnershipItem.client
+                ).filter(
+                    OwnershipItem.metadata_id == latest_metadata.id
+                ).distinct().all()
             
             # Sort and limit to first 100 clients for initial testing 
             # (to avoid overwhelming the browser)
@@ -671,19 +703,43 @@ def get_ownership_tree():
                 if row.group_id and row.portfolio:
                     group_to_portfolios[row.group_id].add(row.portfolio)
             
-            # Get accounts for each portfolio - this is more complex and requires grouping_attribute_name
-            portfolio_accounts_query = db.query(
-                OwnershipItem.portfolio,
-                OwnershipItem.group_id,
-                OwnershipItem.client,
-                OwnershipItem.entity_id,
-                OwnershipItem.holding_account_number
-            ).filter(
+            # Check if we have any "Holding Account" entries
+            has_holding_accounts = db.query(func.count()).filter(
                 OwnershipItem.metadata_id == latest_metadata.id,
-                OwnershipItem.grouping_attribute_name == "Holding Account",
-                OwnershipItem.portfolio != None,
-                OwnershipItem.portfolio != ''
-            ).all()
+                OwnershipItem.grouping_attribute_name == "Holding Account"
+            ).scalar() > 0
+            
+            # Get accounts for each portfolio - this is more complex
+            if has_holding_accounts:
+                logger.info("Using 'Holding Account' grouping attribute to identify accounts")
+                portfolio_accounts_query = db.query(
+                    OwnershipItem.portfolio,
+                    OwnershipItem.group_id,
+                    OwnershipItem.client,
+                    OwnershipItem.entity_id,
+                    OwnershipItem.holding_account_number
+                ).filter(
+                    OwnershipItem.metadata_id == latest_metadata.id,
+                    OwnershipItem.grouping_attribute_name == "Holding Account",
+                    OwnershipItem.portfolio != None,
+                    OwnershipItem.portfolio != ''
+                ).all()
+            else:
+                # If no "Holding Account" entries, try to use holding_account_number to identify accounts
+                logger.info("No 'Holding Account' entries found, using holding_account_number to identify accounts")
+                portfolio_accounts_query = db.query(
+                    OwnershipItem.portfolio,
+                    OwnershipItem.group_id,
+                    OwnershipItem.client,
+                    OwnershipItem.entity_id,
+                    OwnershipItem.holding_account_number
+                ).filter(
+                    OwnershipItem.metadata_id == latest_metadata.id,
+                    OwnershipItem.holding_account_number.isnot(None),
+                    OwnershipItem.holding_account_number != '',
+                    OwnershipItem.portfolio != None,
+                    OwnershipItem.portfolio != ''
+                ).all()
             
             # Build mappings for portfolio to accounts
             portfolio_to_accounts = defaultdict(list)
@@ -700,16 +756,35 @@ def get_ownership_tree():
                     key = (row.portfolio, row.group_id or "direct")
                     portfolio_to_accounts[key].append(account)
             
-            # Get group names - groups are represented as clients with group_id
-            group_names_query = db.query(
-                OwnershipItem.group_id,
-                OwnershipItem.client
-            ).filter(
+            # Check if we have any "Group" labeled entries
+            has_group_labels = db.query(func.count()).filter(
                 OwnershipItem.metadata_id == latest_metadata.id,
-                OwnershipItem.grouping_attribute_name == "Group",
-                OwnershipItem.group_id != None,
-                OwnershipItem.group_id != ''
-            ).all()
+                OwnershipItem.grouping_attribute_name == "Group"
+            ).scalar() > 0
+            
+            # Get group names - groups are represented as clients with group_id
+            if has_group_labels:
+                logger.info("Using 'Group' grouping attribute to identify groups")
+                group_names_query = db.query(
+                    OwnershipItem.group_id,
+                    OwnershipItem.client
+                ).filter(
+                    OwnershipItem.metadata_id == latest_metadata.id,
+                    OwnershipItem.grouping_attribute_name == "Group",
+                    OwnershipItem.group_id != None,
+                    OwnershipItem.group_id != ''
+                ).all()
+            else:
+                # If no "Group" entries, use any entry with a group_id
+                logger.info("No 'Group' entries found, using any entries with group_id")
+                group_names_query = db.query(
+                    OwnershipItem.group_id,
+                    OwnershipItem.client
+                ).filter(
+                    OwnershipItem.metadata_id == latest_metadata.id,
+                    OwnershipItem.group_id != None,
+                    OwnershipItem.group_id != ''
+                ).distinct().all()
             
             # Map group IDs to names
             group_id_to_name = {}
