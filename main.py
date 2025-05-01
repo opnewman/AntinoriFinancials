@@ -930,6 +930,32 @@ def get_ownership_tree():
                 if row.client and row.portfolio:
                     client_to_direct_portfolios[row.client].add(row.portfolio)
         
+        # Get additional client-portfolio relationships based on account data
+        # In many cases, the portfolio field contains the true client name
+        # This is essential for building a proper hierarchical structure
+        portfolio_client_mapping = defaultdict(set)
+        account_portfolio_mapping = defaultdict(str)
+        
+        # Query all portfolio-account relationships
+        portfolio_account_rel = db.query(
+            OwnershipItem.portfolio,
+            OwnershipItem.client,
+            OwnershipItem.holding_account_number
+        ).filter(
+            OwnershipItem.metadata_id == latest_metadata.id,
+            OwnershipItem.portfolio != None,
+            OwnershipItem.portfolio != '',
+            OwnershipItem.holding_account_number != None,
+            OwnershipItem.holding_account_number != ''
+        ).all()
+        
+        # Build mappings - many "client" entries with account numbers are actually accounts
+        # belonging to portfolios, which are the true clients
+        for rel in portfolio_account_rel:
+            if rel.portfolio and rel.client and rel.holding_account_number:
+                portfolio_client_mapping[rel.portfolio].add(rel.client)
+                account_portfolio_mapping[rel.client] = rel.portfolio
+                
         # Outside the database connection, we have all our optimized data
         # Now build the tree very efficiently
         try:
@@ -947,7 +973,43 @@ def get_ownership_tree():
                     "children": []
                 }
                 
-                # First add groups and their portfolios/accounts
+                # Collect all accounts that belong to this client (where client matches portfolio name)
+                # This is crucial because the true client hierarchy often has the client name in the portfolio field
+                client_accounts = []
+                
+                if client_name in portfolio_client_mapping:
+                    # This client has accounts underneath it in the hierarchy
+                    account_names = portfolio_client_mapping[client_name]
+                    
+                    # Create a "Direct Accounts" group for accounts directly under this client
+                    direct_accounts_node = {
+                        "name": "Direct Accounts",
+                        "children": []
+                    }
+                    
+                    # Add each account to the direct accounts group
+                    for account_name in account_names:
+                        # This leverages the portfolio_accounts_query we already ran
+                        # Add the account to the client's direct accounts
+                        account_obj = {
+                            "name": account_name,
+                            "value": 1
+                        }
+                        
+                        # Find the account in our data to get entity_id and account_number
+                        for account_data in portfolio_accounts_query:
+                            if account_data.client == account_name:
+                                account_obj["entity_id"] = account_data.entity_id
+                                account_obj["account_number"] = account_data.holding_account_number
+                                break
+                                
+                        direct_accounts_node["children"].append(account_obj)
+                    
+                    # Only add the direct accounts node if it has children
+                    if direct_accounts_node["children"]:
+                        client_node["children"].append(direct_accounts_node)
+                
+                # Add groups and their portfolios/accounts (traditional structure)
                 for group_id in client_to_groups.get(client_name, set()):
                     # Get the group name
                     group_name = group_id_to_name.get(group_id, f"Group {group_id}")
@@ -999,18 +1061,14 @@ def get_ownership_tree():
                     if portfolio_node["children"]:
                         client_node["children"].append(portfolio_node)
                 
-                # Only include nodes that represent actual parent clients
-                # A node must have at least one of:
-                # 1. Children groups/portfolios, OR
-                # 2. Be specifically identified as a true client in our hierarchical analysis
-                
-                # We'll only add nodes that have children - this ensures we're showing a proper hierarchy
+                # Only include nodes that represent actual parent clients with children or
+                # specifically identified as true clients in our hierarchical analysis
                 if client_node["children"]:
-                    # Has child groups/portfolios, definitely a parent client
+                    # Has child groups/portfolios/accounts, definitely a parent client
                     tree["children"].append(client_node)
                 elif client_name in potential_true_clients and client_name not in likely_accounts:
-                    # Identified as a true client in our analysis and not a likely account
-                    # This handles special cases for top-level clients without children in this dataset
+                    # Special case for true clients that may not have accounts in this dataset
+                    # Only add these if there's strong evidence they're true clients
                     tree["children"].append(client_node)
             
             # Calculate time
