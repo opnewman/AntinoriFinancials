@@ -209,10 +209,9 @@ def upload_ownership_tree():
             # Get back the ID of the inserted record
             db.refresh(new_metadata)
         
-        # Process each row in batches
+        # Process all rows at once using pandas for better performance
         rows_inserted = 0
         errors = []
-        batch_size = 100  # Process 100 rows at a time
         total_rows = len(df)
         
         # Get the expected column names
@@ -228,79 +227,96 @@ def upload_ownership_tree():
                         df.rename(columns={actual_col: col}, inplace=True)
                         break
         
-        # Now process in batches
-        for batch_start in range(0, total_rows, batch_size):
-            batch_end = min(batch_start + batch_size, total_rows)
-            batch_df = df.iloc[batch_start:batch_end]
+        # Filter out empty clients and total rows
+        df = df[~df['Client'].isna() & ~df['Client'].str.lower().str.contains('total', na=False)]
+        valid_rows = len(df)
+        
+        # Prepare all data at once using vectorized operations
+        # Handle NaN values for string columns
+        for col in ['Client', 'Entity ID', 'Holding Account Number', 'Portfolio', 'Group ID', 'Grouping Attribute Name']:
+            if col in df.columns:
+                df[col] = df[col].fillna('').astype(str)
+                # Replace '-' with empty string only for certain columns
+                if col in ['Entity ID', 'Holding Account Number', 'Group ID']:
+                    df[col] = df[col].replace('-', '')
+        
+        # Parse dates more efficiently
+        if 'Data Inception Date' in df.columns:
+            # Convert to datetime with a common format or None
+            df['parsed_date'] = None
+            date_mask = ~df['Data Inception Date'].isna() & (df['Data Inception Date'] != '-') & (df['Data Inception Date'] != '')
             
-            with get_db_connection() as db:
-                for index, row in batch_df.iterrows():
+            # Try different date formats in sequence
+            date_formats = ['%b %d, %Y', '%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y']
+            
+            for date_format in date_formats:
+                # For rows where date is still None but has a value
+                null_dates_mask = (df['parsed_date'].isna()) & date_mask
+                if null_dates_mask.any():
                     try:
-                        # Skip rows where Client is empty or "Total"
-                        if pd.isna(row.get('Client', '')) or 'total' in str(row.get('Client', '')).lower():
-                            continue
-                            
-                        # Convert to native Python types and handle NaN values
-                        client = str(row.get('Client', '')) if not pd.isna(row.get('Client', '')) else ""
-                        entity_id = str(row.get('Entity ID', '')) if not pd.isna(row.get('Entity ID', '')) else None
-                        holding_account_number = str(row.get('Holding Account Number', '')) if not pd.isna(row.get('Holding Account Number', '')) else None
-                        portfolio = str(row.get('Portfolio', '')) if not pd.isna(row.get('Portfolio', '')) else None
-                        group_id = str(row.get('Group ID', '')) if not pd.isna(row.get('Group ID', '')) else None
-                        
-                        # Handle date format conversion
-                        data_inception_date = None
-                        date_value = row.get('Data Inception Date', '')
-                        if not pd.isna(date_value) and date_value not in ['-', '']:
-                            try:
-                                if isinstance(date_value, datetime.datetime):
-                                    data_inception_date = date_value.date()
-                                elif isinstance(date_value, str):
-                                    # Try different date formats
-                                    date_formats = ['%b %d, %Y', '%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y']
-                                    for date_format in date_formats:
-                                        try:
-                                            data_inception_date = datetime.datetime.strptime(date_value, date_format).date()
-                                            break
-                                        except ValueError:
-                                            continue
-                            except Exception as e:
-                                logger.warning(f"Could not parse date: {date_value} - {str(e)}")
-                        
-                        # Parse ownership percentage
-                        ownership_percentage = None
-                        pct_value = row.get('% Ownership', '')
-                        if not pd.isna(pct_value) and pct_value not in ['-', '']:
-                            try:
-                                # Remove % sign if present and convert to float
-                                ownership_str = str(pct_value).replace('%', '').strip()
-                                ownership_percentage = float(ownership_str) / 100 if ownership_str else None
-                            except:
-                                ownership_percentage = None
-                        
-                        grouping_attribute = str(row.get('Grouping Attribute Name', '')) if not pd.isna(row.get('Grouping Attribute Name', '')) else "Unknown"
-                        
-                        # Create and add the ownership item
+                        parsed_series = pd.to_datetime(
+                            df.loc[null_dates_mask, 'Data Inception Date'], 
+                            format=date_format, 
+                            errors='coerce'
+                        )
+                        df.loc[null_dates_mask, 'parsed_date'] = parsed_series
+                    except:
+                        pass
+        
+        # Parse ownership percentages
+        if '% Ownership' in df.columns:
+            df['ownership_percentage'] = None
+            pct_mask = ~df['% Ownership'].isna() & (df['% Ownership'] != '-') & (df['% Ownership'] != '')
+            
+            if pct_mask.any():
+                # Remove % sign and convert to float
+                df.loc[pct_mask, 'ownership_percentage'] = (
+                    df.loc[pct_mask, '% Ownership']
+                    .astype(str)
+                    .str.replace('%', '')
+                    .str.strip()
+                    .astype(float) / 100
+                )
+        
+        # Use a single connection and bulk insert for much better performance
+        with get_db_connection() as db:
+            try:
+                # Create list of ownership items in one go
+                ownership_items = []
+                
+                for _, row in df.iterrows():
+                    try:
+                        # Create ownership item object
                         ownership_item = OwnershipItem(
-                            client=client,
-                            entity_id=entity_id,
-                            holding_account_number=holding_account_number,
-                            portfolio=portfolio,
-                            group_id=group_id,
-                            data_inception_date=data_inception_date,
-                            ownership_percentage=ownership_percentage,
-                            grouping_attribute_name=grouping_attribute,
+                            client=row['Client'],
+                            entity_id=row['Entity ID'] if row['Entity ID'] else None,
+                            holding_account_number=row['Holding Account Number'] if row['Holding Account Number'] else None,
+                            portfolio=row['Portfolio'] if row['Portfolio'] else None,
+                            group_id=row['Group ID'] if row['Group ID'] else None,
+                            data_inception_date=row['parsed_date'] if 'parsed_date' in row and not pd.isna(row['parsed_date']) else None,
+                            ownership_percentage=row['ownership_percentage'] if 'ownership_percentage' in row and not pd.isna(row['ownership_percentage']) else None,
+                            grouping_attribute_name=row['Grouping Attribute Name'],
                             metadata_id=new_metadata.id
                         )
-                        db.add(ownership_item)
+                        ownership_items.append(ownership_item)
                         rows_inserted += 1
                         
                     except Exception as e:
-                        error_msg = f"Error processing row {batch_start + index + 5}: {str(e)}"
+                        error_msg = f"Error processing row: {str(e)}"
                         errors.append(error_msg)
                         logger.error(error_msg)
                 
-                # Commit the batch
-                db.commit()
+                # Bulk insert in a single operation
+                if ownership_items:
+                    db.bulk_save_objects(ownership_items)
+                    db.commit()
+                    
+            except Exception as e:
+                db.rollback()
+                error_msg = f"Error during bulk insert: {str(e)}"
+                errors.append(error_msg)
+                logger.error(error_msg)
+                raise
         
         return jsonify({
             "success": True,
@@ -337,6 +353,15 @@ def upload_security_risk_stats():
         "errors": []
     })
 
+# Cache for ownership tree data
+ownership_tree_cache = {
+    "tree": None,             # The full tree structure
+    "metadata_id": None,      # The metadata ID this tree was built from
+    "timestamp": None,        # When the cache was last updated
+    "client_count": 0,
+    "total_records": 0
+}
+
 @app.route("/api/ownership-tree", methods=["GET"])
 def get_ownership_tree():
     try:
@@ -345,11 +370,15 @@ def get_ownership_tree():
         from collections import defaultdict
         from sqlalchemy import func, distinct
         import time
+        import hashlib
         
         # Performance timing
         start_time = time.time()
         
-        # Use our improved connection context manager
+        # Check if force_refresh is set as a query parameter
+        force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+        
+        # Use our improved connection context manager to get metadata and check if we need to refresh cache
         with get_db_connection() as db:
             # Get the most recent metadata
             latest_metadata = db.query(OwnershipMetadata).filter(OwnershipMetadata.is_current == True).first()
@@ -359,7 +388,31 @@ def get_ownership_tree():
                     "success": False,
                     "message": "No ownership data available. Please upload ownership data first."
                 }), 404
+                
+            # Check if we can use the cached tree
+            cache_valid = (
+                not force_refresh and
+                ownership_tree_cache["tree"] is not None and
+                ownership_tree_cache["metadata_id"] == latest_metadata.id
+            )
             
+            # If cache is valid, return it immediately
+            if cache_valid:
+                # Calculate time for cache hit
+                end_time = time.time()
+                processing_time = end_time - start_time
+                
+                # Return the cached tree with updated timestamps
+                return jsonify({
+                    "success": True, 
+                    "data": ownership_tree_cache["tree"],
+                    "client_count": ownership_tree_cache["client_count"],
+                    "total_records": ownership_tree_cache["total_records"],
+                    "processing_time_seconds": round(processing_time, 3),
+                    "from_cache": True
+                })
+            
+            # If we get here, we need to build the tree from scratch
             # Get metadata information
             metadata_info = {
                 "view_name": latest_metadata.view_name,
@@ -380,156 +433,155 @@ def get_ownership_tree():
                 OwnershipItem.metadata_id == latest_metadata.id
             ).scalar()
             
-            # Get clients (top level)
-            clients = db.query(
+            # Get clients (top level) with a single query
+            client_rows = db.query(
                 OwnershipItem.client
             ).filter(
                 OwnershipItem.metadata_id == latest_metadata.id,
                 OwnershipItem.grouping_attribute_name == "Client"
             ).distinct().all()
             
-            clients = [client.client for client in clients if client.client]
+            clients = sorted([client.client for client in client_rows if client.client])
             
-            # Now build the tree structure efficiently - using a two-phase approach
-            # Phase 1: Fetch all the data we need in structured format
+            # Use a more optimized query with joins to get all the data at once
+            # First, get client to group relationships
+            client_group_query = db.query(
+                OwnershipItem.client,
+                OwnershipItem.group_id
+            ).filter(
+                OwnershipItem.metadata_id == latest_metadata.id,
+                OwnershipItem.group_id != None,  # Only get items with a group_id
+                OwnershipItem.group_id != ''     # Ensure group_id is not empty
+            ).distinct().all()
             
-            # Get all ownership items for the latest metadata - using a more targeted query
-            # Only select the fields we need for the tree visualization and organize by level
-            items_by_level = {
-                "client_level": [],
-                "group_level": [],
-                "portfolio_level": [],
-                "account_level": []
-            }
+            # Build a mapping of clients to their groups
+            client_to_groups = defaultdict(set)
+            for row in client_group_query:
+                if row.client and row.group_id:
+                    client_to_groups[row.client].add(row.group_id)
             
-            # Use a single query and sort the results in memory
-            all_items = db.query(
-                OwnershipItem.id, 
-                OwnershipItem.client, 
-                OwnershipItem.entity_id,
-                OwnershipItem.holding_account_number,
+            # Get group to portfolio relationships
+            group_portfolio_query = db.query(
+                OwnershipItem.group_id,
+                OwnershipItem.portfolio
+            ).filter(
+                OwnershipItem.metadata_id == latest_metadata.id,
+                OwnershipItem.group_id != None,  # Only get items with a group_id
+                OwnershipItem.group_id != '',    # Ensure group_id is not empty
+                OwnershipItem.portfolio != None, # Only get items with a portfolio
+                OwnershipItem.portfolio != ''    # Ensure portfolio is not empty
+            ).distinct().all()
+            
+            # Build a mapping of groups to their portfolios
+            group_to_portfolios = defaultdict(set)
+            for row in group_portfolio_query:
+                if row.group_id and row.portfolio:
+                    group_to_portfolios[row.group_id].add(row.portfolio)
+            
+            # Get accounts for each portfolio - this is more complex and requires grouping_attribute_name
+            portfolio_accounts_query = db.query(
                 OwnershipItem.portfolio,
                 OwnershipItem.group_id,
-                OwnershipItem.grouping_attribute_name
+                OwnershipItem.client,
+                OwnershipItem.entity_id,
+                OwnershipItem.holding_account_number
             ).filter(
-                OwnershipItem.metadata_id == latest_metadata.id
+                OwnershipItem.metadata_id == latest_metadata.id,
+                OwnershipItem.grouping_attribute_name == "Holding Account",
+                OwnershipItem.portfolio != None,
+                OwnershipItem.portfolio != ''
             ).all()
             
-            # Organize items by levels for faster access
-            for item in all_items:
-                # Convert SQLAlchemy object to dict
-                item_dict = {
-                    "id": item.id,
-                    "client": item.client,
-                    "entity_id": item.entity_id,
-                    "holding_account_number": item.holding_account_number,
-                    "portfolio": item.portfolio,
-                    "group_id": item.group_id,
-                    "grouping_attribute_name": item.grouping_attribute_name
-                }
-                
-                # Categorize by level
-                if item.grouping_attribute_name == "Client":
-                    items_by_level["client_level"].append(item_dict)
-                elif item.grouping_attribute_name == "Group":
-                    items_by_level["group_level"].append(item_dict)
-                elif item.grouping_attribute_name == "Holding Account":
-                    items_by_level["account_level"].append(item_dict)
-                else:
-                    # For any other categorization
-                    items_by_level["portfolio_level"].append(item_dict)
+            # Build mappings for portfolio to accounts
+            portfolio_to_accounts = defaultdict(list)
+            for row in portfolio_accounts_query:
+                if row.portfolio:
+                    # Create an account object
+                    account = {
+                        "name": row.client,
+                        "value": 1,
+                        "entity_id": row.entity_id,
+                        "account_number": row.holding_account_number
+                    }
+                    # Key includes both portfolio and group_id (or 'direct')
+                    key = (row.portfolio, row.group_id or "direct")
+                    portfolio_to_accounts[key].append(account)
+            
+            # Get group names - groups are represented as clients with group_id
+            group_names_query = db.query(
+                OwnershipItem.group_id,
+                OwnershipItem.client
+            ).filter(
+                OwnershipItem.metadata_id == latest_metadata.id,
+                OwnershipItem.grouping_attribute_name == "Group",
+                OwnershipItem.group_id != None,
+                OwnershipItem.group_id != ''
+            ).all()
+            
+            # Map group IDs to names
+            group_id_to_name = {}
+            for row in group_names_query:
+                if row.group_id:
+                    group_id_to_name[row.group_id] = row.client
+                    
+            # Get direct portfolios (not in groups)
+            direct_portfolios_query = db.query(
+                OwnershipItem.client,
+                OwnershipItem.portfolio
+            ).filter(
+                OwnershipItem.metadata_id == latest_metadata.id,
+                (OwnershipItem.group_id == None) | (OwnershipItem.group_id == ''),
+                OwnershipItem.portfolio != None,
+                OwnershipItem.portfolio != ''
+            ).distinct().all()
+            
+            # Map clients to their direct portfolios
+            client_to_direct_portfolios = defaultdict(set)
+            for row in direct_portfolios_query:
+                if row.client and row.portfolio:
+                    client_to_direct_portfolios[row.client].add(row.portfolio)
         
-        # We're now outside the database connection, but have all our data
-        # Phase 2: Build the tree structure using the optimized data organization
+        # Outside the database connection, we have all our optimized data
+        # Now build the tree very efficiently
         try:
-            # Create lookup dictionaries for faster access
-            # Map client names to their items
-            client_items_map = defaultdict(list)
-            for item in items_by_level["client_level"]:
-                if item["client"]:
-                    client_items_map[item["client"].strip()].append(item)
-            
-            # Map group IDs to their items
-            group_items_map = defaultdict(list)
-            for item in items_by_level["group_level"]:
-                if item["group_id"]:
-                    group_items_map[item["group_id"]].append(item)
-            
-            # Map portfolio names to account items
-            portfolio_account_map = defaultdict(list)
-            for item in items_by_level["account_level"]:
-                if item["portfolio"]:
-                    key = (item["portfolio"], item["group_id"] or "direct")
-                    portfolio_account_map[key].append(item)
-            
-            # Build the tree
+            # Build the tree structure
             tree = {
                 "name": "ANTINORI Family Office",
                 "children": [],
                 "metadata": metadata_info
             }
             
-            # Sort clients for consistent output
-            clients.sort()
-            
-            # Process each client
+            # Process each client using our optimized data structures
             for client_name in clients:
                 client_node = {
                     "name": client_name,
                     "children": []
                 }
                 
-                # Find all items for this client (groups, portfolios, accounts)
-                client_related_items = [item for item in all_items 
-                                       if item.client and item.client.strip() == client_name.strip()]
-                
-                # Extract unique group IDs for this client
-                groups = set()
-                for item in client_related_items:
-                    if item.grouping_attribute_name == "Group" and item.group_id:
-                        groups.add(item.group_id)
-                
-                # Process each group
-                for group_id in groups:
-                    # Find group name
-                    group_items = [item for item in client_related_items 
-                                  if item.group_id == group_id]
-                    
-                    group_name = next((item.client for item in group_items 
-                                     if item.grouping_attribute_name == "Group"), f"Group {group_id}")
+                # First add groups and their portfolios/accounts
+                for group_id in client_to_groups.get(client_name, set()):
+                    # Get the group name
+                    group_name = group_id_to_name.get(group_id, f"Group {group_id}")
                     
                     group_node = {
                         "name": group_name,
                         "children": []
                     }
                     
-                    # Extract unique portfolios in this group
-                    portfolios = set()
-                    for item in group_items:
-                        if item.portfolio:
-                            portfolios.add(item.portfolio)
-                    
-                    # Process each portfolio in the group
-                    for portfolio_name in portfolios:
+                    # Add all portfolios for this group
+                    for portfolio_name in group_to_portfolios.get(group_id, set()):
                         portfolio_node = {
                             "name": portfolio_name,
                             "children": []
                         }
                         
-                        # Find account items for this portfolio in this group
-                        account_items = [item for item in group_items
-                                        if item.portfolio == portfolio_name
-                                        and item.grouping_attribute_name == "Holding Account"]
+                        # Add all accounts for this portfolio in this group
+                        account_key = (portfolio_name, group_id)
+                        accounts = portfolio_to_accounts.get(account_key, [])
                         
-                        # Add account nodes
-                        for account in account_items:
-                            account_node = {
-                                "name": account.client,
-                                "value": 1,
-                                "entity_id": account.entity_id,
-                                "account_number": account.holding_account_number
-                            }
-                            portfolio_node["children"].append(account_node)
+                        # Add each account to the portfolio
+                        for account in accounts:
+                            portfolio_node["children"].append(account)
                         
                         # Only add portfolio if it has accounts
                         if portfolio_node["children"]:
@@ -539,34 +591,20 @@ def get_ownership_tree():
                     if group_node["children"]:
                         client_node["children"].append(group_node)
                 
-                # Handle direct portfolios (not in groups)
-                direct_items = [item for item in client_related_items if not item.group_id]
-                direct_portfolios = set()
-                for item in direct_items:
-                    if item.portfolio:
-                        direct_portfolios.add(item.portfolio)
-                
-                # Process each direct portfolio
-                for portfolio_name in direct_portfolios:
+                # Next add direct portfolios (not in groups)
+                for portfolio_name in client_to_direct_portfolios.get(client_name, set()):
                     portfolio_node = {
                         "name": portfolio_name,
                         "children": []
                     }
                     
-                    # Find account items for this direct portfolio
-                    direct_account_items = [item for item in direct_items
-                                          if item.portfolio == portfolio_name
-                                          and item.grouping_attribute_name == "Holding Account"]
+                    # Add all accounts for this direct portfolio
+                    account_key = (portfolio_name, "direct")
+                    accounts = portfolio_to_accounts.get(account_key, [])
                     
-                    # Add account nodes
-                    for account in direct_account_items:
-                        account_node = {
-                            "name": account.client,
-                            "value": 1,
-                            "entity_id": account.entity_id,
-                            "account_number": account.holding_account_number
-                        }
-                        portfolio_node["children"].append(account_node)
+                    # Add each account to the portfolio
+                    for account in accounts:
+                        portfolio_node["children"].append(account)
                     
                     # Only add portfolio if it has accounts
                     if portfolio_node["children"]:
@@ -580,13 +618,21 @@ def get_ownership_tree():
             end_time = time.time()
             processing_time = end_time - start_time
             
+            # Update cache
+            ownership_tree_cache["tree"] = tree
+            ownership_tree_cache["metadata_id"] = latest_metadata.id
+            ownership_tree_cache["timestamp"] = time.time()
+            ownership_tree_cache["client_count"] = client_count
+            ownership_tree_cache["total_records"] = total_records
+            
             # Return the tree structure with additional metadata
             return jsonify({
                 "success": True, 
                 "data": tree,
                 "client_count": client_count,
                 "total_records": total_records,
-                "processing_time_seconds": round(processing_time, 3)
+                "processing_time_seconds": round(processing_time, 3),
+                "from_cache": False
             })
             
         except Exception as e:
