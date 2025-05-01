@@ -45,20 +45,40 @@ class FinancialPosition(Base):
                                     foreign_keys="[RiskStatisticAlternatives.position, RiskStatisticAlternatives.ticker_symbol]", 
                                     uselist=False, viewonly=True)
 
-class OwnershipHierarchy(Base):
+class OwnershipMetadata(Base):
     """
-    Stores ownership hierarchy data from ownership.xlsx
+    Stores metadata about the ownership file (first 3 rows)
     """
-    __tablename__ = "ownership_hierarchy"
+    __tablename__ = "ownership_metadata"
     
     id = Column(Integer, primary_key=True, index=True)
-    holding_account = Column(String, nullable=False)
-    holding_account_number = Column(String, nullable=False, index=True)
-    top_level_client = Column(String, nullable=False, index=True)
-    entity_id = Column(String, nullable=False)
-    portfolio = Column(String, nullable=False, index=True)
-    groups = Column(String)
-    last_updated = Column(Date, default=datetime.date.today, nullable=False)
+    view_name = Column(String, nullable=False)
+    date_range_start = Column(Date, nullable=False)
+    date_range_end = Column(Date, nullable=False)
+    portfolio_coverage = Column(String, nullable=False)
+    upload_date = Column(Date, default=datetime.date.today, nullable=False)
+    is_current = Column(Boolean, default=True, nullable=False)  # Flag to mark the most recent upload
+
+class OwnershipItem(Base):
+    """
+    Stores ownership hierarchy data from ownership.xlsx (row 4 onwards)
+    """
+    __tablename__ = "ownership_items"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    client = Column(String, nullable=False, index=True)
+    entity_id = Column(String, index=True)
+    holding_account_number = Column(String, index=True)
+    portfolio = Column(String, index=True)
+    group_id = Column(String, index=True)
+    data_inception_date = Column(Date)
+    ownership_percentage = Column(Float)
+    grouping_attribute_name = Column(String, nullable=False)  # Client, Group, or Holding Account
+    upload_date = Column(Date, default=datetime.date.today, nullable=False)
+    metadata_id = Column(Integer, ForeignKey("ownership_metadata.id"), nullable=False)
+    
+    # Relationship to metadata
+    ownership_metadata = relationship("OwnershipMetadata")
 
 class FinancialSummary(Base):
     """

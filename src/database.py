@@ -27,8 +27,9 @@ def get_db():
 # Initialize database
 def init_db():
     # Import models to register them with SQLAlchemy
-    from src.models.models import FinancialPosition, OwnershipHierarchy, FinancialSummary
+    from src.models.models import FinancialPosition, FinancialSummary
     from src.models.models import RiskStatisticEquity, RiskStatisticFixedIncome, RiskStatisticAlternatives
+    from src.models.models import OwnershipMetadata, OwnershipItem
     
     # Create tables
     Base.metadata.create_all(bind=engine)
