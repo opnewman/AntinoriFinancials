@@ -649,19 +649,70 @@ def get_ownership_tree():
                     OwnershipItem.metadata_id == latest_metadata.id,
                     OwnershipItem.grouping_attribute_name == "Client"
                 ).distinct().all()
-            # If no "Client" entries, extract clients from first column
+            # If no "Client" entries, extract clients using smarter logic
             else:
-                logger.info("No Client entries found, using first-level items with no parent")
-                # We'll identify clients as entries that:
-                # 1. Don't have a parent reference (i.e., not in a group)
-                # 2. Are referenced by other entries
+                logger.info("No Client entries found, using smart identification logic")
                 
-                # First, get all distinct clients (first column values)
+                # Let's examine the data to find patterns that indicate true clients
+                # 1. Get all distinct portfolio values
+                portfolios = db.query(
+                    distinct(OwnershipItem.portfolio)
+                ).filter(
+                    OwnershipItem.metadata_id == latest_metadata.id,
+                    OwnershipItem.portfolio != None,
+                    OwnershipItem.portfolio != ''
+                ).all()
+                portfolio_names = [p[0] for p in portfolios if p[0]]
+                
+                # 2. Find clients that have the same name as portfolios (these are likely parent clients)
+                potential_parent_clients = db.query(
+                    OwnershipItem.client
+                ).filter(
+                    OwnershipItem.metadata_id == latest_metadata.id,
+                    OwnershipItem.client.in_(portfolio_names)
+                ).distinct().all()
+                
+                # 3. Find client entries that have entries with the same portfolio but no entity_id
+                # These patterns typically indicate top-level clients
+                parent_client_query = db.query(
+                    OwnershipItem.client
+                ).filter(
+                    OwnershipItem.metadata_id == latest_metadata.id,
+                    OwnershipItem.entity_id.isnot(None),
+                    (OwnershipItem.holding_account_number == None) | (OwnershipItem.holding_account_number == '')
+                ).distinct()
+                
+                # 4. Find clients that have portfolios associated with multiple other entries
+                # This often suggests they're parent clients
+                client_count_map = {}
+                portfolio_count_query = db.query(
+                    OwnershipItem.client,
+                    func.count(distinct(OwnershipItem.portfolio)).label('portfolio_count')
+                ).filter(
+                    OwnershipItem.metadata_id == latest_metadata.id,
+                    OwnershipItem.portfolio != None,
+                    OwnershipItem.portfolio != ''
+                ).group_by(OwnershipItem.client).all()
+                
+                for row in portfolio_count_query:
+                    client_count_map[row.client] = row.portfolio_count
+                
+                # Combine our findings - client records without holding_account_number
                 client_rows = db.query(
                     OwnershipItem.client
                 ).filter(
-                    OwnershipItem.metadata_id == latest_metadata.id
+                    OwnershipItem.metadata_id == latest_metadata.id,
+                    (OwnershipItem.holding_account_number == None) | (OwnershipItem.holding_account_number == '')
                 ).distinct().all()
+                
+                # If we don't find any clients with this approach, fall back to just taking distinct clients
+                if len(client_rows) == 0:
+                    logger.info("No clients identified with smart logic, falling back to distinct clients")
+                    client_rows = db.query(
+                        OwnershipItem.client
+                    ).filter(
+                        OwnershipItem.metadata_id == latest_metadata.id
+                    ).distinct().all()
             
             # Sort and limit to first 100 clients for initial testing 
             # (to avoid overwhelming the browser)
@@ -878,9 +929,28 @@ def get_ownership_tree():
                     if portfolio_node["children"]:
                         client_node["children"].append(portfolio_node)
                 
-                # For debugging - we want to see all clients initially regardless of children
-                # Later we can add back the filtering
-                tree["children"].append(client_node)
+                # Filter to only include true clients at the top level
+                # A client is considered a true client if either:
+                # 1. It has at least one child group or portfolio, OR
+                # 2. It doesn't have a holding_account_number associated with it
+                
+                if client_node["children"] or client_name in client_to_direct_portfolios:
+                    # Client has children, so definitely include it
+                    tree["children"].append(client_node)
+                else:
+                    # Check if it's likely an account rather than a client
+                    # by looking for holding account numbers
+                    has_holding_account = False
+                    account_check = db.query(func.count()).filter(
+                        OwnershipItem.metadata_id == latest_metadata.id,
+                        OwnershipItem.client == client_name,
+                        OwnershipItem.holding_account_number != None,
+                        OwnershipItem.holding_account_number != ''
+                    ).scalar()
+                    
+                    if account_check == 0:
+                        # No holding account number, likely a true client
+                        tree["children"].append(client_node)
             
             # Calculate time
             end_time = time.time()
