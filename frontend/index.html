@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANTINORI Financial Portfolio Reporting</title>
+    
+    <!-- Fonts - Inter and JetBrains Mono -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+    
+    <!-- Tailwind CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body class="bg-white text-slate-800 font-sans min-h-screen">
+    <div id="root"></div>
+    
+    <!-- React and ReactDOM -->
+    <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
+    
+    <!-- React Router -->
+    <script src="https://unpkg.com/react-router-dom@5.3.0/umd/react-router-dom.min.js"></script>
+    
+    <!-- Babel -->
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    
+    <!-- Axios -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    
+    <!-- Application Scripts -->
+    <script type="text/babel" src="./src/components/NavigationBar.jsx"></script>
+    <script type="text/babel" src="./src/components/Chart.jsx"></script>
+    <script type="text/babel" src="./src/components/ReportTable.jsx"></script>
+    <script type="text/babel" src="./src/components/FileUploader.jsx"></script>
+    <script type="text/babel" src="./src/components/Dashboard.jsx"></script>
+    <script type="text/babel" src="./src/api.js"></script>
+    <script type="text/babel" src="./src/App.jsx"></script>
+    
+    <script type="text/babel">
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
