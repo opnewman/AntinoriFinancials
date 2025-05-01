@@ -87,42 +87,92 @@ def upload_ownership_tree():
         from io import BytesIO, StringIO
         import re
         import datetime
-        from sqlalchemy import func
+        import time
+        from sqlalchemy import text, func
         from src.models.models import OwnershipMetadata, OwnershipItem
         from src.database import get_db_connection
         
+        # Start timing the process
+        start_time = time.time()
+        logger.info(f"Upload started for file: {file.filename}")
+        
         # Read the file content
         file_content = file.read()
+        logger.info(f"File size: {len(file_content)} bytes")
         
         # Process the file based on its type
+        view_name = "NORI Ownership"
+        start_date = end_date = datetime.date.today()
+        portfolio_coverage = "All clients"
+        
         if file_ext in ['.xlsx', '.xls']:
-            # Excel file - use BytesIO
+            # Excel file - use BytesIO with optimized settings
             excel_data = BytesIO(file_content)
             
-            # Extract metadata from first 3 rows
+            # Extract metadata from first 3 rows only
             try:
-                metadata_df = pd.read_excel(excel_data, nrows=3, header=None)
+                metadata_df = pd.read_excel(excel_data, nrows=3, header=None, engine='openpyxl')
                 
-                # Extract view name, date range, and portfolio coverage
-                view_name = metadata_df.iloc[0, 1] if len(metadata_df) > 0 and not pd.isna(metadata_df.iloc[0, 1]) else "NORI Ownership"
+                # Extract view name, date range, and portfolio coverage efficiently
+                if len(metadata_df) > 0 and len(metadata_df.columns) > 1 and not pd.isna(metadata_df.iloc[0, 1]):
+                    view_name = str(metadata_df.iloc[0, 1])
                 
                 # Parse date range
-                date_range_str = metadata_df.iloc[1, 1] if len(metadata_df) > 1 and not pd.isna(metadata_df.iloc[1, 1]) else ""
-                date_range_match = re.search(r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})', date_range_str)
+                if len(metadata_df) > 1 and len(metadata_df.columns) > 1 and not pd.isna(metadata_df.iloc[1, 1]):
+                    date_range_str = str(metadata_df.iloc[1, 1])
+                    # Try multiple date formats and patterns
+                    date_patterns = [
+                        r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})',  # MM-DD-YYYY to MM-DD-YYYY
+                        r'(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD to YYYY-MM-DD
+                        r'(\w+ \d{1,2}, \d{4})\s+to\s+(\w+ \d{1,2}, \d{4})'  # Month DD, YYYY to Month DD, YYYY
+                    ]
+                    
+                    # Try each pattern
+                    for pattern in date_patterns:
+                        match = re.search(pattern, date_range_str)
+                        if match:
+                            try:
+                                if pattern == r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})':
+                                    start_date_str, end_date_str = match.groups()
+                                    start_date = datetime.datetime.strptime(start_date_str, '%m-%d-%Y').date()
+                                    end_date = datetime.datetime.strptime(end_date_str, '%m-%d-%Y').date()
+                                    break
+                                elif pattern == r'(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})':
+                                    start_date_str, end_date_str = match.groups()
+                                    start_date = datetime.datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                                    end_date = datetime.datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                                    break
+                                elif pattern == r'(\w+ \d{1,2}, \d{4})\s+to\s+(\w+ \d{1,2}, \d{4})':
+                                    start_date_str, end_date_str = match.groups()
+                                    start_date = datetime.datetime.strptime(start_date_str, '%B %d, %Y').date()
+                                    end_date = datetime.datetime.strptime(end_date_str, '%B %d, %Y').date()
+                                    break
+                            except ValueError:
+                                continue  # Try next pattern if this one fails
                 
-                if date_range_match:
-                    start_date_str, end_date_str = date_range_match.groups()
-                    start_date = datetime.datetime.strptime(start_date_str, '%m-%d-%Y').date()
-                    end_date = datetime.datetime.strptime(end_date_str, '%m-%d-%Y').date()
-                else:
-                    # Default to today if date range can't be parsed
-                    start_date = end_date = datetime.date.today()
+                # Get portfolio coverage
+                if len(metadata_df) > 2 and len(metadata_df.columns) > 1 and not pd.isna(metadata_df.iloc[2, 1]):
+                    portfolio_coverage = str(metadata_df.iloc[2, 1])
                 
-                portfolio_coverage = metadata_df.iloc[2, 1] if len(metadata_df) > 2 and not pd.isna(metadata_df.iloc[2, 1]) else "All clients"
-                
-                # Reset file pointer and read the data rows (from row 5 onwards)
+                # Reset file pointer for data rows
                 excel_data.seek(0)
-                df = pd.read_excel(excel_data, header=3, dtype=str)  # Header is in row 4 (0-indexed), read all as strings
+                
+                # Read data with optimized settings
+                df = pd.read_excel(
+                    excel_data, 
+                    header=3,  # Header is in row 4 (0-indexed)
+                    engine='openpyxl',
+                    dtype={
+                        'Client': str,
+                        'Entity ID': str,
+                        'Holding Account Number': str,
+                        'Portfolio': str,
+                        'Group ID': str,
+                        'Grouping Attribute Name': str
+                    }
+                )
+                
+                logger.info(f"Excel file parsed, rows: {len(df)}")
             
             except Exception as e:
                 logger.error(f"Error parsing Excel file: {str(e)}")
@@ -135,45 +185,77 @@ def upload_ownership_tree():
                 }), 400
                 
         elif file_ext in ['.csv', '.txt']:
-            # CSV or TXT file - use StringIO
-            text_data = StringIO(file_content.decode('utf-8'))
-            
-            # Read first three lines for metadata
-            header_lines = []
-            for _ in range(3):
-                if text_data.tell() < len(file_content):
-                    header_lines.append(text_data.readline().strip())
-            
-            # Extract view name, date range, and portfolio coverage
-            view_name = header_lines[0].split(':', 1)[1].strip() if len(header_lines) > 0 and ':' in header_lines[0] else "NORI Ownership"
-            
-            # Parse date range
-            date_range_str = header_lines[1].split(':', 1)[1].strip() if len(header_lines) > 1 and ':' in header_lines[1] else ""
-            date_range_match = re.search(r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})', date_range_str)
-            
-            if date_range_match:
-                start_date_str, end_date_str = date_range_match.groups()
-                start_date = datetime.datetime.strptime(start_date_str, '%m-%d-%Y').date()
-                end_date = datetime.datetime.strptime(end_date_str, '%m-%d-%Y').date()
-            else:
-                # Default to today if date range can't be parsed
-                start_date = end_date = datetime.date.today()
-            
-            portfolio_coverage = header_lines[2].split(':', 1)[1].strip() if len(header_lines) > 2 and ':' in header_lines[2] else "All clients"
-            
-            # Reset file pointer and read the data
-            text_data.seek(0)
-            
-            # Skip the first 4 lines (3 metadata + 1 header)
-            for _ in range(4):
-                text_data.readline()
-            
-            # Read the rest of the file
+            # CSV or TXT file - use StringIO with optimized approach
             try:
-                if file_ext == '.csv':
-                    df = pd.read_csv(text_data, dtype=str)
-                else:  # .txt, assuming tab-delimited
-                    df = pd.read_csv(text_data, sep='\t', dtype=str)
+                # Decode file content
+                text_content = file_content.decode('utf-8')
+                
+                # Split by lines to get metadata
+                lines = text_content.splitlines()
+                if len(lines) >= 3:
+                    # Extract view name (line 1)
+                    if ':' in lines[0]:
+                        view_name = lines[0].split(':', 1)[1].strip()
+                    
+                    # Extract date range (line 2)
+                    if ':' in lines[1]:
+                        date_range_str = lines[1].split(':', 1)[1].strip()
+                        # Try multiple date formats and patterns (same as Excel)
+                        date_patterns = [
+                            r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})',  # MM-DD-YYYY to MM-DD-YYYY
+                            r'(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD to YYYY-MM-DD
+                            r'(\w+ \d{1,2}, \d{4})\s+to\s+(\w+ \d{1,2}, \d{4})'  # Month DD, YYYY to Month DD, YYYY
+                        ]
+                        
+                        # Try each pattern
+                        for pattern in date_patterns:
+                            match = re.search(pattern, date_range_str)
+                            if match:
+                                try:
+                                    if pattern == r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})':
+                                        start_date_str, end_date_str = match.groups()
+                                        start_date = datetime.datetime.strptime(start_date_str, '%m-%d-%Y').date()
+                                        end_date = datetime.datetime.strptime(end_date_str, '%m-%d-%Y').date()
+                                        break
+                                    elif pattern == r'(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})':
+                                        start_date_str, end_date_str = match.groups()
+                                        start_date = datetime.datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                                        end_date = datetime.datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                                        break
+                                    elif pattern == r'(\w+ \d{1,2}, \d{4})\s+to\s+(\w+ \d{1,2}, \d{4})':
+                                        start_date_str, end_date_str = match.groups()
+                                        start_date = datetime.datetime.strptime(start_date_str, '%B %d, %Y').date()
+                                        end_date = datetime.datetime.strptime(end_date_str, '%B %d, %Y').date()
+                                        break
+                                except ValueError:
+                                    continue  # Try next pattern if this one fails
+                    
+                    # Extract portfolio coverage (line 3)
+                    if ':' in lines[2]:
+                        portfolio_coverage = lines[2].split(':', 1)[1].strip()
+                
+                # Create a new buffer with just the data rows (skip metadata and header)
+                data_buffer = StringIO('\n'.join(lines[4:]))  # Skip first 4 lines
+                
+                # Determine the delimiter
+                delimiter = '\t' if file_ext == '.txt' else ','
+                
+                # Read the data with optimized settings
+                df = pd.read_csv(
+                    data_buffer,
+                    sep=delimiter,
+                    dtype={
+                        'Client': str,
+                        'Entity ID': str,
+                        'Holding Account Number': str,
+                        'Portfolio': str,
+                        'Group ID': str,
+                        'Grouping Attribute Name': str
+                    }
+                )
+                
+                logger.info(f"{file_ext} file parsed, rows: {len(df)}")
+                
             except Exception as e:
                 logger.error(f"Error parsing text file: {str(e)}")
                 return jsonify({
@@ -184,145 +266,208 @@ def upload_ownership_tree():
                     "errors": [str(e)]
                 }), 400
         
-        # Create, update, and retrieve metadata record
-        new_metadata = None
+        # Process metadata first - record the upload timing
+        metadata_time = time.time() - start_time
+        logger.info(f"Metadata processed in {metadata_time:.2f} seconds")
         
-        # Use our connection context manager
-        with get_db_connection() as db:
-            # Check if there are any existing metadata records
-            metadata_count = db.query(OwnershipMetadata).count()
-            if metadata_count > 0:
-                # Set all existing metadata records to is_current=False
-                db.query(OwnershipMetadata).update({"is_current": False})
-            
-            # Create new metadata record
-            new_metadata = OwnershipMetadata(
-                view_name=view_name,
-                date_range_start=start_date,
-                date_range_end=end_date,
-                portfolio_coverage=portfolio_coverage,
-                is_current=True
-            )
-            db.add(new_metadata)
-            db.commit()
-            
-            # Get back the ID of the inserted record
-            db.refresh(new_metadata)
-        
-        # Process all rows at once using pandas for better performance
-        rows_inserted = 0
-        errors = []
+        # Now process the dataframe efficiently
         total_rows = len(df)
+        errors = []
         
-        # Get the expected column names
+        # Normalize columns with a function instead of loops for better performance
         expected_columns = ['Client', 'Entity ID', 'Holding Account Number', 'Portfolio', 
                            'Group ID', 'Data Inception Date', '% Ownership', 'Grouping Attribute Name']
         
-        # Verify and normalize column names if needed
-        for col in expected_columns:
-            if col not in df.columns:
-                # Try to find a match by stripping spaces and lowercasing
+        # Map actual column names to expected ones
+        column_mapping = {}
+        for expected_col in expected_columns:
+            if expected_col not in df.columns:
+                # Find a case-insensitive match
                 for actual_col in df.columns:
-                    if actual_col.strip().lower() == col.lower():
-                        df.rename(columns={actual_col: col}, inplace=True)
+                    if actual_col.strip().lower() == expected_col.lower():
+                        column_mapping[actual_col] = expected_col
                         break
         
-        # Filter out empty clients and total rows
-        df = df[~df['Client'].isna() & ~df['Client'].str.lower().str.contains('total', na=False)]
-        valid_rows = len(df)
+        # Apply the column renaming if needed
+        if column_mapping:
+            df.rename(columns=column_mapping, inplace=True)
         
-        # Prepare all data at once using vectorized operations
-        # Handle NaN values for string columns
-        for col in ['Client', 'Entity ID', 'Holding Account Number', 'Portfolio', 'Group ID', 'Grouping Attribute Name']:
+        # Pre-filter - remove empty clients and "Total" rows in one step
+        client_col = 'Client'
+        if client_col in df.columns:
+            # Efficient filtering
+            df = df[df[client_col].notna() & ~df[client_col].str.contains('total', case=False, na=False)]
+        
+        # Record valid rows after filtering
+        valid_rows = len(df)
+        logger.info(f"After filtering: {valid_rows} valid rows")
+        
+        # Efficiently clean up string columns in a single pass
+        string_cols = ['Client', 'Entity ID', 'Holding Account Number', 'Portfolio', 
+                      'Group ID', 'Grouping Attribute Name']
+        
+        # Handle string columns
+        for col in string_cols:
             if col in df.columns:
-                df[col] = df[col].fillna('').astype(str)
-                # Replace '-' with empty string only for certain columns
+                # Filter out NaN values
+                df[col] = df[col].fillna('')
+                # For certain columns, replace '-' with empty string
                 if col in ['Entity ID', 'Holding Account Number', 'Group ID']:
                     df[col] = df[col].replace('-', '')
         
-        # Parse dates more efficiently
+        # Process dates with optimal conversion
         if 'Data Inception Date' in df.columns:
-            # Convert to datetime with a common format or None
-            df['parsed_date'] = None
-            date_mask = ~df['Data Inception Date'].isna() & (df['Data Inception Date'] != '-') & (df['Data Inception Date'] != '')
-            
-            # Try different date formats in sequence
-            date_formats = ['%b %d, %Y', '%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y']
-            
-            for date_format in date_formats:
-                # For rows where date is still None but has a value
-                null_dates_mask = (df['parsed_date'].isna()) & date_mask
-                if null_dates_mask.any():
-                    try:
-                        parsed_series = pd.to_datetime(
-                            df.loc[null_dates_mask, 'Data Inception Date'], 
-                            format=date_format, 
-                            errors='coerce'
-                        )
-                        df.loc[null_dates_mask, 'parsed_date'] = parsed_series
-                    except:
-                        pass
+            # Try direct conversion first (fastest)
+            df['parsed_date'] = pd.to_datetime(df['Data Inception Date'], errors='coerce')
         
-        # Parse ownership percentages
+        # Process ownership percentages with optimal conversion
         if '% Ownership' in df.columns:
-            df['ownership_percentage'] = None
-            pct_mask = ~df['% Ownership'].isna() & (df['% Ownership'] != '-') & (df['% Ownership'] != '')
-            
-            if pct_mask.any():
-                # Remove % sign and convert to float
-                df.loc[pct_mask, 'ownership_percentage'] = (
-                    df.loc[pct_mask, '% Ownership']
-                    .astype(str)
-                    .str.replace('%', '')
-                    .str.strip()
-                    .astype(float) / 100
-                )
+            # Fast one-step conversion
+            df['ownership_percentage'] = pd.to_numeric(
+                df['% Ownership'].astype(str).str.replace('%', '').str.strip(), 
+                errors='coerce'
+            ) / 100
         
-        # Use a single connection and bulk insert for much better performance
+        # Create metadata record
+        metadata_id = None
         with get_db_connection() as db:
             try:
-                # Create list of ownership items in one go
-                ownership_items = []
+                # Mark existing metadata as not current
+                db.query(OwnershipMetadata).filter(OwnershipMetadata.is_current == True).update({"is_current": False})
+                db.flush()  # Ensure update is processed before the insert
                 
-                for _, row in df.iterrows():
-                    try:
-                        # Create ownership item object
-                        ownership_item = OwnershipItem(
-                            client=row['Client'],
-                            entity_id=row['Entity ID'] if row['Entity ID'] else None,
-                            holding_account_number=row['Holding Account Number'] if row['Holding Account Number'] else None,
-                            portfolio=row['Portfolio'] if row['Portfolio'] else None,
-                            group_id=row['Group ID'] if row['Group ID'] else None,
-                            data_inception_date=row['parsed_date'] if 'parsed_date' in row and not pd.isna(row['parsed_date']) else None,
-                            ownership_percentage=row['ownership_percentage'] if 'ownership_percentage' in row and not pd.isna(row['ownership_percentage']) else None,
-                            grouping_attribute_name=row['Grouping Attribute Name'],
-                            metadata_id=new_metadata.id
-                        )
-                        ownership_items.append(ownership_item)
-                        rows_inserted += 1
-                        
-                    except Exception as e:
-                        error_msg = f"Error processing row: {str(e)}"
-                        errors.append(error_msg)
-                        logger.error(error_msg)
+                # Create new metadata
+                new_metadata = OwnershipMetadata(
+                    view_name=view_name,
+                    date_range_start=start_date,
+                    date_range_end=end_date,
+                    portfolio_coverage=portfolio_coverage,
+                    is_current=True
+                )
+                db.add(new_metadata)
+                db.commit()
+                db.refresh(new_metadata)
+                metadata_id = new_metadata.id
                 
-                # Bulk insert in a single operation
-                if ownership_items:
-                    db.bulk_save_objects(ownership_items)
-                    db.commit()
-                    
+                logger.info(f"Metadata created, id: {metadata_id}")
             except Exception as e:
                 db.rollback()
-                error_msg = f"Error during bulk insert: {str(e)}"
-                errors.append(error_msg)
-                logger.error(error_msg)
-                raise
+                logger.error(f"Error creating metadata: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "message": f"Error creating metadata: {str(e)}",
+                    "rows_processed": 0,
+                    "rows_inserted": 0,
+                    "errors": [str(e)]
+                }), 500
         
+        # Process data rows with high-performance approach
+        rows_inserted = 0
+        if metadata_id is not None and valid_rows > 0:
+            # Calculate optimal batch size based on data size
+            batch_size = min(1000, max(100, valid_rows // 10))
+            logger.info(f"Using batch size: {batch_size}")
+            
+            # Prepare data for insertion using bulk SQL
+            records = []
+            
+            # Create connection for data insertion
+            with get_db_connection() as db:
+                try:
+                    # Process rows efficiently
+                    for i, row in enumerate(df.itertuples(index=False)):
+                        try:
+                            # Extract data safely
+                            client = getattr(row, 'Client', '') or ''
+                            
+                            # Only process rows with valid client names
+                            if client and client.lower() != 'total':
+                                entity_id = getattr(row, 'Entity ID', None) or None
+                                holding_account_number = getattr(row, 'Holding Account Number', None) or None
+                                portfolio = getattr(row, 'Portfolio', None) or None
+                                group_id = getattr(row, 'Group ID', None) or None
+                                
+                                # Handle date values
+                                parsed_date = None
+                                if hasattr(row, 'parsed_date'):
+                                    parsed_date = getattr(row, 'parsed_date')
+                                    if pd.notna(parsed_date):
+                                        if isinstance(parsed_date, datetime.datetime):
+                                            parsed_date = parsed_date.date()
+                                
+                                # Handle ownership percentage
+                                ownership_pct = None
+                                if hasattr(row, 'ownership_percentage'):
+                                    ownership_pct = getattr(row, 'ownership_percentage')
+                                    if pd.notna(ownership_pct):
+                                        ownership_pct = float(ownership_pct)
+                                
+                                # Get grouping attribute
+                                grouping_attr = getattr(row, 'Grouping Attribute Name', 'Unknown') or 'Unknown'
+                                
+                                # Create dictionary for bulk insert
+                                record = {
+                                    'client': client,
+                                    'entity_id': entity_id,
+                                    'holding_account_number': holding_account_number,
+                                    'portfolio': portfolio,
+                                    'group_id': group_id,
+                                    'data_inception_date': parsed_date,
+                                    'ownership_percentage': ownership_pct,
+                                    'grouping_attribute_name': grouping_attr,
+                                    'metadata_id': metadata_id,
+                                    'upload_date': datetime.date.today()
+                                }
+                                
+                                records.append(record)
+                                rows_inserted += 1
+                                
+                                # Insert in batches
+                                if len(records) >= batch_size:
+                                    # Use raw SQL insert for maximum speed
+                                    db.execute(OwnershipItem.__table__.insert(), records)
+                                    db.commit()
+                                    logger.info(f"Inserted batch, total: {rows_inserted}")
+                                    records = []  # Clear the batch
+                            
+                        except Exception as e:
+                            error_msg = f"Error processing row {i+5}: {str(e)}"
+                            errors.append(error_msg)
+                            logger.error(error_msg)
+                    
+                    # Insert any remaining records
+                    if records:
+                        db.execute(OwnershipItem.__table__.insert(), records)
+                        db.commit()
+                        logger.info(f"Inserted final batch, total: {rows_inserted}")
+                
+                except Exception as e:
+                    db.rollback()
+                    error_msg = f"Error during batch insert: {str(e)}"
+                    errors.append(error_msg)
+                    logger.error(error_msg)
+                    
+                    # Return a proper JSON response even on error
+                    return jsonify({
+                        "success": False,
+                        "message": f"Error during data insertion: {str(e)}",
+                        "rows_processed": total_rows,
+                        "rows_inserted": rows_inserted,
+                        "errors": errors,
+                        "processing_time_seconds": round(time.time() - start_time, 3)
+                    }), 500
+        
+        # Calculate total processing time
+        end_time = time.time()
+        processing_time = end_time - start_time
+        
+        # Return success response with timing information
         return jsonify({
             "success": True,
             "message": "Ownership tree uploaded successfully",
             "rows_processed": total_rows,
             "rows_inserted": rows_inserted,
+            "processing_time_seconds": round(processing_time, 3),
             "errors": errors
         })
     
