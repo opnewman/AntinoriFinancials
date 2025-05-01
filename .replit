@@ -1,8 +1,8 @@
-modules = ["python-3.11"]
+modules = ["python-3.11", "rust", "nodejs-20", "java-temurin-17"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["cargo", "glibcLocales", "libiconv", "libxcrypt", "openssl", "pkg-config", "postgresql", "rustc"]
+packages = ["cargo", "glibcLocales", "libiconv", "libxcrypt", "openssl", "pkg-config", "postgresql", "rustc", "jdk17", "maven"]
 
 [deployment]
 deploymentTarget = "autoscale"
