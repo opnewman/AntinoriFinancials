@@ -1,0 +1,528 @@
+Comprehensive ANTINORI Development Plan for Replit
+Project Overview
+The ANTINORI project is a full-stack financial portfolio reporting system designed to manage and report investment data for multiple clients. It processes Excel files (data_dump.xlsx, ownership.xlsx, risk_stats.xlsx), stores data in a PostgreSQL database, and generates detailed portfolio reports at various levels (client, group, portfolio, account, custom). The reports include asset allocations (Equity, Fixed Income, Hard Currency, Uncorrelated Alternatives, Cash & Cash Equivalent), liquidity breakdowns (liquid vs. illiquid assets), performance metrics (1D, MTD, QTD, YTD), and risk statistics (volatility, beta, duration, beta to gold). The backend is built with Python, FastAPI, and SQLAlchemy, while the frontend uses React with Tailwind CSS for visualization. The application must be developed in Replit and include instructions for running locally on employees’ computers.
+Objectives
+
+Data Ingestion: Process Excel files to populate database tables, ensuring data validation and integrity.
+Portfolio Reporting: Generate reports with asset allocations, liquidity, performance metrics, and risk statistics.
+Security: Encrypt sensitive data (e.g., adjusted_value) and sanitize inputs to prevent injection attacks.
+Frontend Visualization: Display reports and charts in a user-friendly interface.
+Local Deployment: Enable employees to run the application on their computers with minimal setup.
+Testing: Validate functionality using dummy data, with provisions for real sample files.
+
+Technical Specifications
+
+Environment:
+
+Platform: Replit, a browser-based IDE (Replit).
+Operating System: Replit’s cloud environment (Linux-based).
+Virtual Environment: Managed by Replit’s package manager.
+IDE: Replit’s web-based IDE with AI Agent and Assistant.
+Server: FastAPI with Uvicorn, deployed via Replit’s hosting.
+Local Setup: Compatible with Windows, macOS, or Linux for employee computers.
+
+
+Directory Structure:
+/antinori/
+  main.py  # FastAPI entry point
+  requirements.txt  # Backend dependencies
+  /src/
+    /controllers/
+      report_controller.py  # API endpoint logic
+    /models/
+      models.py  # SQLAlchemy models
+    /utils/
+      encryption.py  # Encryption utilities
+      __init__.py
+    __init__.py
+  /tests/
+    test_endpoints.py  # Pytest tests
+  /frontend/
+    index.html  # React frontend
+    /src/
+      App.jsx
+      components/
+        ReportTable.jsx
+        Chart.jsx
+    package.json  # Frontend dependencies
+  /data/
+    sample_data/
+      data_dump.xlsx
+      ownership.xlsx
+      risk_stats.xlsx
+
+
+Database:
+
+Type: PostgreSQL, managed via Replit’s Database pane.
+Tables:
+
+
+Table Name
+Columns
+
+
+
+financial_positions
+id (int, PK), position (str), top_level_client (str), holding_account (str), holding_account_number (str), portfolio (str), cusip (str), ticker_symbol (str), asset_class (str), second_level (str), third_level (str), adv_classification (str), liquid_vs_illiquid (str), adjusted_value (float, encrypted), date (date), upload_date (date)
+
+
+ownership_hierarchy
+id (int, PK), holding_account (str), holding_account_number (str), top_level_client (str), entity_id (str), portfolio (str), groups (str), last_updated (date)
+
+
+financial_summary
+id (int, PK), level (str), level_key (str), total_adjusted_value (float), upload_date (date), report_date (date)
+
+
+risk_statistic_equity
+id (int, PK), position (str), ticker_symbol (str), vol (float), beta (float)
+
+
+risk_statistic_fixed_income
+id (int, PK), position (str), ticker_symbol (str), vol (float), duration (float)
+
+
+risk_statistic_alternatives
+id (int, PK), position (str), ticker_symbol (str), vol (float), beta_to_gold (float)
+
+
+
+
+
+Dependencies:
+
+Backend: fastapi, uvicorn, sqlalchemy, psycopg2, openpyxl, pandas, structlog, cryptography, pytest.
+Frontend: react, tailwindcss (via CDN), axios for API calls.
+Local Setup: Python 3.8+, Node.js 16+, PostgreSQL 13+.
+
+
+API Endpoints:
+
+
+
+Endpoint
+Method
+Description
+
+
+
+/upload/data_dump
+POST
+Uploads data_dump.xlsx to financial_positions and financial_summary.
+
+
+/upload/ownership_tree
+POST
+Uploads ownership.xlsx to ownership_hierarchy.
+
+
+/upload/security_risk_stats
+POST
+Uploads risk_stats.xlsx to risk statistic tables.
+
+
+/generate_portfolio_report
+GET
+Generates portfolio reports with query parameters date, level, filters.
+
+
+/portfolio_report/chart/allocations
+GET
+Returns allocation data for charts.
+
+
+/portfolio_report/chart/performance
+GET
+Returns performance data for charts.
+
+
+/portfolio_report/chart/liquidity
+GET
+Returns liquidity data for charts.
+
+
+/ownership_tree
+GET
+Returns ownership hierarchy as JSON.
+
+
+
+
+Development Approach
+To build ANTINORI in one go, use a single, granular prompt for Replit’s AI Agent, optimized for clarity and specificity. The prompt will describe the application’s components, provide step-by-step instructions, and include sample data for testing. The application will be developed in Replit’s cloud environment and include instructions for local deployment.
+Replit Optimization Strategies
+Based on insights from Replit’s blog (Replit Blog), documentation (Replit Docs), and community discussions (Reddit Thread), here are key strategies to optimize Replit usage:
+
+
+
+Strategy
+Description
+Source
+
+
+
+AI Agent
+Use for code generation and debugging with specific prompts.
+DataCamp Tutorial
+
+
+Prompt Engineering
+Provide clear, detailed prompts with context and examples.
+BakingAI Blog
+
+
+Resource Monitoring
+Monitor RAM, CPU, storage via Resources panel to avoid performance issues.
+Replit Docs
+
+
+Database Management
+Use Database pane for PostgreSQL with 10GB storage and versioning.
+Replit Blog
+
+
+Incremental Testing
+Test each component before proceeding to ensure stability.
+Reddit Thread
+
+
+Deployment
+Use autoscaling and scheduled tasks for scalability.
+Replit Docs
+
+
+Sample Data Description
+For initial testing, Replit should generate dummy Excel files with the following structures:
+
+data_dump.xlsx:
+Columns: position, top_level_client, holding_account, holding_account_number, portfolio, cusip, ticker_symbol, asset_class, second_level, third_level, adv_classification, liquid_vs_illiquid, adjusted_value.
+Sample Data:position,top_level_client,holding_account,holding_account_number,portfolio,cusip,ticker_symbol,asset_class,second_level,third_level,adv_classification,liquid_vs_illiquid,adjusted_value
+EQUITY_001,Sprackman Family,Account1,ACC001,Penny Portfolio,CUSIP001,AAPL,Equity,US Markets,,Standard,Liquid,500000
+EQUITY_002,Katz Family,Account2,ACC002,David Portfolio,CUSIP002,MSFT,Equity,Venture Capital,,Aggressive,Illiquid,2000
+
+
+
+
+ownership.xlsx:
+Columns: holding_account, holding_account_number, top_level_client, entity_id, portfolio.
+Sample Data:holding_account,holding_account_number,top_level_client,entity_id,portfolio
+Account1,ACC001,Sprackman Family,ENT001,Penny Portfolio
+Account2,ACC002,Katz Family,ENT002,David Portfolio
+
+
+
+
+risk_stats.xlsx:
+Tabs: Equity, Fixed Income, Alternatives.
+Equity Columns: position, ticker_symbol, vol, beta.
+Fixed Income Columns: position, ticker_symbol, vol, duration.
+Alternatives Columns: position, ticker_symbol, vol, beta_to_gold.
+Sample Data:[Equity]
+position,ticker_symbol,vol,beta
+EQUITY_001,AAPL,0.25,1.2
+EQUITY_002,MSFT,0.20,1.1
+
+[Fixed Income]
+position,ticker_symbol,vol,duration
+FIXED_001,US_TREASURY_001,0.15,5.2
+
+[Alternatives]
+position,ticker_symbol,vol,beta_to_gold
+ALT_001,GOLD_FUTURE_001,0.22,0.95
+
+
+
+
+
+Optimized Replit Prompt
+Below is a granular prompt designed to guide Replit’s AI Agent to build the entire ANTINORI application in one go, optimized for Replit’s environment and including local deployment instructions.
+Prompt:Create the ANTINORI financial portfolio reporting system in Replit using Python, FastAPI, SQLAlchemy, PostgreSQL, and React with Tailwind CSS. The application must process Excel files, store data in a PostgreSQL database, generate portfolio reports, and provide a frontend for visualization. It should be fully functional in Replit and include instructions for local deployment on employees’ computers. Optimize development using Replit’s AI Agent, resource monitoring, and deployment features.
+Step 1: Project Setup
+
+Create a new Python project in Replit named antinori.
+Generate a requirements.txt with: fastapi, uvicorn, sqlalchemy, psycopg2, openpyxl, pandas, structlog, cryptography, pytest.
+Install dependencies using Replit’s package manager or pip install -r requirements.txt.
+Set up a PostgreSQL database in Replit’s Database pane, configuring connection details in environment variables (DATABASE_URL).
+Create a directory structure: /src/controllers/, /src/models/, /src/utils/, /tests/, /frontend/, /data/sample_data/.
+Initialize a Git repository for version control.
+
+Step 2: Database Models
+
+In /src/models/models.py, define SQLAlchemy models for:
+FinancialPosition: id (int, PK), position (str), top_level_client (str), holding_account (str), holding_account_number (str), portfolio (str), cusip (str), ticker_symbol (str), asset_class (str), second_level (str), third_level (str), adv_classification (str), liquid_vs_illiquid (str), adjusted_value (float), date (date), upload_date (date).
+OwnershipHierarchy: id (int, PK), holding_account (str), holding_account_number (str), top_level_client (str), entity_id (str), portfolio (str), groups (str), last_updated (date).
+FinancialSummary: id (int, PK), level (str), level_key (str), total_adjusted_value (float), upload_date (date), report_date (date).
+RiskStatisticEquity: id (int, PK), position (str), ticker_symbol (str), vol (float), beta (float).
+RiskStatisticFixedIncome: id (int, PK), position (str), ticker_symbol (str), vol (float), duration (float).
+RiskStatisticAlternatives: id (int, PK), position (str), ticker_symbol (str), vol (float), beta_to_gold (float).
+
+
+Use SQLAlchemy’s Base class and create tables in the database on startup.
+
+Step 3: Encryption Utility
+
+In /src/utils/encryption.py, implement a Fernet encryption utility using cryptography.fernet.
+Provide functions to encrypt and decrypt adjusted_value.
+Store the encryption key securely in an environment variable (ENCRYPTION_KEY).
+
+Step 4: Backend Implementation
+
+Main Application (main.py):
+
+Initialize FastAPI app with CORS middleware.
+Configure SQLAlchemy database connection using DATABASE_URL.
+Include routes from report_controller.py.
+Set up Uvicorn to run on `[invalid url, do not cite].
+
+
+Report Controller (/src/controllers/report_controller.py):
+
+/upload/data_dump (POST):
+Accept data_dump.xlsx via file upload.
+Use openpyxl to read from row 5.
+Map columns to FinancialPosition fields.
+Clean adjusted_value: remove $, ,, spaces, convert to float.
+Encrypt adjusted_value using Fernet.
+Validate required columns and data types.
+Insert into financial_positions using batch processing (10000 rows per batch).
+Compute aggregates for financial_summary:
+Group by holding_account_number, portfolio, top_level_client, groups.
+Sum adjusted_value (decrypted) for each group.
+
+
+Insert aggregates into financial_summary.
+Log errors using structlog.
+
+
+/upload/ownership_tree (POST):
+Accept ownership.xlsx.
+Parse starting from row 5.
+Map columns to OwnershipHierarchy fields.
+Validate required columns.
+Insert into ownership_hierarchy using batch processing.
+
+
+/upload/security_risk_stats (POST):
+Accept risk_stats.xlsx with tabs: Equity, Fixed Income, Alternatives.
+Validate tabs and columns (position, ticker_symbol, vol, beta for Equity; vol, duration for Fixed Income; vol, beta_to_gold for Alternatives).
+Query financial_positions to validate position or ticker_symbol.
+Insert valid rows into respective risk statistic tables using batch processing.
+Skip invalid rows and log warnings.
+
+
+/generate_portfolio_report (GET):
+Parameters: date (str, YYYY-MM-DD), level (str: client, group, portfolio, account, custom), filters (optional dict).
+Query financial_positions joined with ownership_hierarchy for the specified date.
+Filter by level and filters (e.g., specific portfolios).
+Group by level_key (e.g., portfolio name).
+Calculate total adjusted value (decrypt and sum).
+Calculate asset class allocations: sum adjusted_value per asset_class, divide by total.
+Calculate liquidity: sum adjusted_value for liquid_vs_illiquid = 'Liquid' and 'Illiquid', divide by total.
+Calculate performance metrics:
+1D: Compare with previous day’s total_adjusted_value in financial_summary.
+MTD: Compare with start of month.
+QTD: Compare with start of quarter.
+YTD: Compare with start of year.
+
+
+Aggregate risk statistics:
+Join with risk_statistic_* tables.
+Calculate weighted averages for vol, beta, duration, beta_to_gold based on adjusted_value.
+
+
+Return JSON with report structure (see below).
+
+
+Chart Endpoints:
+/portfolio_report/chart/allocations: Return asset class percentages and labels.
+/portfolio_report/chart/performance: Return performance metrics (1D, MTD, QTD, YTD).
+/portfolio_report/chart/liquidity: Return liquid vs. illiquid percentages.
+
+
+/ownership_tree (GET):
+Query ownership_hierarchy.
+Return JSON tree grouped by top_level_client.
+
+
+
+
+
+Step 5: Frontend Implementation
+
+In /frontend/, create a React application:
+Use CDN for React (https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js) and ReactDOM (https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js).
+Use Tailwind CSS via CDN (https://cdn.tailwindcss.com).
+Create index.html with a root div for React.
+In /frontend/src/App.jsx, implement:
+Fetch reports from /generate_portfolio_report.
+Display reports in a table using a ReportTable component.
+Display charts using a Chart component (e.g., Chart.js via CDN).
+
+
+In /frontend/src/components/, create:
+ReportTable.jsx: Table for asset allocations, liquidity, performance, and risk metrics.
+Chart.jsx: Charts for allocations, performance, and liquidity.
+
+
+Use axios (https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js) for API calls.
+
+
+Initialize with npm init and install react, react-dom, axios.
+
+Step 6: Testing
+
+In /tests/test_endpoints.py, create pytest tests for all endpoints:
+Mock database connections and file uploads.
+Test valid and invalid inputs.
+Verify report output matches expected structure.
+
+
+Run tests in Replit’s shell: pytest.
+
+Step 7: Local Setup Instructions
+
+Create README.md with:
+Dependencies: Install Python 3.8+, Node.js 16+, PostgreSQL 13+.
+Backend Setup:
+Clone repository.
+Install dependencies: pip install -r requirements.txt.
+Set up PostgreSQL database: createdb antinori_db.
+Configure DATABASE_URL environment variable.
+Run migrations to create tables.
+Run server: uvicorn main:app --host 0.0.0.0 --port 8000.
+
+
+Frontend Setup:
+Navigate to /frontend/.
+Install dependencies: npm install.
+Run frontend: npm start.
+
+
+Testing: Run pytest for backend tests.
+
+
+
+Step 8: Sample Data
+
+In /data/sample_data/, generate dummy Excel files:
+data_dump.xlsx: 10 positions for 2 clients (e.g., Sprackman Family, Katz Family) with varied asset classes.
+ownership.xlsx: Ownership hierarchy for 2 clients with multiple accounts.
+risk_stats.xlsx: Risk statistics for equity, fixed income, and alternatives, linked to positions.
+
+
+Use these for testing uploads and reports.
+
+Step 9: Replit Optimization
+
+Use Replit’s AI Agent for code generation and debugging with specific prompts (e.g., “Generate a FastAPI endpoint to upload Excel files using openpyxl”).
+Monitor RAM, CPU, and storage via the Resources panel (Replit Docs).
+Deploy the app with autoscaling (Replit Docs).
+Test endpoints in Replit before local deployment.
+
+Report Structure:
+{
+  "Sprackman, Penny Family": {
+    "pm": "",
+    "classification": "",
+    "equity": {
+      "total": 100.0,
+      "vol": 0.25,
+      "beta": 1.2,
+      "beta_adjusted": 1.2,
+      "breakdown": {
+        "US Markets": 0.0,
+        "Global Markets": 0.0,
+        "Emerging Markets": 0.0,
+        "Commodities": 0.0,
+        "Real Estate": 68.5,
+        "Private Equity": 0.0,
+        "High Yield": 9.45,
+        "Venture Capital": 22.05,
+        "Low Beta Alpha": 0.0,
+        "Equity Derivatives": 0.0,
+        "Income Notes": 0.0
+      }
+    },
+    "fixed_income": {
+      "total": 0.0,
+      "duration": 0.0,
+      "breakdown": {
+        "Municipal Bonds": {
+          "total": 0.0,
+          "Low Duration": 0.0,
+          "Market Duration": 0.0,
+          "Long Duration": 0.0
+        },
+        "Government Bonds": {
+          "total": 0.0,
+          "Low Duration": 0.0,
+          "Market Duration": 0.0,
+          "Long Duration": 0.0
+        },
+        "Investment Grade": {
+          "total": 0.0,
+          "Low Duration": 0.0,
+          "Market Duration": 0.0,
+          "Long Duration": 0.0
+        },
+        "Fixed Income Derivatives": 0.0
+      }
+    },
+    "hard_currency": {
+      "total": 0.0,
+      "hc_beta": 0.95,
+      "beta_adjusted": 0.95,
+      "breakdown": {
+        "Gold": 0.0,
+        "Gold Miners": 0.0,
+        "Silver": 0.0,
+        "Silver Miners": 0.0,
+        "Industrial Metals": 0.0,
+        "Hard Currency Private Investment": 0.0,
+        "Precious Metals Derivatives": 0.0
+      }
+    },
+    "uncorrelated_alternatives": {
+      "total": 0.0,
+      "breakdown": {
+        "Crypto": 0.0,
+        "Proficio Short Term Alts": 0.0,
+        "Proficio Long Term Alts": 0.0,
+        "Other": 0.0
+      }
+    },
+    "cash_and_cash_equivalent": 0.0,
+    "liquidity": {
+      "liquid_assets": 0.0,
+      "illiquid_assets": 100.0
+    },
+    "performance": {
+      "1D": "N/A",
+      "MTD": "N/A",
+      "QTD": 10.50,
+      "YTD": 25.00
+    },
+    "adjusted_value": "$995,885"
+  }
+}
+
+Generate the complete code for this application, including all files, configurations, and instructions. Ensure the application is optimized for Replit’s environment, using the AI Agent for efficient development and testing with dummy data. Provide a README.md with clear local setup instructions for employees.
+End of Prompt
+Implementation Notes
+
+AI Agent Prompts: Use specific prompts for each component (e.g., “Generate SQLAlchemy models for financial_positions table”).
+Resource Monitoring: Regularly check Replit’s Resources panel to avoid exceeding limits (Replit Docs).
+Testing: After generating code, test each endpoint in Replit’s shell using curl commands:curl -X POST -F "file=@data/sample_data/risk_stats.xlsx" "[invalid url, do not cite]
+curl -X GET "[invalid url, do not cite]
+
+
+Local Deployment: Ensure the README.md includes detailed steps for Windows, macOS, and Linux, covering PostgreSQL setup and server execution.
+Sample Data: The dummy data provided is sufficient for initial testing. When real sample files are uploaded, Replit can adapt the code to handle them.
+
+Next Steps
+After Replit generates the application:
+
+Test in Replit: Verify all endpoints and frontend functionality.
+**Upload Real
+

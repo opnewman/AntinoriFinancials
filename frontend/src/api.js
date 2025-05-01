@@ -1,6 +1,7 @@
 /**
  * API service for ANTINORI Financial Portfolio Reporting
  */
+import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:5000';
 
@@ -42,7 +43,7 @@ const api = {
      */
     getOwnershipTree: async () => {
         try {
-            const response = await axios.get(`${API_BASE_URL}/api/ownership_tree`);
+            const response = await axios.get(`${API_BASE_URL}/api/ownership-tree`);
             return response.data;
         } catch (error) {
             console.error('Ownership tree error:', error);
@@ -59,7 +60,7 @@ const api = {
     getPortfolioReport: async (date, level, levelKey) => {
         try {
             const response = await axios.get(
-                `${API_BASE_URL}/api/generate_portfolio_report`, {
+                `${API_BASE_URL}/api/portfolio-report`, {
                     params: { date, level, level_key: levelKey }
                 }
             );
@@ -79,7 +80,7 @@ const api = {
     getAllocationChartData: async (date, level, levelKey) => {
         try {
             const response = await axios.get(
-                `${API_BASE_URL}/api/portfolio_report/chart/allocations`, {
+                `${API_BASE_URL}/api/charts/allocation`, {
                     params: { date, level, level_key: levelKey }
                 }
             );
@@ -99,7 +100,7 @@ const api = {
     getLiquidityChartData: async (date, level, levelKey) => {
         try {
             const response = await axios.get(
-                `${API_BASE_URL}/api/portfolio_report/chart/liquidity`, {
+                `${API_BASE_URL}/api/charts/liquidity`, {
                     params: { date, level, level_key: levelKey }
                 }
             );
@@ -120,7 +121,7 @@ const api = {
     getPerformanceChartData: async (date, level, levelKey, period = 'YTD') => {
         try {
             const response = await axios.get(
-                `${API_BASE_URL}/api/portfolio_report/chart/performance`, {
+                `${API_BASE_URL}/api/charts/performance`, {
                     params: { date, level, level_key: levelKey, period }
                 }
             );
@@ -131,3 +132,5 @@ const api = {
         }
     }
 };
+
+export default api;
