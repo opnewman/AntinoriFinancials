@@ -614,8 +614,7 @@ def get_ownership_tree():
             # Use database-level aggregation for faster data extraction
             # First, get the count of clients and total records for statistics
             client_count = db.query(func.count(distinct(OwnershipItem.client))).filter(
-                OwnershipItem.metadata_id == latest_metadata.id,
-                OwnershipItem.grouping_attribute_name == "Client"
+                OwnershipItem.metadata_id == latest_metadata.id
             ).scalar()
             
             total_records = db.query(func.count(OwnershipItem.id)).filter(
@@ -623,14 +622,17 @@ def get_ownership_tree():
             ).scalar()
             
             # Get clients (top level) with a single query
+            # Note: We need to handle the case where grouping_attribute_name might be "Unknown"
             client_rows = db.query(
                 OwnershipItem.client
             ).filter(
-                OwnershipItem.metadata_id == latest_metadata.id,
-                OwnershipItem.grouping_attribute_name == "Client"
+                OwnershipItem.metadata_id == latest_metadata.id
             ).distinct().all()
             
-            clients = sorted([client.client for client in client_rows if client.client])
+            # Sort and limit to first 100 clients for initial testing 
+            # (to avoid overwhelming the browser)
+            clients = sorted([client.client for client in client_rows if client.client])[:100]
+            logger.info(f"Found {len(clients)} distinct clients (showing first 100)")
             
             # Use a more optimized query with joins to get all the data at once
             # First, get client to group relationships
@@ -799,9 +801,9 @@ def get_ownership_tree():
                     if portfolio_node["children"]:
                         client_node["children"].append(portfolio_node)
                 
-                # Only add client if it has children
-                if client_node["children"]:
-                    tree["children"].append(client_node)
+                # For debugging - we want to see all clients initially regardless of children
+                # Later we can add back the filtering
+                tree["children"].append(client_node)
             
             # Calculate time
             end_time = time.time()

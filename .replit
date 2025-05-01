@@ -1,4 +1,4 @@
-modules = ["python-3.11", "rust", "nodejs-20", "java-temurin-17"]
+modules = ["python-3.11", "rust", "nodejs-20", "java-temurin-17", "postgresql-16"]
 
 [nix]
 channel = "stable-24_05"
