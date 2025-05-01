@@ -343,6 +343,11 @@ def get_ownership_tree():
         from src.models.models import OwnershipMetadata, OwnershipItem
         from src.database import get_db_connection
         from collections import defaultdict
+        from sqlalchemy import func, distinct
+        import time
+        
+        # Performance timing
+        start_time = time.time()
         
         # Use our improved connection context manager
         with get_db_connection() as db:
@@ -364,9 +369,41 @@ def get_ownership_tree():
                 "upload_date": latest_metadata.upload_date.isoformat() if latest_metadata.upload_date else None
             }
             
-            # Get all ownership items for the latest metadata - using a more efficient query
-            # Only select the fields we need for the tree visualization
-            items = db.query(
+            # Use database-level aggregation for faster data extraction
+            # First, get the count of clients and total records for statistics
+            client_count = db.query(func.count(distinct(OwnershipItem.client))).filter(
+                OwnershipItem.metadata_id == latest_metadata.id,
+                OwnershipItem.grouping_attribute_name == "Client"
+            ).scalar()
+            
+            total_records = db.query(func.count(OwnershipItem.id)).filter(
+                OwnershipItem.metadata_id == latest_metadata.id
+            ).scalar()
+            
+            # Get clients (top level)
+            clients = db.query(
+                OwnershipItem.client
+            ).filter(
+                OwnershipItem.metadata_id == latest_metadata.id,
+                OwnershipItem.grouping_attribute_name == "Client"
+            ).distinct().all()
+            
+            clients = [client.client for client in clients if client.client]
+            
+            # Now build the tree structure efficiently - using a two-phase approach
+            # Phase 1: Fetch all the data we need in structured format
+            
+            # Get all ownership items for the latest metadata - using a more targeted query
+            # Only select the fields we need for the tree visualization and organize by level
+            items_by_level = {
+                "client_level": [],
+                "group_level": [],
+                "portfolio_level": [],
+                "account_level": []
+            }
+            
+            # Use a single query and sort the results in memory
+            all_items = db.query(
                 OwnershipItem.id, 
                 OwnershipItem.client, 
                 OwnershipItem.entity_id,
@@ -374,18 +411,14 @@ def get_ownership_tree():
                 OwnershipItem.portfolio,
                 OwnershipItem.group_id,
                 OwnershipItem.grouping_attribute_name
-            ).filter(OwnershipItem.metadata_id == latest_metadata.id).all()
+            ).filter(
+                OwnershipItem.metadata_id == latest_metadata.id
+            ).all()
             
-            if not items:
-                return jsonify({
-                    "success": False,
-                    "message": "No ownership items found for the latest upload."
-                }), 404
-                
-            # Convert SQLAlchemy objects to Python dictionaries to avoid session issues
-            items_dict = []
-            for item in items:
-                items_dict.append({
+            # Organize items by levels for faster access
+            for item in all_items:
+                # Convert SQLAlchemy object to dict
+                item_dict = {
                     "id": item.id,
                     "client": item.client,
                     "entity_id": item.entity_id,
@@ -393,72 +426,108 @@ def get_ownership_tree():
                     "portfolio": item.portfolio,
                     "group_id": item.group_id,
                     "grouping_attribute_name": item.grouping_attribute_name
-                })
+                }
+                
+                # Categorize by level
+                if item.grouping_attribute_name == "Client":
+                    items_by_level["client_level"].append(item_dict)
+                elif item.grouping_attribute_name == "Group":
+                    items_by_level["group_level"].append(item_dict)
+                elif item.grouping_attribute_name == "Holding Account":
+                    items_by_level["account_level"].append(item_dict)
+                else:
+                    # For any other categorization
+                    items_by_level["portfolio_level"].append(item_dict)
         
-        # Build the hierarchy tree
+        # We're now outside the database connection, but have all our data
+        # Phase 2: Build the tree structure using the optimized data organization
         try:
-            # First, identify all unique clients
-            clients = set()
-            for item in items_dict:
-                if item["grouping_attribute_name"] == "Client":
-                    clients.add(item["client"])
+            # Create lookup dictionaries for faster access
+            # Map client names to their items
+            client_items_map = defaultdict(list)
+            for item in items_by_level["client_level"]:
+                if item["client"]:
+                    client_items_map[item["client"].strip()].append(item)
             
-            # Now construct the tree with metadata information
+            # Map group IDs to their items
+            group_items_map = defaultdict(list)
+            for item in items_by_level["group_level"]:
+                if item["group_id"]:
+                    group_items_map[item["group_id"]].append(item)
+            
+            # Map portfolio names to account items
+            portfolio_account_map = defaultdict(list)
+            for item in items_by_level["account_level"]:
+                if item["portfolio"]:
+                    key = (item["portfolio"], item["group_id"] or "direct")
+                    portfolio_account_map[key].append(item)
+            
+            # Build the tree
             tree = {
                 "name": "ANTINORI Family Office",
                 "children": [],
                 "metadata": metadata_info
             }
             
-            # Process client by client
+            # Sort clients for consistent output
+            clients.sort()
+            
+            # Process each client
             for client_name in clients:
                 client_node = {
                     "name": client_name,
                     "children": []
                 }
                 
-                # Find all groups for this client
-                client_items = [item for item in items_dict if item["client"] and item["client"].strip() == client_name.strip()]
+                # Find all items for this client (groups, portfolios, accounts)
+                client_related_items = [item for item in all_items 
+                                       if item.client and item.client.strip() == client_name.strip()]
+                
+                # Extract unique group IDs for this client
                 groups = set()
-                for item in client_items:
-                    if item["grouping_attribute_name"] == "Group" and item["group_id"]:
-                        groups.add(item["group_id"])
+                for item in client_related_items:
+                    if item.grouping_attribute_name == "Group" and item.group_id:
+                        groups.add(item.group_id)
                 
                 # Process each group
                 for group_id in groups:
-                    group_name = next((item["client"] for item in client_items if item["group_id"] == group_id), f"Group {group_id}")
+                    # Find group name
+                    group_items = [item for item in client_related_items 
+                                  if item.group_id == group_id]
+                    
+                    group_name = next((item.client for item in group_items 
+                                     if item.grouping_attribute_name == "Group"), f"Group {group_id}")
+                    
                     group_node = {
                         "name": group_name,
                         "children": []
                     }
                     
-                    # Find all portfolios in this group
-                    group_items = [item for item in client_items if item["group_id"] == group_id]
+                    # Extract unique portfolios in this group
                     portfolios = set()
                     for item in group_items:
-                        if item["portfolio"]:
-                            portfolios.add(item["portfolio"])
+                        if item.portfolio:
+                            portfolios.add(item.portfolio)
                     
-                    # Process each portfolio
+                    # Process each portfolio in the group
                     for portfolio_name in portfolios:
                         portfolio_node = {
                             "name": portfolio_name,
                             "children": []
                         }
                         
-                        # Find all accounts in this portfolio
-                        portfolio_items = [item for item in group_items 
-                                          if item["portfolio"] == portfolio_name 
-                                          and item["grouping_attribute_name"] == "Holding Account"]
+                        # Find account items for this portfolio in this group
+                        account_items = [item for item in group_items
+                                        if item.portfolio == portfolio_name
+                                        and item.grouping_attribute_name == "Holding Account"]
                         
-                        # Add each account
-                        for account in portfolio_items:
-                            # We don't have actual values here, so we'll use 1 as a placeholder
+                        # Add account nodes
+                        for account in account_items:
                             account_node = {
-                                "name": account["client"],
+                                "name": account.client,
                                 "value": 1,
-                                "entity_id": account["entity_id"],
-                                "account_number": account["holding_account_number"]
+                                "entity_id": account.entity_id,
+                                "account_number": account.holding_account_number
                             }
                             portfolio_node["children"].append(account_node)
                         
@@ -470,12 +539,12 @@ def get_ownership_tree():
                     if group_node["children"]:
                         client_node["children"].append(group_node)
                 
-                # Find direct portfolios (not in groups)
+                # Handle direct portfolios (not in groups)
+                direct_items = [item for item in client_related_items if not item.group_id]
                 direct_portfolios = set()
-                direct_items = [item for item in client_items if not item["group_id"]]
                 for item in direct_items:
-                    if item["portfolio"]:
-                        direct_portfolios.add(item["portfolio"])
+                    if item.portfolio:
+                        direct_portfolios.add(item.portfolio)
                 
                 # Process each direct portfolio
                 for portfolio_name in direct_portfolios:
@@ -484,18 +553,18 @@ def get_ownership_tree():
                         "children": []
                     }
                     
-                    # Find all accounts in this portfolio
-                    portfolio_items = [item for item in direct_items 
-                                      if item["portfolio"] == portfolio_name 
-                                      and item["grouping_attribute_name"] == "Holding Account"]
+                    # Find account items for this direct portfolio
+                    direct_account_items = [item for item in direct_items
+                                          if item.portfolio == portfolio_name
+                                          and item.grouping_attribute_name == "Holding Account"]
                     
-                    # Add each account
-                    for account in portfolio_items:
+                    # Add account nodes
+                    for account in direct_account_items:
                         account_node = {
-                            "name": account["client"],
+                            "name": account.client,
                             "value": 1,
-                            "entity_id": account["entity_id"],
-                            "account_number": account["holding_account_number"]
+                            "entity_id": account.entity_id,
+                            "account_number": account.holding_account_number
                         }
                         portfolio_node["children"].append(account_node)
                     
@@ -507,12 +576,17 @@ def get_ownership_tree():
                 if client_node["children"]:
                     tree["children"].append(client_node)
             
+            # Calculate time
+            end_time = time.time()
+            processing_time = end_time - start_time
+            
             # Return the tree structure with additional metadata
             return jsonify({
                 "success": True, 
                 "data": tree,
-                "client_count": len(clients),
-                "total_records": len(items_dict)
+                "client_count": client_count,
+                "total_records": total_records,
+                "processing_time_seconds": round(processing_time, 3)
             })
             
         except Exception as e:

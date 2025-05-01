@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, Boolean, func
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, Boolean, func, Index
 from sqlalchemy.orm import relationship
 
 # Import Base from database module
@@ -73,9 +73,19 @@ class OwnershipItem(Base):
     group_id = Column(String, index=True)
     data_inception_date = Column(Date)
     ownership_percentage = Column(Float)
-    grouping_attribute_name = Column(String, nullable=False)  # Client, Group, or Holding Account
+    grouping_attribute_name = Column(String, nullable=False, index=True)  # Client, Group, or Holding Account
     upload_date = Column(Date, default=datetime.date.today, nullable=False)
-    metadata_id = Column(Integer, ForeignKey("ownership_metadata.id"), nullable=False)
+    metadata_id = Column(Integer, ForeignKey("ownership_metadata.id"), nullable=False, index=True)
+    
+    # Define additional indexes for common queries
+    __table_args__ = (
+        # Composite index for faster filtering by metadata_id and grouping_attribute_name
+        Index('idx_ownership_metadata_grouping', 'metadata_id', 'grouping_attribute_name'),
+        # Composite index for client/portfolio lookups
+        Index('idx_ownership_client_portfolio', 'client', 'portfolio'),
+        # Composite index for group lookups
+        Index('idx_ownership_portfolio_group', 'portfolio', 'group_id'),
+    )
     
     # Relationship to metadata
     ownership_metadata = relationship("OwnershipMetadata")

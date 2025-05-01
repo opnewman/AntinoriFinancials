@@ -1,0 +1,268 @@
+Response:
+{
+  "client_count": 368,
+  "data": {
+    "children": [
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "account_number": "7MA10441",
+                "entity_id": "4105433",
+                "name": "Reese Perelman",
+                "value": 1
+              },
+              {
+                "account_number": "7MA10441",
+                "entity_id": "4105433",
+                "name": "Reese Perelman",
+                "value": 1
+              }
+            ],
+            "name": "Perelman Reporting"
+          }
+        ],
+        "name": "Reese Perelman"
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "account_number": "7MA10442",
+                "entity_id": "4105428",
+                "name": "Graham Perelman",
+                "value": 1
+              },
+              {
+                "account_number": "7MA10442",
+                "entity_id": "4105428",
+                "name": "Graham Perelman",
+                "value": 1
+              }
+            ],
+            "name": "Perelman Reporting"
+          }
+        ],
+        "name": "Graham Perelman"
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "account_number": "-",
+                "entity_id": null,
+                "name": "Directly Owned",
+                "value": 1
+              },
+              {
+                "account_number": "-",
+                "entity_id": null,
+                "name": "Directly Owned",
+                "value": 1
+              },
+              {
+                "account_number": "-",
+                "entity_id": null,
+                "name": "Directly Owned",
+                "value": 1
+              },
+              {
+                "account_number": "-",
+                "entity_id": null,
+                "name": "Directly Owned",
+                "value": 1
+              }
+            ],
+            "name": "Mulliken Chernock Liquid + Illiquid"
+          },
+          {
+            "children": [
+              {
+                "account_number": "-",
+                "entity_id": null,
+                "name": "Directly Owned",
+                "value": 1
+              }
+            ],
+            "name": "Island Dreams Reporting"
+          },
+          {
+            "children": [
+              {
+                "account_number": null,
+                "entity_id": null,
+                "name": "Directly Owned",
+                "value": 1
+              },
+              {
+                "account_number": null,
+                "entity_id": null,
+                "name": "Directly Owned",
+                "value": 1
+              }
+            ],
+            "name": "-"
+          }
+        ],
+        "name": "Directly Owned"
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "account_number": "663027918",
+                "entity_id": "8066130",
+                "name": "Wald Children's 2018 Irrev. Trust",
+                "value": 1
+              },
+              {
+                "account_number": "663027918",
+                "entity_id": "8066130",
+                "name": "Wald Children's 2018 Irrev. Trust",
+                "value": 1
+              },
+              {
+                "account_number": "663027918",
+                "entity_id": "8066130",
+                "name": "Wald Children's 2018 Irrev. Trust",
+                "value": 1
+              }
+            ],
+            "name": "Wald Children Trust"
+          }
+        ],
+        "name": "Wald Children's 2018 Irrev. Trust"
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "account_number": "663054850",
+                "entity_id": "32740027",
+                "name": "The Klevens Family Irrevocable GST Trust of 2024",
+                "value": 1
+              }
+            ],
+            "name": "Klevens ILITs"
+          }
+        ],
+        "name": "The Klevens Family Irrevocable GST Trust of 2024"
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "account_number": "663039906",
+                "entity_id": "15047108",
+                "name": "Proficio Uncorrelated Fund IDF",
+                "value": 1
+              }
+            ],
+            "name": "Proficio Uncorrelated Fund IDF"
+          }
+        ],
+        "name": "Proficio Uncorrelated Fund IDF"
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "account_number": "663040453",
+                "entity_id": "15577899",
+                "name": "Wilderman Family 2022 Irrevocable Trust",
+                "value": 1
+              },
+              {
+                "account_number": "663040453",
+                "entity_id": "15577899",
+                "name": "Wilderman Family 2022 Irrevocable Trust",
+                "value": 1
+              },
+              {
+                "account_number": "663040453",
+                "entity_id": "15577899",
+                "name": "Wilderman Family 2022 Irrevocable Trust",
+                "value": 1
+              },
+              {
+                "account_number": "663040453",
+                "entity_id": "15577899",
+                "name": "Wilderman Family 2022 Irrevocable Trust",
+                "value": 1
+              }
+            ],
+            "name": "Wilderman, Generation Skipping Trust"
+          }
+        ],
+        "name": "Wilderman Family 2022 Irrevocable Trust"
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "account_number": "663023496",
+                "entity_id": "5574084",
+                "name": "Jared Lerner Revocable Trust",
+                "value": 1
+              },
+              {
+                "account_number": "663023496",
+                "entity_id": "5574084",
+                "name": "Jared Lerner Revocable Trust",
+                "value": 1
+              },
+              {
+                "account_number": "663023496",
+                "entity_id": "5574084",
+                "name": "Jared Lerner Revocable Trust",
+                "value": 1
+              }
+            ],
+            "name": "Lerner, Jared"
+          }
+        ],
+        "name": "Jared Lerner Revocable Trust"
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "account_number": "663023555",
+                "entity_id": "5596609",
+                "name": "Quinn Sheridan Roth IRA",
+                "value": 1
+              },
+              {
+                "account_number": "663023555",
+                "entity_id": "5596609",
+                "name": "Quinn Sheridan Roth IRA",
+                "value": 1
+              }
+            ],
+            "name": "Sheridan, Quinn Roth IRA Portfolio"
+          }
+        ],
+        "name": "Quinn Sheridan Roth IRA"
+      }
+    ],
+    "metadata": {
+      "date_range_end": "2025-05-01",
+      "date_range_start": "2025-05-01",
+      "portfolio_coverage": "All clients",
+      "upload_date": "2025-05-01",
+      "view_name": "NORI Ownership"
+    },
+    "name": "ANTINORI Family Office"
+  },
+  "success": true,
+  "total_records": 8425
+}
