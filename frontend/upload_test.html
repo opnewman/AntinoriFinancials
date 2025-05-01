@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANTINORI - Upload Test</title>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #1E293B;
+        }
+        h1 {
+            color: #14532D;
+            margin-bottom: 1rem;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        .btn {
+            background-color: #14532D;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .btn:hover {
+            background-color: #0F3D1F;
+        }
+        .result {
+            margin-top: 2rem;
+            padding: 1rem;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .success {
+            color: #22C55E;
+            font-weight: bold;
+        }
+        .error {
+            color: #EF4444;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ANTINORI - File Upload Test</h1>
+        
+        <div class="form-group">
+            <h2>Ownership Structure</h2>
+            <form id="ownershipForm" enctype="multipart/form-data">
+                <label for="ownershipFile">Upload Ownership Excel File:</label>
+                <input type="file" id="ownershipFile" name="file" accept=".xlsx" required>
+                <button type="submit" class="btn">Upload Ownership File</button>
+            </form>
+            <div id="ownershipResult" class="result" style="display: none;"></div>
+        </div>
+        
+        <div class="form-group">
+            <h2>Test Ownership Tree Endpoint</h2>
+            <button id="testOwnershipTreeBtn" class="btn">Test Ownership Tree API</button>
+            <div id="ownershipTreeResult" class="result" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('ownershipForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const resultDiv = document.getElementById('ownershipResult');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = 'Uploading...';
+            
+            const formData = new FormData(this);
+            
+            try {
+                const response = await fetch('/api/upload/ownership', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `<span class="success">Success!</span>\n${JSON.stringify(data, null, 2)}`;
+                } else {
+                    resultDiv.innerHTML = `<span class="error">Error:</span>\n${JSON.stringify(data, null, 2)}`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">Error:</span>\n${error.message}`;
+            }
+        });
+        
+        document.getElementById('testOwnershipTreeBtn').addEventListener('click', async function() {
+            const resultDiv = document.getElementById('ownershipTreeResult');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = 'Loading ownership tree...';
+            
+            try {
+                const response = await fetch('/api/ownership-tree');
+                
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `<span class="success">Response:</span>\n${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">Error:</span>\n${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html>

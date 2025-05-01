@@ -32,6 +32,11 @@ def root():
 def serve_static(path):
     return send_from_directory('frontend', path)
 
+# Test upload page
+@app.route('/test')
+def test_page():
+    return send_from_directory('frontend', 'upload_test.html')
+
 # API root endpoint
 @app.route("/api")
 def api_root():
