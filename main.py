@@ -90,112 +90,125 @@ def upload_ownership_tree():
         # Create database session
         db = SessionLocal()
         
-        # Read the Excel file
-        excel_data = BytesIO(file.read())
+        try:
+            # Read the Excel file
+            excel_data = BytesIO(file.read())
+            
+            # Extract metadata from first 3 rows
+            metadata_df = pd.read_excel(excel_data, nrows=3, header=None)
+            
+            # Extract view name, date range, and portfolio coverage
+            view_name = metadata_df.iloc[0, 1] if not pd.isna(metadata_df.iloc[0, 1]) else "NORI Ownership"
+            
+            # Parse date range
+            date_range_str = metadata_df.iloc[1, 1] if not pd.isna(metadata_df.iloc[1, 1]) else ""
+            date_range_match = re.search(r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})', date_range_str)
+            
+            if date_range_match:
+                start_date_str, end_date_str = date_range_match.groups()
+                start_date = datetime.datetime.strptime(start_date_str, '%m-%d-%Y').date()
+                end_date = datetime.datetime.strptime(end_date_str, '%m-%d-%Y').date()
+            else:
+                # Default to today if date range can't be parsed
+                start_date = end_date = datetime.date.today()
+            
+            portfolio_coverage = metadata_df.iloc[2, 1] if not pd.isna(metadata_df.iloc[2, 1]) else "All clients"
+            
+            # Check if there are any existing metadata records
+            metadata_count = db.query(OwnershipMetadata).count()
+            if metadata_count > 0:
+                # Set all existing metadata records to is_current=False
+                db.query(OwnershipMetadata).update({"is_current": False})
+            
+            # Create new metadata record
+            new_metadata = OwnershipMetadata(
+                view_name=view_name,
+                date_range_start=start_date,
+                date_range_end=end_date,
+                portfolio_coverage=portfolio_coverage,
+                is_current=True
+            )
+            db.add(new_metadata)
+            db.flush()  # Flush to get the ID
+            
+            # Reset file pointer and read the data rows (from row 5 onwards)
+            excel_data.seek(0)
+            df = pd.read_excel(excel_data, header=3)  # Header is in row 4 (0-indexed)
+            
+            # Process each row
+            rows_inserted = 0
+            errors = []
+            
+            for index, row in df.iterrows():
+                try:
+                    # Convert to native Python types and handle NaN values
+                    client = str(row['Client']) if not pd.isna(row['Client']) else ""
+                    entity_id = str(row['Entity ID']) if not pd.isna(row['Entity ID']) else None
+                    holding_account_number = str(row['Holding Account Number']) if not pd.isna(row['Holding Account Number']) else None
+                    portfolio = str(row['Portfolio']) if not pd.isna(row['Portfolio']) else None
+                    group_id = str(row['Group ID']) if not pd.isna(row['Group ID']) else None
+                    
+                    # Handle date format conversion
+                    data_inception_date = None
+                    if not pd.isna(row['Data Inception Date']):
+                        try:
+                            if isinstance(row['Data Inception Date'], datetime.datetime):
+                                data_inception_date = row['Data Inception Date'].date()
+                            elif isinstance(row['Data Inception Date'], str):
+                                # Try different date formats
+                                date_formats = ['%b %d, %Y', '%Y-%m-%d', '%m/%d/%Y']
+                                for date_format in date_formats:
+                                    try:
+                                        data_inception_date = datetime.datetime.strptime(row['Data Inception Date'], date_format).date()
+                                        break
+                                    except ValueError:
+                                        continue
+                        except Exception as e:
+                            logger.warning(f"Could not parse date: {row['Data Inception Date']} - {str(e)}")
+                    
+                    # Parse ownership percentage
+                    ownership_percentage = None
+                    if not pd.isna(row['% Ownership']):
+                        try:
+                            # Remove % sign if present and convert to float
+                            ownership_str = str(row['% Ownership']).replace('%', '')
+                            ownership_percentage = float(ownership_str) / 100 if ownership_str else None
+                        except:
+                            ownership_percentage = None
+                    
+                    grouping_attribute = str(row['Grouping Attribute Name']) if not pd.isna(row['Grouping Attribute Name']) else "Unknown"
+                    
+                    # Create and add the ownership item
+                    ownership_item = OwnershipItem(
+                        client=client,
+                        entity_id=entity_id,
+                        holding_account_number=holding_account_number,
+                        portfolio=portfolio,
+                        group_id=group_id,
+                        data_inception_date=data_inception_date,
+                        ownership_percentage=ownership_percentage,
+                        grouping_attribute_name=grouping_attribute,
+                        metadata_id=new_metadata.id
+                    )
+                    db.add(ownership_item)
+                    rows_inserted += 1
+                    
+                except Exception as e:
+                    error_msg = f"Error processing row {index + 5}: {str(e)}"
+                    errors.append(error_msg)
+                    logger.error(error_msg)
+            
+            # Commit the transaction
+            db.commit()
+            
+        except Exception as e:
+            # Rollback transaction on error
+            db.rollback()
+            raise e
         
-        # Extract metadata from first 3 rows
-        metadata_df = pd.read_excel(excel_data, nrows=3, header=None)
-        
-        # Extract view name, date range, and portfolio coverage
-        view_name = metadata_df.iloc[0, 1] if not pd.isna(metadata_df.iloc[0, 1]) else "NORI Ownership"
-        
-        # Parse date range
-        date_range_str = metadata_df.iloc[1, 1] if not pd.isna(metadata_df.iloc[1, 1]) else ""
-        date_range_match = re.search(r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})', date_range_str)
-        
-        if date_range_match:
-            start_date_str, end_date_str = date_range_match.groups()
-            start_date = datetime.datetime.strptime(start_date_str, '%m-%d-%Y').date()
-            end_date = datetime.datetime.strptime(end_date_str, '%m-%d-%Y').date()
-        else:
-            # Default to today if date range can't be parsed
-            start_date = end_date = datetime.date.today()
-        
-        portfolio_coverage = metadata_df.iloc[2, 1] if not pd.isna(metadata_df.iloc[2, 1]) else "All clients"
-        
-        # Set all existing metadata records to is_current=False
-        db.query(OwnershipMetadata).update({"is_current": False})
-        
-        # Create new metadata record
-        new_metadata = OwnershipMetadata(
-            view_name=view_name,
-            date_range_start=start_date,
-            date_range_end=end_date,
-            portfolio_coverage=portfolio_coverage,
-            is_current=True
-        )
-        db.add(new_metadata)
-        db.flush()  # Flush to get the ID
-        
-        # Reset file pointer and read the data rows (from row 5 onwards)
-        excel_data.seek(0)
-        df = pd.read_excel(excel_data, header=3)  # Header is in row 4 (0-indexed)
-        
-        # Process each row
-        rows_inserted = 0
-        errors = []
-        
-        for index, row in df.iterrows():
-            try:
-                # Convert to native Python types and handle NaN values
-                client = str(row['Client']) if not pd.isna(row['Client']) else ""
-                entity_id = str(row['Entity ID']) if not pd.isna(row['Entity ID']) else None
-                holding_account_number = str(row['Holding Account Number']) if not pd.isna(row['Holding Account Number']) else None
-                portfolio = str(row['Portfolio']) if not pd.isna(row['Portfolio']) else None
-                group_id = str(row['Group ID']) if not pd.isna(row['Group ID']) else None
-                
-                # Handle date format conversion
-                data_inception_date = None
-                if not pd.isna(row['Data Inception Date']):
-                    try:
-                        if isinstance(row['Data Inception Date'], datetime.datetime):
-                            data_inception_date = row['Data Inception Date'].date()
-                        elif isinstance(row['Data Inception Date'], str):
-                            # Try different date formats
-                            date_formats = ['%b %d, %Y', '%Y-%m-%d', '%m/%d/%Y']
-                            for date_format in date_formats:
-                                try:
-                                    data_inception_date = datetime.datetime.strptime(row['Data Inception Date'], date_format).date()
-                                    break
-                                except ValueError:
-                                    continue
-                    except Exception as e:
-                        logger.warning(f"Could not parse date: {row['Data Inception Date']} - {str(e)}")
-                
-                # Parse ownership percentage
-                ownership_percentage = None
-                if not pd.isna(row['% Ownership']):
-                    try:
-                        # Remove % sign if present and convert to float
-                        ownership_str = str(row['% Ownership']).replace('%', '')
-                        ownership_percentage = float(ownership_str) / 100 if ownership_str else None
-                    except:
-                        ownership_percentage = None
-                
-                grouping_attribute = str(row['Grouping Attribute Name']) if not pd.isna(row['Grouping Attribute Name']) else "Unknown"
-                
-                # Create and add the ownership item
-                ownership_item = OwnershipItem(
-                    client=client,
-                    entity_id=entity_id,
-                    holding_account_number=holding_account_number,
-                    portfolio=portfolio,
-                    group_id=group_id,
-                    data_inception_date=data_inception_date,
-                    ownership_percentage=ownership_percentage,
-                    grouping_attribute_name=grouping_attribute,
-                    metadata_id=new_metadata.id
-                )
-                db.add(ownership_item)
-                rows_inserted += 1
-                
-            except Exception as e:
-                error_msg = f"Error processing row {index + 5}: {str(e)}"
-                errors.append(error_msg)
-                logger.error(error_msg)
-        
-        # Commit the transaction
-        db.commit()
+        finally:
+            # Close the database session
+            db.close()
         
         return jsonify({
             "success": True,
@@ -242,132 +255,153 @@ def get_ownership_tree():
         # Create database session
         db = SessionLocal()
         
-        # Get the most recent metadata
-        latest_metadata = db.query(OwnershipMetadata).filter(OwnershipMetadata.is_current == True).first()
-        
-        if not latest_metadata:
-            return jsonify({
-                "success": False,
-                "message": "No ownership data available. Please upload ownership data first."
-            }), 404
-        
-        # Get all ownership items for the latest metadata
-        items = db.query(OwnershipItem).filter(OwnershipItem.metadata_id == latest_metadata.id).all()
-        
-        if not items:
-            return jsonify({
-                "success": False,
-                "message": "No ownership items found for the latest upload."
-            }), 404
-        
-        # Build the tree structure
-        # First, identify all unique clients
-        clients = set()
-        for item in items:
-            if item.grouping_attribute_name == "Client":
-                clients.add(item.client)
-        
-        # Now construct the tree
-        tree = {
-            "name": "ANTINORI Family Office",
-            "children": []
-        }
-        
-        # Process client by client
-        for client_name in clients:
-            client_node = {
-                "name": client_name,
+        try:
+            # Get the most recent metadata
+            latest_metadata = db.query(OwnershipMetadata).filter(OwnershipMetadata.is_current == True).first()
+            
+            if not latest_metadata:
+                return jsonify({
+                    "success": False,
+                    "message": "No ownership data available. Please upload ownership data first."
+                }), 404
+            
+            # Get all ownership items for the latest metadata
+            items = db.query(OwnershipItem).filter(OwnershipItem.metadata_id == latest_metadata.id).all()
+            
+            if not items:
+                return jsonify({
+                    "success": False,
+                    "message": "No ownership items found for the latest upload."
+                }), 404
+                
+            # Convert SQLAlchemy objects to Python dictionaries to avoid session issues
+            items_dict = []
+            for item in items:
+                items_dict.append({
+                    "id": item.id,
+                    "client": item.client,
+                    "entity_id": item.entity_id,
+                    "holding_account_number": item.holding_account_number,
+                    "portfolio": item.portfolio,
+                    "group_id": item.group_id,
+                    "grouping_attribute_name": item.grouping_attribute_name
+                })
+            
+            # First, identify all unique clients
+            clients = set()
+            for item in items_dict:
+                if item["grouping_attribute_name"] == "Client":
+                    clients.add(item["client"])
+            
+            # Now construct the tree
+            tree = {
+                "name": "ANTINORI Family Office",
                 "children": []
             }
             
-            # Find all groups for this client
-            client_items = [item for item in items if item.client.strip() == client_name.strip()]
-            groups = set()
-            for item in client_items:
-                if item.grouping_attribute_name == "Group" and item.group_id:
-                    groups.add(item.group_id)
-            
-            # Process each group
-            for group_id in groups:
-                group_name = next((item.client for item in client_items if item.group_id == group_id), f"Group {group_id}")
-                group_node = {
-                    "name": group_name,
+            # Process client by client
+            for client_name in clients:
+                client_node = {
+                    "name": client_name,
                     "children": []
                 }
                 
-                # Find all portfolios in this group
-                group_items = [item for item in client_items if item.group_id == group_id]
-                portfolios = set()
-                for item in group_items:
-                    if item.portfolio:
-                        portfolios.add(item.portfolio)
+                # Find all groups for this client
+                client_items = [item for item in items_dict if item["client"].strip() == client_name.strip()]
+                groups = set()
+                for item in client_items:
+                    if item["grouping_attribute_name"] == "Group" and item["group_id"]:
+                        groups.add(item["group_id"])
                 
-                # Process each portfolio
-                for portfolio_name in portfolios:
+                # Process each group
+                for group_id in groups:
+                    group_name = next((item["client"] for item in client_items if item["group_id"] == group_id), f"Group {group_id}")
+                    group_node = {
+                        "name": group_name,
+                        "children": []
+                    }
+                    
+                    # Find all portfolios in this group
+                    group_items = [item for item in client_items if item["group_id"] == group_id]
+                    portfolios = set()
+                    for item in group_items:
+                        if item["portfolio"]:
+                            portfolios.add(item["portfolio"])
+                    
+                    # Process each portfolio
+                    for portfolio_name in portfolios:
+                        portfolio_node = {
+                            "name": portfolio_name,
+                            "children": []
+                        }
+                        
+                        # Find all accounts in this portfolio
+                        portfolio_items = [item for item in group_items 
+                                          if item["portfolio"] == portfolio_name 
+                                          and item["grouping_attribute_name"] == "Holding Account"]
+                        
+                        # Add each account
+                        for account in portfolio_items:
+                            # We don't have actual values here, so we'll use 1 as a placeholder
+                            account_node = {
+                                "name": account["client"],
+                                "value": 1
+                            }
+                            portfolio_node["children"].append(account_node)
+                        
+                        # Only add portfolio if it has accounts
+                        if portfolio_node["children"]:
+                            group_node["children"].append(portfolio_node)
+                    
+                    # Only add group if it has portfolios
+                    if group_node["children"]:
+                        client_node["children"].append(group_node)
+                
+                # Find direct portfolios (not in groups)
+                direct_portfolios = set()
+                direct_items = [item for item in client_items if not item["group_id"]]
+                for item in direct_items:
+                    if item["portfolio"]:
+                        direct_portfolios.add(item["portfolio"])
+                
+                # Process each direct portfolio
+                for portfolio_name in direct_portfolios:
                     portfolio_node = {
                         "name": portfolio_name,
                         "children": []
                     }
                     
                     # Find all accounts in this portfolio
-                    portfolio_items = [item for item in group_items 
-                                      if item.portfolio == portfolio_name 
-                                      and item.grouping_attribute_name == "Holding Account"]
+                    portfolio_items = [item for item in direct_items 
+                                      if item["portfolio"] == portfolio_name 
+                                      and item["grouping_attribute_name"] == "Holding Account"]
                     
                     # Add each account
                     for account in portfolio_items:
-                        # We don't have actual values here, so we'll use 1 as a placeholder
                         account_node = {
-                            "name": account.client,
+                            "name": account["client"],
                             "value": 1
                         }
                         portfolio_node["children"].append(account_node)
                     
                     # Only add portfolio if it has accounts
                     if portfolio_node["children"]:
-                        group_node["children"].append(portfolio_node)
+                        client_node["children"].append(portfolio_node)
                 
-                # Only add group if it has portfolios
-                if group_node["children"]:
-                    client_node["children"].append(group_node)
+                # Only add client if it has children
+                if client_node["children"]:
+                    tree["children"].append(client_node)
             
-            # Find direct portfolios (not in groups)
-            direct_portfolios = set()
-            direct_items = [item for item in client_items if not item.group_id]
-            for item in direct_items:
-                if item.portfolio:
-                    direct_portfolios.add(item.portfolio)
+            return jsonify(tree)
             
-            # Process each direct portfolio
-            for portfolio_name in direct_portfolios:
-                portfolio_node = {
-                    "name": portfolio_name,
-                    "children": []
-                }
-                
-                # Find all accounts in this portfolio
-                portfolio_items = [item for item in direct_items 
-                                  if item.portfolio == portfolio_name 
-                                  and item.grouping_attribute_name == "Holding Account"]
-                
-                # Add each account
-                for account in portfolio_items:
-                    account_node = {
-                        "name": account.client,
-                        "value": 1
-                    }
-                    portfolio_node["children"].append(account_node)
-                
-                # Only add portfolio if it has accounts
-                if portfolio_node["children"]:
-                    client_node["children"].append(portfolio_node)
-            
-            # Only add client if it has children
-            if client_node["children"]:
-                tree["children"].append(client_node)
+        except Exception as e:
+            logger.error(f"Error processing ownership tree data: {str(e)}")
+            raise e
         
-        return jsonify(tree)
-        
+        finally:
+            # Close the database session
+            db.close()
+            
     except Exception as e:
         logger.error(f"Error generating ownership tree: {str(e)}")
         return jsonify({
