@@ -78,19 +78,19 @@ const App = () => {
                                     <FileUploader
                                         title="Data Dump"
                                         description="Upload financial positions data (data_dump.xlsx)"
-                                        endpoint="/api/upload/data_dump"
+                                        endpoint="/api/upload/data-dump"
                                         icon="fa-file-excel"
                                     />
                                     <FileUploader
                                         title="Ownership Tree"
                                         description="Upload ownership hierarchy data (ownership.xlsx)"
-                                        endpoint="/api/upload/ownership_tree"
+                                        endpoint="/api/upload/ownership"
                                         icon="fa-sitemap"
                                     />
                                     <FileUploader
                                         title="Risk Statistics"
                                         description="Upload risk statistics data (risk_stats.xlsx)"
-                                        endpoint="/api/upload/security_risk_stats"
+                                        endpoint="/api/upload/risk-stats"
                                         icon="fa-chart-line"
                                     />
                                 </div>
@@ -115,7 +115,7 @@ const App = () => {
                     <div className="container mx-auto">
                         <p>ANTINORI Financial Portfolio Reporting System &copy; {new Date().getFullYear()}</p>
                         <p className="text-gray-400 text-xs mt-1">
-                            Powered by FastAPI, React, and PostgreSQL
+                            Powered by Flask, React, and PostgreSQL
                         </p>
                     </div>
                 </footer>
