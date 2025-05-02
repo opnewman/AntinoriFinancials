@@ -448,22 +448,104 @@
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            // Show success message
-                            alert(`Successfully uploaded ${file.name}. Processed ${data.rows_processed} rows.`);
-                            
-                            // Reset the form
-                            fileInput.value = '';
-                            fileInfo.classList.add('hidden');
-                            dropzone.classList.remove('hidden');
+                            // Check if processing in background (status field exists)
+                            if (data.status === 'processing' && data.status_url) {
+                                // Show processing state with progress bar
+                                uploadBtn.innerHTML = `
+                                    <div class="w-full">
+                                        <div class="mb-1 flex justify-between items-center">
+                                            <span class="text-xs">Processing in background...</span>
+                                            <span class="text-xs processing-status">Starting...</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                            <div class="bg-green-600 h-2.5 rounded-full progress-bar" style="width: 5%"></div>
+                                        </div>
+                                    </div>
+                                `;
+                                
+                                // Start checking status periodically
+                                const progressBar = uploadBtn.querySelector('.progress-bar');
+                                const statusText = uploadBtn.querySelector('.processing-status');
+                                let checkCount = 0;
+                                
+                                const statusChecker = setInterval(() => {
+                                    checkCount++;
+                                    // Animate progress while waiting for first status
+                                    const animProgress = Math.min(5 + (checkCount * 5), 95);
+                                    progressBar.style.width = `${animProgress}%`;
+                                    
+                                    fetch(data.status_url)
+                                        .then(response => response.json())
+                                        .then(statusData => {
+                                            if (statusData.status === 'completed') {
+                                                clearInterval(statusChecker);
+                                                progressBar.style.width = '100%';
+                                                statusText.textContent = 'Complete!';
+                                                
+                                                // Show success message
+                                                setTimeout(() => {
+                                                    alert(`Successfully processed ${file.name}. Processed ${statusData.rows_processed || statusData.total_rows || 0} rows.`);
+                                                    
+                                                    // Reset the form
+                                                    fileInput.value = '';
+                                                    fileInfo.classList.add('hidden');
+                                                    dropzone.classList.remove('hidden');
+                                                    
+                                                    // Reset button state
+                                                    uploadBtn.disabled = false;
+                                                    uploadBtn.innerHTML = `<i class="fas fa-cloud-upload-alt mr-2"></i> Upload ${prefix.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}`;
+                                                }, 500);
+                                            } else if (statusData.status === 'error') {
+                                                clearInterval(statusChecker);
+                                                // Show error message
+                                                alert(`Error processing ${file.name}: ${statusData.message || 'Unknown error'}`);
+                                                
+                                                // Reset button state
+                                                uploadBtn.disabled = false;
+                                                uploadBtn.innerHTML = `<i class="fas fa-cloud-upload-alt mr-2"></i> Upload ${prefix.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}`;
+                                            } else {
+                                                // Update status if available
+                                                if (statusData.progress) {
+                                                    progressBar.style.width = `${statusData.progress}%`;
+                                                }
+                                                
+                                                if (statusData.current_row && statusData.total_rows) {
+                                                    statusText.textContent = `Processing ${statusData.current_row} of ${statusData.total_rows} rows`;
+                                                } else {
+                                                    statusText.textContent = `Processing...`;
+                                                }
+                                            }
+                                        })
+                                        .catch(error => {
+                                            console.error('Error checking status:', error);
+                                        });
+                                }, 1500);
+                            } else {
+                                // Regular non-background processing
+                                // Show success message
+                                alert(`Successfully uploaded ${file.name}. Processed ${data.rows_processed || 0} rows.`);
+                                
+                                // Reset the form
+                                fileInput.value = '';
+                                fileInfo.classList.add('hidden');
+                                dropzone.classList.remove('hidden');
+                                
+                                // Reset button state
+                                uploadBtn.disabled = false;
+                                uploadBtn.innerHTML = `<i class="fas fa-cloud-upload-alt mr-2"></i> Upload ${prefix.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}`;
+                            }
                         } else {
                             // Show error message
-                            alert(`Error uploading ${file.name}: ${data.message}`);
+                            alert(`Error uploading ${file.name}: ${data.message || 'Unknown error'}`);
+                            
+                            // Reset button state
+                            uploadBtn.disabled = false;
+                            uploadBtn.innerHTML = `<i class="fas fa-cloud-upload-alt mr-2"></i> Upload ${prefix.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}`;
                         }
                     })
                     .catch(error => {
-                        alert(`Error uploading file: ${error.message}`);
-                    })
-                    .finally(() => {
+                        alert(`Error uploading file: ${error.message || 'Unknown error'}`);
+                        
                         // Reset button state
                         uploadBtn.disabled = false;
                         uploadBtn.innerHTML = `<i class="fas fa-cloud-upload-alt mr-2"></i> Upload ${prefix.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}`;
