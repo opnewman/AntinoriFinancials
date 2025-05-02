@@ -337,45 +337,56 @@ def check_upload_status():
             "message": "Missing file parameter"
         }), 400
     
+    logger.info(f"Checking upload status for file: {file_name}")
+    
     # Look in all temp directories for the status file
     import glob
     temp_dir_pattern = "/tmp/data_dump_*"
     temp_dirs = glob.glob(temp_dir_pattern)
+    logger.info(f"Found {len(temp_dirs)} temp directories: {temp_dirs}")
     
+    # First check all directories for completion
     for temp_dir in temp_dirs:
         # Check for completion file
         completed_file = os.path.join(temp_dir, "data_dump_complete.txt")
         
         if os.path.exists(completed_file):
-            with open(completed_file, "r") as f:
-                status_info = f.read()
-            
-            # Parse the completion data
-            rows_processed = 0
-            total_rows = 0
-            report_date = None
-            
-            for line in status_info.split("\n"):
-                if "Rows processed:" in line:
-                    total_rows = int(line.split(":", 1)[1].strip())
-                elif "Rows inserted:" in line:
-                    rows_processed = int(line.split(":", 1)[1].strip())
-                elif "Report date:" in line:
-                    report_date = line.split(":", 1)[1].strip()
-            
-            return jsonify({
-                "success": True,
-                "status": "completed",
-                "message": f"Processing completed. Inserted {rows_processed} of {total_rows} rows for {report_date}.",
-                "rows_processed": rows_processed,
-                "total_rows": total_rows,
-                "report_date": report_date
-            })
-        
+            logger.info(f"Found completion file: {completed_file}")
+            try:
+                with open(completed_file, "r") as f:
+                    status_info = f.read()
+                
+                # Parse the completion data
+                rows_processed = 0
+                total_rows = 0
+                report_date = None
+                
+                for line in status_info.split("\n"):
+                    if "Rows processed:" in line:
+                        total_rows = int(line.split(":", 1)[1].strip())
+                    elif "Rows inserted:" in line:
+                        rows_processed = int(line.split(":", 1)[1].strip())
+                    elif "Report date:" in line:
+                        report_date = line.split(":", 1)[1].strip()
+                
+                return jsonify({
+                    "success": True,
+                    "status": "completed",
+                    "message": f"Processing completed. Inserted {rows_processed} of {total_rows} rows for {report_date}.",
+                    "rows_processed": rows_processed,
+                    "total_rows": total_rows,
+                    "report_date": report_date
+                })
+            except Exception as e:
+                logger.error(f"Error parsing completion file: {str(e)}")
+    
+    # If no completion found, check for processing
+    for temp_dir in temp_dirs:
         # Check for started but not completed file
         started_file = os.path.join(temp_dir, "data_dump_started.txt")
         
         if os.path.exists(started_file):
+            logger.info(f"Found started file: {started_file}")
             # Check log file for progress
             log_file = "upload_data_dump.log"
             
@@ -383,13 +394,24 @@ def check_upload_status():
                 try:
                     # Get last few lines of log file
                     with open(log_file, "r") as f:
-                        log_lines = f.readlines()[-10:]  # Last 10 lines
+                        log_lines = f.readlines()[-20:]  # Last 20 lines
                     
                     # Look for chunk progress
                     progress_info = []
                     for line in log_lines:
                         if "Chunk" in line and "rows" in line:
                             progress_info.append(line.strip())
+                        # Also check for successful completion in log
+                        elif "Processing successful" in line and "seconds" in line:
+                            # This means processing completed but status file wasn't found
+                            return jsonify({
+                                "success": True,
+                                "status": "completed",
+                                "message": "Processing completed successfully.",
+                                "rows_processed": 0,  # Unknown count
+                                "total_rows": 0,
+                                "details": line.strip()
+                            })
                     
                     return jsonify({
                         "success": True,
@@ -397,14 +419,40 @@ def check_upload_status():
                         "message": "File is still being processed.",
                         "progress": progress_info[-3:] if progress_info else []  # Last 3 progress messages
                     })
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"Error reading log file: {str(e)}")
             
             return jsonify({
                 "success": True,
                 "status": "processing",
                 "message": "File is still being processed. Check back later."
             })
+    
+    # If we got here, check if we have the expected database rows
+    try:
+        # Count financial positions for the most recent date
+        from sqlalchemy import func, desc
+        with get_db_connection() as db:
+            # Get the most recent date
+            latest_date = db.query(func.max(FinancialPosition.date)).scalar()
+            
+            if latest_date:
+                # Count rows for this date
+                count = db.query(func.count(FinancialPosition.id)).filter(
+                    FinancialPosition.date == latest_date
+                ).scalar()
+                
+                if count > 0:
+                    return jsonify({
+                        "success": True,
+                        "status": "completed",
+                        "message": f"Processing completed. Found {count} rows in database for {latest_date}.",
+                        "rows_processed": count,
+                        "total_rows": count,
+                        "report_date": str(latest_date)
+                    })
+    except Exception as e:
+        logger.error(f"Error checking database: {str(e)}")
     
     # No status files found
     return jsonify({
