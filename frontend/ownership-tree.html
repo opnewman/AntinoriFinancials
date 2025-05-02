@@ -35,12 +35,62 @@
             line-height: 1.5;
         }
         
+        /* Navigation Bar */
+        .navbar {
+            background-color: var(--color-primary);
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: white;
+        }
+        
+        .navbar-brand {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: white;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+        }
+        
+        .navbar-subtitle {
+            font-size: 0.9rem;
+            margin-left: 12px;
+            font-weight: normal;
+            opacity: 0.9;
+        }
+        
+        .navbar-links {
+            display: flex;
+            gap: 20px;
+        }
+        
+        .navbar-link {
+            color: rgba(255, 255, 255, 0.85);
+            text-decoration: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        
+        .navbar-link:hover {
+            color: white;
+        }
+        
+        .navbar-link.active {
+            color: white;
+            border-bottom: 2px solid var(--color-accent);
+            padding-bottom: 2px;
+        }
+        
+        /* Main layout */
         .container {
             max-width: 100%;
             margin: 0;
             padding: 0;
             display: flex;
-            height: 100vh;
+            height: calc(100vh - 48px); /* Adjust for navbar */
         }
         
         .sidebar {
@@ -282,9 +332,22 @@
     </style>
 </head>
 <body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <a href="/" class="navbar-brand">
+            ANTINORI <span class="navbar-subtitle">Financial Portfolio Reporting</span>
+        </a>
+        <div class="navbar-links">
+            <a href="/" class="navbar-link">Dashboard</a>
+            <a href="/upload.html" class="navbar-link">Upload</a>
+            <a href="/ownership-tree" class="navbar-link active">Ownership Tree</a>
+            <a href="/ownership-explorer" class="navbar-link">Relationship Explorer</a>
+        </div>
+    </nav>
+    
     <div class="container">
         <div class="sidebar">
-            <h1><a href="/" style="text-decoration: none; color: var(--color-primary);">ANTINORI</a></h1>
+            <h1><a href="/" style="text-decoration: none; color: var(--color-primary);">Ownership Tree</a></h1>
             
             <div class="control-panel">
                 <div class="view-controls" style="margin-bottom: 15px;">
