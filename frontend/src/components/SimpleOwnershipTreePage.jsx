@@ -326,15 +326,21 @@ const SimpleOwnershipTreePage = () => {
                             />
                             
                             {/* Zoom controls */}
-                            <div className="absolute top-4 right-4 bg-white rounded-md shadow-md z-10">
+                            <div className="absolute bottom-4 left-4 bg-white rounded-md shadow-md z-10 flex">
                                 <button 
                                     className="px-3 py-2 border-r border-gray-200 text-gray-600 hover:bg-gray-50" 
                                     title="Zoom In"
                                     onClick={() => {
                                         const container = document.querySelector('.ownership-tree-visualization');
                                         if (container) {
-                                            container.style.transform = 'scale(1.2)';
-                                            container.style.transformOrigin = 'center center';
+                                            // Get current scale
+                                            const currentTransform = container.style.transform;
+                                            const currentScale = currentTransform ? 
+                                                parseFloat(currentTransform.replace(/[^0-9.]/g, '')) || 1 : 1;
+                                            
+                                            // Apply new scale
+                                            container.style.transform = `scale(${currentScale * 1.2})`;
+                                            container.style.transformOrigin = 'left top';
                                         }
                                     }}
                                 >
@@ -346,8 +352,14 @@ const SimpleOwnershipTreePage = () => {
                                     onClick={() => {
                                         const container = document.querySelector('.ownership-tree-visualization');
                                         if (container) {
-                                            container.style.transform = 'scale(0.8)';
-                                            container.style.transformOrigin = 'center center';
+                                            // Get current scale
+                                            const currentTransform = container.style.transform;
+                                            const currentScale = currentTransform ? 
+                                                parseFloat(currentTransform.replace(/[^0-9.]/g, '')) || 1 : 1;
+                                            
+                                            // Apply new scale
+                                            container.style.transform = `scale(${currentScale / 1.2})`;
+                                            container.style.transformOrigin = 'left top';
                                         }
                                     }}
                                 >
@@ -360,11 +372,27 @@ const SimpleOwnershipTreePage = () => {
                                         const container = document.querySelector('.ownership-tree-visualization');
                                         if (container) {
                                             container.style.transform = 'scale(1)';
-                                            container.style.transformOrigin = 'center center';
+                                            container.style.transformOrigin = 'left top';
                                         }
                                     }}
                                 >
                                     <i className="fas fa-sync-alt"></i>
+                                </button>
+                            </div>
+                            
+                            {/* Export/Print Button */}
+                            <div className="absolute top-4 right-4 z-10">
+                                <button 
+                                    className="px-4 py-2 bg-white rounded-md shadow-md text-gray-700 hover:bg-gray-50 flex items-center"
+                                    title="Export PNG"
+                                    onClick={() => {
+                                        alert('Export functionality would be implemented here');
+                                        // In a real implementation, we would use html2canvas or similar
+                                        // to capture the tree visualization as an image
+                                    }}
+                                >
+                                    <i className="fas fa-download mr-2"></i>
+                                    Export PNG
                                 </button>
                             </div>
                         </div>
