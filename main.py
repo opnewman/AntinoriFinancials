@@ -569,8 +569,24 @@ def get_ownership_tree():
         
         # Use our improved connection context manager to get metadata and check if we need to refresh cache
         with get_db_connection() as db:
-            # Get the most recent metadata
-            latest_metadata = db.query(OwnershipMetadata).filter(OwnershipMetadata.is_current == True).first()
+            # CRITICAL FIX: Ensure we have metadata with proper Client/Group/Holding Account classifications
+            # First check which metadata has proper classifications
+            classification_metadata = db.query(OwnershipMetadata).join(
+                OwnershipItem, 
+                OwnershipMetadata.id == OwnershipItem.metadata_id
+            ).filter(
+                OwnershipItem.grouping_attribute_name.in_(["Client", "Group", "Holding Account"])
+            ).order_by(
+                OwnershipMetadata.id.desc()
+            ).first()
+            
+            if classification_metadata:
+                logger.info(f"Using metadata ID {classification_metadata.id} which has proper Client/Group/Holding Account classifications")
+                latest_metadata = classification_metadata
+            else:
+                # Fall back to the current metadata if no classification metadata is found
+                latest_metadata = db.query(OwnershipMetadata).filter(OwnershipMetadata.is_current == True).first()
+                logger.warning(f"No metadata with proper classifications found, using current metadata (ID: {latest_metadata.id if latest_metadata else None})")
             
             if not latest_metadata:
                 return jsonify({
