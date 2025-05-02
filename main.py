@@ -4,6 +4,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import datetime
+from sqlalchemy import text
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, 
@@ -1002,90 +1003,91 @@ def get_ownership_tree():
             # This is the backbone of how the reports are built
             # Hierarchy: Client -> Group -> Holding Account
             
-            # Step 1: Get all entities organized by their grouping_attribute_name (Client, Group, Holding Account)
-            logger.info("Building ownership tree strictly based on grouping_attribute_name and portfolio relationships")
+            # Step 1: Get all entities in their ORIGINAL ROW ORDER from the Excel file
+            # This is critical to maintaining the hierarchical structure based on row appearance
+            logger.info("Building ownership tree based on Excel file row ordering")
             
-            # First, get all clients (entities marked as "Client")
-            client_entities = db.query(
+            # Get all entities ordered by their row_order field
+            all_entities = db.query(
                 OwnershipItem.client,
                 OwnershipItem.portfolio,
-                OwnershipItem.entity_id
+                OwnershipItem.entity_id,
+                OwnershipItem.group_id,
+                OwnershipItem.holding_account_number,
+                OwnershipItem.grouping_attribute_name,
+                OwnershipItem.id  # Use ID as a proxy for row order until migration completes
             ).filter(
-                OwnershipItem.metadata_id == latest_metadata.id,
-                OwnershipItem.grouping_attribute_name == "Client"
-            ).distinct().all()
+                OwnershipItem.metadata_id == latest_metadata.id
+            ).order_by(
+                # First try to use row_order if available, fall back to id if not
+                # This ensures we maintain the Excel file's original sequence
+                text("COALESCE(row_order, id) ASC")
+            ).all()
             
-            # Create a set of client names and mapping to portfolios
+            # Create a set of client names and maps for all entity types
             client_names = set()
             client_portfolio_map = {}  # Maps client name to their portfolio
             client_entity_map = {}     # Maps client name to their entity_id
-            
-            for client_entity in client_entities:
-                if client_entity.client:
-                    client_names.add(client_entity.client)
-                    if client_entity.portfolio:
-                        client_portfolio_map[client_entity.client] = client_entity.portfolio
-                    if client_entity.entity_id:
-                        client_entity_map[client_entity.client] = client_entity.entity_id
-            
-            # CRITICAL MAPPING: Map portfolio names back to client names
-            # This is used to link groups and accounts to their parent clients
-            portfolio_to_client = {}
-            for client, portfolio in client_portfolio_map.items():
-                if portfolio:
-                    portfolio_to_client[portfolio] = client
-            
-            # Get all groups (entities marked as "Group")
-            group_entities = db.query(
-                OwnershipItem.client,  # Group name
-                OwnershipItem.group_id,
-                OwnershipItem.portfolio
-            ).filter(
-                OwnershipItem.metadata_id == latest_metadata.id,
-                OwnershipItem.grouping_attribute_name == "Group"
-            ).distinct().all()
-            
-            # Create maps for group relationships
             group_name_to_id = {}      # Maps group name to its ID
-            group_to_portfolio = {}    # Maps group name to its portfolio
-            portfolio_to_groups = defaultdict(list)  # Maps portfolio to all its groups
             
-            for group in group_entities:
-                if group.client and group.group_id:
-                    group_name_to_id[group.client] = group.group_id
+            # Maps to store parent-child relationships
+            client_to_groups = defaultdict(list)    # Maps client name to its groups
+            client_to_accounts = defaultdict(list)  # Maps client name to its direct accounts
+            group_to_accounts = defaultdict(list)   # Maps group name to its accounts
+            
+            # Process all entities following the Excel file row order
+            current_client = None
+            current_group = None
+            
+            for entity in all_entities:
+                # Skip rows with missing essential data
+                if not entity.client:
+                    continue
+                
+                # Process different entity types
+                if entity.grouping_attribute_name == "Client":
+                    # Found a new client - this starts a new section in the hierarchy
+                    current_client = entity.client
+                    current_group = None  # Reset current group when a new client starts
                     
-                if group.client and group.portfolio:
-                    group_to_portfolio[group.client] = group.portfolio
-                    # Store all groups for each portfolio
-                    portfolio_to_groups[group.portfolio].append(group.client)
-            
-            # Get all holding accounts (entities marked as "Holding Account")
-            account_entities = db.query(
-                OwnershipItem.client,  # Account name
-                OwnershipItem.portfolio,
-                OwnershipItem.holding_account_number,
-                OwnershipItem.entity_id
-            ).filter(
-                OwnershipItem.metadata_id == latest_metadata.id,
-                OwnershipItem.grouping_attribute_name == "Holding Account"
-            ).distinct().all()
-            
-            # Create maps for account relationships
-            account_to_portfolio = {}  # Maps account name to its portfolio
-            portfolio_to_accounts = defaultdict(list)  # Maps portfolio to all its accounts
-            
-            for account in account_entities:
-                if account.client and account.portfolio:
-                    account_to_portfolio[account.client] = account.portfolio
-                    # Group accounts by portfolio for easy lookup
-                    portfolio_to_accounts[account.portfolio].append({
-                        "name": account.client,
-                        "entity_id": account.entity_id,
-                        "account_number": account.holding_account_number,
-                        "value": 1  # Fixed value for visualization
+                    # Store client information
+                    client_names.add(current_client)
+                    if entity.portfolio:
+                        client_portfolio_map[current_client] = entity.portfolio
+                    if entity.entity_id:
+                        client_entity_map[current_client] = entity.entity_id
+                
+                elif entity.grouping_attribute_name == "Group" and current_client:
+                    # Found a group that belongs to the current client
+                    current_group = entity.client
+                    
+                    # Store group information
+                    if entity.group_id:
+                        group_name_to_id[current_group] = entity.group_id
+                    
+                    # Link this group to its parent client
+                    client_to_groups[current_client].append({
+                        "name": current_group,
+                        "id": entity.group_id
                     })
+                
+                elif entity.grouping_attribute_name == "Holding Account":
+                    # This is an account - link it to either current group or client
+                    account_data = {
+                        "name": entity.client,
+                        "entity_id": entity.entity_id,
+                        "account_number": entity.holding_account_number,
+                        "value": 1  # Fixed value for visualization
+                    }
+                    
+                    if current_group and current_client:
+                        # Account belongs to the current group
+                        group_to_accounts[current_group].append(account_data)
+                    elif current_client:
+                        # Direct account owned by the client (no group)
+                        client_to_accounts[current_client].append(account_data)
             
-            # Step 2: Build the tree following the correct hierarchy based on portfolio relationships
+            # Step 2: Build the tree following the Excel file ordering hierarchy
             # Only include clients in our filtered set
             for client_name in clients:
                 # Skip if not marked as a Client when we have Client markers
@@ -1098,44 +1100,30 @@ def get_ownership_tree():
                     "children": []
                 }
                 
-                # The client's portfolio is the key to finding its groups and accounts
-                client_portfolio = client_portfolio_map.get(client_name)
-                
-                # If client has no portfolio assigned, it won't have any groups or accounts
-                if not client_portfolio:
-                    logger.debug(f"Client {client_name} has no portfolio assigned")
-                    # Still add the client to the tree as an empty node
-                    tree["children"].append(client_node)
-                    continue
-                
-                # Get all groups linked to this client's portfolio
-                client_groups = portfolio_to_groups.get(client_portfolio, [])
-                
-                # Add groups to the client node
+                # Add all groups for this client based on Excel row ordering
                 group_nodes_added = False
-                for group_name in client_groups:
-                    # Create the group node
+                
+                # Add groups with their accounts
+                for group_data in client_to_groups.get(client_name, []):
+                    group_name = group_data["name"]
+                    
+                    # Create group node
                     group_node = {
                         "name": group_name,
                         "children": []
                     }
                     
-                    # Get accounts linked to this group via the group's portfolio
-                    group_portfolio = group_to_portfolio.get(group_name)
-                    if group_portfolio:
-                        group_accounts = portfolio_to_accounts.get(group_portfolio, [])
-                        
-                        # Add accounts to the group node
-                        for account in group_accounts:
-                            group_node["children"].append(account)
+                    # Add all accounts that belong to this group
+                    for account in group_to_accounts.get(group_name, []):
+                        group_node["children"].append(account)
                     
                     # Only add groups that have accounts or a valid ID
                     if group_node["children"] or group_name in group_name_to_id:
                         client_node["children"].append(group_node)
                         group_nodes_added = True
                 
-                # Add direct accounts (only those directly linked to this client's portfolio)
-                direct_accounts = portfolio_to_accounts.get(client_portfolio, [])
+                # Add direct accounts for this client
+                direct_accounts = client_to_accounts.get(client_name, [])
                 
                 if direct_accounts:
                     direct_accounts_node = {

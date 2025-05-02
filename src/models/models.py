@@ -76,6 +76,7 @@ class OwnershipItem(Base):
     grouping_attribute_name = Column(String, nullable=False, index=True)  # Client, Group, or Holding Account
     upload_date = Column(Date, default=datetime.date.today, nullable=False)
     metadata_id = Column(Integer, ForeignKey("ownership_metadata.id"), nullable=False, index=True)
+    row_order = Column(Integer, index=True)  # Store original Excel row order for proper hierarchy construction
     
     # Define additional indexes for common queries
     __table_args__ = (
@@ -85,6 +86,8 @@ class OwnershipItem(Base):
         Index('idx_ownership_client_portfolio', 'client', 'portfolio'),
         # Composite index for group lookups
         Index('idx_ownership_portfolio_group', 'portfolio', 'group_id'),
+        # Index for row ordering (critical for rebuilding the hierarchy)
+        Index('idx_ownership_row_order', 'metadata_id', 'row_order'),
     )
     
     # Relationship to metadata
