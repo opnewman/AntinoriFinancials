@@ -660,13 +660,14 @@ def upload_ownership_tree():
                 
             except Exception as e:
                 logger.error(f"Error parsing text file: {str(e)}")
-                return jsonify({
+                response = jsonify({
                     "success": False,
                     "message": f"Error parsing text file: {str(e)}",
                     "rows_processed": 0,
                     "rows_inserted": 0,
                     "errors": [str(e)]
-                }), 400
+                })
+                return response, 400, response_headers
         
         # Standardize column names (convert to lowercase and replace spaces with underscores)
         df.columns = [col.lower().replace(' ', '_') for col in df.columns]
@@ -684,13 +685,14 @@ def upload_ownership_tree():
             missing_cols = [col for col in required_cols if col not in df.columns]
             
             if missing_cols:
-                return jsonify({
+                response = jsonify({
                     "success": False,
                     "message": f"Missing required columns: {', '.join(missing_cols)}",
                     "rows_processed": 0,
                     "rows_inserted": 0,
                     "errors": [f"Missing required columns: {', '.join(missing_cols)}"]
-                }), 400
+                })
+                return response, 400, response_headers
             
             # Create new metadata record
             new_metadata = OwnershipMetadata(
@@ -808,7 +810,7 @@ def upload_ownership_tree():
             # Clear any ownership tree cache
             # The ownership tree endpoint will rebuild the cache on next request
             
-            return jsonify({
+            response = jsonify({
                 "success": True,
                 "message": f"Successfully processed {rows_inserted} ownership items",
                 "rows_processed": rows_processed,
@@ -817,35 +819,52 @@ def upload_ownership_tree():
                 "metadata_id": metadata_id,
                 "errors": errors[:10]  # Limit number of errors returned
             })
+            return response, 200, response_headers
     
     except Exception as e:
         logger.error(f"Error processing ownership file: {str(e)}")
         logger.error(traceback.format_exc())
-        return jsonify({
+        response = jsonify({
             "success": False,
             "message": f"Error processing file: {str(e)}",
             "rows_processed": 0,
             "rows_inserted": 0,
             "errors": [str(e)]
-        }), 500
+        })
+        return response, 500, response_headers
 
 @app.route("/api/upload/risk-stats", methods=["POST"])
 def upload_security_risk_stats():
+    # Set the response content type to ensure proper JSON response
+    response_headers = {"Content-Type": "application/json"}
+    
     if 'file' not in request.files:
-        return jsonify({"success": False, "message": "No file part in the request"}), 400
+        response = jsonify({"success": False, "message": "No file part in the request"})
+        return response, 400, response_headers
     
     file = request.files['file']
     if file.filename == '':
-        return jsonify({"success": False, "message": "No file selected"}), 400
+        response = jsonify({"success": False, "message": "No file selected"})
+        return response, 400, response_headers
+    
+    # Check file extension
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in ['.xlsx', '.xls', '.csv', '.txt']:
+        response = jsonify({
+            "success": False, 
+            "message": "Only Excel files (.xlsx, .xls), CSV or TXT files are supported"
+        })
+        return response, 400, response_headers
     
     # Placeholder for implementation
-    return jsonify({
+    response = jsonify({
         "success": True,
         "message": "Risk statistics upload not implemented yet",
         "rows_processed": 0,
         "rows_inserted": 0,
         "errors": []
     })
+    return response, 200, response_headers
 
 # Cache for ownership tree to improve performance
 ownership_tree_cache = {
