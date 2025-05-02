@@ -300,96 +300,29 @@ def upload_data_dump():
         file_size = os.path.getsize(file_path)
         logger.info(f"File saved to: {file_path}, size: {file_size} bytes")
         
-        # For large files (>10MB), process asynchronously
-        if file_size > 10 * 1024 * 1024:  # 10MB
-            logger.info("File is large, processing asynchronously")
-            
-            # Run the processing script in the background
-            cmd = [
-                "python", 
-                "process_data_dump.py", 
-                file_path
-            ]
-            
-            # Start the process detached from this request
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            
-            # Return immediate response to client
-            return jsonify({
-                "success": True,
-                "message": f"Processing file in background. Check status at /api/upload/status?file={secure_filename(file.filename)}",
-                "file_size": file_size,
-                "status": "background",
-                "status_url": f"/api/upload/status?file={secure_filename(file.filename)}"
-            }), 202, response_headers
-            
-        else:
-            # For smaller files, process directly
-            logger.info("Processing smaller file directly")
-            # We'll still use the external script for consistency
-            import subprocess
-            
-            # Run the processing script and wait for completion
-            result = subprocess.run(
-                ["python", "process_data_dump.py", file_path],
-                capture_output=True,
-                text=True
-            )
-            
-            if result.returncode == 0:
-                # Check if the completion file exists
-                status_file = os.path.join(os.path.dirname(file_path), "processing_complete.txt")
-                
-                if os.path.exists(status_file):
-                    with open(status_file, "r") as f:
-                        status_info = f.read()
-                    
-                    # Parse the completion data
-                    rows_processed = 0
-                    rows_inserted = 0
-                    for line in status_info.split("\n"):
-                        if "Rows processed:" in line:
-                            rows_processed = int(line.split(":", 1)[1].strip())
-                        elif "Rows inserted:" in line:
-                            rows_inserted = int(line.split(":", 1)[1].strip())
-                    
-                    # Return success response
-                    return jsonify({
-                        "success": True,
-                        "message": f"Successfully processed {rows_inserted} positions",
-                        "rows_processed": rows_processed,
-                        "rows_inserted": rows_inserted,
-                        "processing_time_seconds": round(time.time() - start_time, 3),
-                        "log_output": result.stdout[:1000]  # First 1000 chars of log
-                    }), 200, response_headers
-                else:
-                    # Process completed but no status file
-                    return jsonify({
-                        "success": True,
-                        "message": "Processing completed but status information is not available",
-                        "log_output": result.stdout[:1000]  # First 1000 chars of log
-                    }), 200, response_headers
-            else:
-                # Processing failed
-                return jsonify({
-                    "success": False,
-                    "message": "Error processing file",
-                    "error_details": result.stderr,
-                    "log_output": result.stdout[:1000]  # First 1000 chars of log
-                }), 500, response_headers
-            
+        # Start the background process to handle the file
+        # This avoids web server timeouts by immediately returning and
+        # allowing the file to be processed in a separate process
+        logger.info("Starting background process for data upload")
+        
+        # Run as a direct shell command to ensure it continues after this request completes
+        os.system(f"python run_data_upload.py {file_path} &")
+        
+        # Return immediate response to client
+        return jsonify({
+            "success": True,
+            "message": f"File received and processing started in background.",
+            "file_size": file_size,
+            "status": "processing",
+            "status_url": f"/api/upload/status?file={secure_filename(file.filename)}"
+        }), 202, response_headers
+        
     except Exception as e:
-        logger.error(f"Error processing data dump file: {str(e)}")
+        logger.error(f"Error starting data upload process: {str(e)}")
         logger.error(traceback.format_exc())
         response = jsonify({
             "success": False,
             "message": f"Error processing file: {str(e)}",
-            "rows_processed": 0,
-            "rows_inserted": 0,
             "errors": [str(e)]
         })
         return response, 500, response_headers
@@ -410,39 +343,74 @@ def check_upload_status():
     temp_dirs = glob.glob(temp_dir_pattern)
     
     for temp_dir in temp_dirs:
-        status_file = os.path.join(temp_dir, "processing_complete.txt")
+        # Check for completion file
+        completed_file = os.path.join(temp_dir, "data_dump_complete.txt")
         
-        if os.path.exists(status_file):
-            with open(status_file, "r") as f:
+        if os.path.exists(completed_file):
+            with open(completed_file, "r") as f:
                 status_info = f.read()
             
             # Parse the completion data
             rows_processed = 0
-            rows_inserted = 0
-            errors = 0
+            total_rows = 0
+            report_date = None
             
             for line in status_info.split("\n"):
                 if "Rows processed:" in line:
-                    rows_processed = int(line.split(":", 1)[1].strip())
+                    total_rows = int(line.split(":", 1)[1].strip())
                 elif "Rows inserted:" in line:
-                    rows_inserted = int(line.split(":", 1)[1].strip())
-                elif "Errors:" in line:
-                    errors = int(line.split(":", 1)[1].strip())
+                    rows_processed = int(line.split(":", 1)[1].strip())
+                elif "Report date:" in line:
+                    report_date = line.split(":", 1)[1].strip()
             
             return jsonify({
                 "success": True,
                 "status": "completed",
-                "message": f"Processing completed. {rows_inserted} rows inserted.",
+                "message": f"Processing completed. Inserted {rows_processed} of {total_rows} rows for {report_date}.",
                 "rows_processed": rows_processed,
-                "rows_inserted": rows_inserted,
-                "errors": errors
+                "total_rows": total_rows,
+                "report_date": report_date
+            })
+        
+        # Check for started but not completed file
+        started_file = os.path.join(temp_dir, "data_dump_started.txt")
+        
+        if os.path.exists(started_file):
+            # Check log file for progress
+            log_file = "upload_data_dump.log"
+            
+            if os.path.exists(log_file):
+                try:
+                    # Get last few lines of log file
+                    with open(log_file, "r") as f:
+                        log_lines = f.readlines()[-10:]  # Last 10 lines
+                    
+                    # Look for chunk progress
+                    progress_info = []
+                    for line in log_lines:
+                        if "Chunk" in line and "rows" in line:
+                            progress_info.append(line.strip())
+                    
+                    return jsonify({
+                        "success": True,
+                        "status": "processing",
+                        "message": "File is still being processed.",
+                        "progress": progress_info[-3:] if progress_info else []  # Last 3 progress messages
+                    })
+                except Exception:
+                    pass
+            
+            return jsonify({
+                "success": True,
+                "status": "processing",
+                "message": "File is still being processed. Check back later."
             })
     
-    # File still processing
+    # No status files found
     return jsonify({
-        "success": True,
-        "status": "processing",
-        "message": "File is still being processed. Check back later."
+        "success": False,
+        "status": "unknown",
+        "message": "No status information found for this file."
     })
 
 @app.route("/api/upload/ownership", methods=["POST"])

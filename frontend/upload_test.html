@@ -213,18 +213,41 @@
                         progressText.textContent = percentCompleted + '%';
                         
                         if (percentCompleted === 100) {
-                            processingText.textContent = 'Processing...';
-                            simulateProcessingProgress();
+                            processingText.textContent = 'Starting background processing...';
                         }
                     },
-                    timeout: 300000 // 5 minute timeout for large files
+                    timeout: 60000 // 1 minute timeout for upload (processing happens in background)
                 })
                 .then(function(response) {
-                    uploadBtn.disabled = false;
-                    
                     if (response.data.success) {
-                        showSuccess(`File processed successfully! ${response.data.rows_inserted} rows inserted.`);
+                        if (response.data.status === 'processing') {
+                            // Background processing started
+                            showSuccess('File uploaded successfully and processing started in background.');
+                            processingText.textContent = 'File processing in background...';
+                            
+                            // Display status URL
+                            if (response.data.status_url) {
+                                const checkStatusBtn = document.createElement('button');
+                                checkStatusBtn.className = 'btn btn-secondary mt-3';
+                                checkStatusBtn.textContent = 'Check Processing Status';
+                                checkStatusBtn.onclick = function() {
+                                    checkProcessingStatus(response.data.status_url);
+                                };
+                                
+                                // Add button to response container
+                                responseContainer.appendChild(checkStatusBtn);
+                            }
+                            
+                            // Set processing progress to indicate background work
+                            processingProgress.className = 'progress-bar progress-bar-striped progress-bar-animated';
+                            processingProgress.style.width = '100%';
+                        } else {
+                            // Direct processing completed
+                            uploadBtn.disabled = false;
+                            showSuccess(`File processed successfully! ${response.data.rows_inserted || 0} rows inserted.`);
+                        }
                     } else {
+                        uploadBtn.disabled = false;
                         showError(response.data.message || 'Unknown error occurred.');
                     }
                     
@@ -389,17 +412,58 @@
                 ownershipSuccessAlert.style.display = 'none';
             }
             
+            // Function to check processing status
+            function checkProcessingStatus(statusUrl) {
+                processingText.textContent = 'Checking status...';
+                
+                axios.get(statusUrl)
+                    .then(function(response) {
+                        if (response.data.success) {
+                            if (response.data.status === 'completed') {
+                                // Processing completed
+                                processingText.textContent = 'Processing completed!';
+                                processingProgress.className = 'progress-bar bg-success';
+                                processingProgress.style.width = '100%';
+                                
+                                // Update success message
+                                showSuccess(`File processed successfully! ${response.data.rows_processed || 0} rows inserted.`);
+                                uploadBtn.disabled = false;
+                            } else if (response.data.status === 'processing') {
+                                // Still processing
+                                processingText.textContent = 'Processing in progress...';
+                                
+                                // Show progress info if available
+                                if (response.data.progress && response.data.progress.length > 0) {
+                                    responseData.textContent = JSON.stringify({
+                                        status: 'processing',
+                                        progress: response.data.progress
+                                    }, null, 2);
+                                }
+                                
+                                // Check again in 5 seconds
+                                setTimeout(function() {
+                                    checkProcessingStatus(statusUrl);
+                                }, 5000);
+                            }
+                        } else {
+                            // Error checking status
+                            processingText.textContent = 'Error checking status';
+                            showError(response.data.message || 'Error checking processing status');
+                            uploadBtn.disabled = false;
+                        }
+                    })
+                    .catch(function(error) {
+                        processingText.textContent = 'Error checking status';
+                        showError('Error checking processing status: ' + (error.message || 'Unknown error'));
+                        uploadBtn.disabled = false;
+                    });
+            }
+            
+            // Legacy function - kept for compatibility
             function simulateProcessingProgress() {
-                let progress = 0;
-                const interval = setInterval(() => {
-                    progress += 5;
-                    if (progress > 95) {
-                        clearInterval(interval);
-                        return;
-                    }
-                    processingProgress.style.width = progress + '%';
-                    processingText.textContent = 'Processing... ' + progress + '%';
-                }, 2000);
+                processingProgress.className = 'progress-bar progress-bar-striped progress-bar-animated';
+                processingProgress.style.width = '100%';
+                processingText.textContent = 'Processing in background...';
             }
         });
     </script>
