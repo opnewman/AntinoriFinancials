@@ -54,7 +54,7 @@ def main():
         
         # Generate client level summary
         client_query = text("""
-        INSERT INTO financial_summary (level, level_key, total_adjusted_value, report_date)
+        INSERT INTO financial_summary (level, level_key, total_adjusted_value, report_date, upload_date)
         SELECT 
             'client' as level,
             top_level_client as level_key,
@@ -64,7 +64,8 @@ def main():
                     ELSE CAST(adjusted_value AS DECIMAL) 
                 END
             ) as total_adjusted_value,
-            date as report_date
+            date as report_date,
+            CURRENT_DATE as upload_date
         FROM 
             financial_positions
         WHERE 
@@ -78,7 +79,7 @@ def main():
         
         # Generate portfolio level summary
         portfolio_query = text("""
-        INSERT INTO financial_summary (level, level_key, total_adjusted_value, report_date)
+        INSERT INTO financial_summary (level, level_key, total_adjusted_value, report_date, upload_date)
         SELECT 
             'portfolio' as level,
             portfolio as level_key,
@@ -88,7 +89,8 @@ def main():
                     ELSE CAST(adjusted_value AS DECIMAL) 
                 END
             ) as total_adjusted_value,
-            date as report_date
+            date as report_date,
+            CURRENT_DATE as upload_date
         FROM 
             financial_positions
         WHERE 
@@ -102,7 +104,7 @@ def main():
         
         # Generate account level summary
         account_query = text("""
-        INSERT INTO financial_summary (level, level_key, total_adjusted_value, report_date)
+        INSERT INTO financial_summary (level, level_key, total_adjusted_value, report_date, upload_date)
         SELECT 
             'account' as level,
             holding_account_number as level_key,
@@ -112,7 +114,8 @@ def main():
                     ELSE CAST(adjusted_value AS DECIMAL) 
                 END
             ) as total_adjusted_value,
-            date as report_date
+            date as report_date,
+            CURRENT_DATE as upload_date
         FROM 
             financial_positions
         WHERE 
@@ -126,7 +129,7 @@ def main():
         
         # Also add "All Clients" entry for easier selection in UI
         all_clients_query = text("""
-        INSERT INTO financial_summary (level, level_key, total_adjusted_value, report_date)
+        INSERT INTO financial_summary (level, level_key, total_adjusted_value, report_date, upload_date)
         SELECT 
             'client' as level,
             'All Clients' as level_key,
@@ -136,7 +139,8 @@ def main():
                     ELSE CAST(adjusted_value AS DECIMAL) 
                 END
             ) as total_adjusted_value,
-            date as report_date
+            date as report_date,
+            CURRENT_DATE as upload_date
         FROM 
             financial_positions
         WHERE 
