@@ -1,3 +1,10 @@
 #!/bin/bash
-# Start the FastAPI server using Uvicorn directly
-python -m uvicorn main:app --host 0.0.0.0 --port 5000
+
+# Start the Gunicorn server with optimized settings for large file uploads
+gunicorn --bind 0.0.0.0:5000 \
+         --timeout 300 \
+         --workers 2 \
+         --threads 4 \
+         --reuse-port \
+         --reload \
+         main:app
