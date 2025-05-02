@@ -1211,11 +1211,32 @@ def generate_portfolio_report():
         ]
     })
 
+def get_latest_data_date(db):
+    """
+    Get the most recent date from the financial_positions table
+    """
+    try:
+        result = db.execute(text("""
+        SELECT MAX(date) as latest_date FROM financial_positions
+        """)).fetchone()
+        
+        if result and result.latest_date:
+            return result.latest_date.isoformat()
+        else:
+            # Fallback to today's date if no data found
+            return datetime.date.today().isoformat()
+    except Exception as e:
+        logger.error(f"Error getting latest data date: {str(e)}")
+        return datetime.date.today().isoformat()
+
 @app.route("/api/charts/allocation", methods=["GET"])
 def get_allocation_chart_data():
-    date = request.args.get('date', datetime.date.today().isoformat())
     level = request.args.get('level', 'client')
     level_key = request.args.get('level_key', 'All Clients')
+    
+    # Connect to DB first to get the latest date if not specified
+    with get_db_connection() as db:
+        date = request.args.get('date', get_latest_data_date(db))
     
     try:
         with get_db_connection() as db:
@@ -1336,9 +1357,12 @@ def get_allocation_chart_data():
 
 @app.route("/api/charts/liquidity", methods=["GET"])
 def get_liquidity_chart_data():
-    date = request.args.get('date', datetime.date.today().isoformat())
     level = request.args.get('level', 'client')
     level_key = request.args.get('level_key', 'All Clients')
+    
+    # Connect to DB first to get the latest date if not specified
+    with get_db_connection() as db:
+        date = request.args.get('date', get_latest_data_date(db))
     
     try:
         with get_db_connection() as db:
@@ -1459,10 +1483,13 @@ def get_liquidity_chart_data():
 
 @app.route("/api/charts/performance", methods=["GET"])
 def get_performance_chart_data():
-    date = request.args.get('date', datetime.date.today().isoformat())
     level = request.args.get('level', 'portfolio')
     level_key = request.args.get('level_key', 'Portfolio 1')
     period = request.args.get('period', 'YTD')
+    
+    # Connect to DB first to get the latest date if not specified
+    with get_db_connection() as db:
+        date = request.args.get('date', get_latest_data_date(db))
     
     if period == 'YTD':
         labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
