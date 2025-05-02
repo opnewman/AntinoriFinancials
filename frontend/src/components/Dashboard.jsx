@@ -1,6 +1,6 @@
 const Dashboard = () => {
     const [loading, setLoading] = React.useState(true);
-    const [reportDate, setReportDate] = React.useState(new Date().toISOString().split('T')[0]);
+    const [reportDate, setReportDate] = React.useState('');  // Don't set default date, use API's date
     const [reportLevel, setReportLevel] = React.useState('client');
     const [levelKey, setLevelKey] = React.useState('');
     const [levelOptions, setLevelOptions] = React.useState([]);
@@ -11,73 +11,78 @@ const Dashboard = () => {
     const [performanceChart, setPerformanceChart] = React.useState(null);
     const [error, setError] = React.useState('');
     
-    // Fetch ownership tree on component mount
+    // Fetch entity options and ownership tree on component mount
     React.useEffect(() => {
-        const fetchOwnershipTree = async () => {
+        const fetchInitialData = async () => {
             try {
-                const data = await api.getOwnershipTree();
-                setOwnershipTree(data);
+                // Load entity options using the real data from database
+                const entityOptions = await api.getEntityOptions('client');
                 
-                // Set default level options based on the first client
-                if (data.length > 0) {
-                    updateLevelOptions('client', data);
-                    setLevelKey(data[0].name);
+                if (entityOptions.length > 0) {
+                    const formattedOptions = entityOptions.map(entity => ({
+                        value: entity,
+                        label: entity
+                    }));
+                    
+                    setLevelOptions(formattedOptions);
+                    
+                    // Set default to "All Clients" if it exists, otherwise first client
+                    const allClientsOption = formattedOptions.find(opt => opt.value === 'All Clients');
+                    if (allClientsOption) {
+                        setLevelKey(allClientsOption.value);
+                    } else if (formattedOptions.length > 0) {
+                        setLevelKey(formattedOptions[0].value);
+                    }
+                    
+                    // Still load ownership tree for structure visualization
+                    try {
+                        const treeData = await api.getOwnershipTree();
+                        setOwnershipTree(treeData);
+                    } catch (err) {
+                        console.error('Error fetching ownership tree:', err);
+                        // Non-critical error, continue without ownership tree
+                    }
+                } else {
+                    setError('No client data found. Please upload data first.');
                 }
             } catch (err) {
-                console.error('Error fetching ownership tree:', err);
-                setError('Failed to load ownership data. Please upload ownership data first.');
+                console.error('Error fetching initial data:', err);
+                setError('Failed to load data. Please upload financial data first.');
             } finally {
                 setLoading(false);
             }
         };
         
-        fetchOwnershipTree();
+        fetchInitialData();
     }, []);
     
     // Update level options when the level changes
-    const updateLevelOptions = (level, tree = ownershipTree) => {
-        if (!tree || tree.length === 0) return;
-        
-        let options = [];
-        
-        if (level === 'client') {
-            options = tree.map(client => ({
-                value: client.name,
-                label: client.name
+    const updateLevelOptions = async (level) => {
+        setLoading(true);
+        try {
+            // Get entity options from the API based on the selected level
+            const entityOptions = await api.getEntityOptions(level);
+            
+            const formattedOptions = entityOptions.map(entity => ({
+                value: entity,
+                label: entity
             }));
-        } else if (level === 'portfolio' || level === 'group') {
-            // Flatten all portfolios and groups from all clients
-            tree.forEach(client => {
-                client.children.forEach(child => {
-                    if (child.type === level) {
-                        options.push({
-                            value: child.name,
-                            label: `${child.name} (${client.name})`
-                        });
-                    }
-                });
-            });
-        } else if (level === 'account') {
-            // Flatten all accounts from all clients
-            tree.forEach(client => {
-                client.children.forEach(child => {
-                    child.children.forEach(account => {
-                        options.push({
-                            value: account.account_number,
-                            label: `${account.name} (${account.account_number})`
-                        });
-                    });
-                });
-            });
-        }
-        
-        setLevelOptions(options);
-        
-        // Set default value to first option if available
-        if (options.length > 0) {
-            setLevelKey(options[0].value);
-        } else {
+            
+            setLevelOptions(formattedOptions);
+            
+            // Set default value to first option if available
+            if (formattedOptions.length > 0) {
+                setLevelKey(formattedOptions[0].value);
+            } else {
+                setLevelKey('');
+            }
+        } catch (err) {
+            console.error(`Error fetching ${level} options:`, err);
+            setError(`Failed to load ${level} options.`);
+            setLevelOptions([]);
             setLevelKey('');
+        } finally {
+            setLoading(false);
         }
     };
     

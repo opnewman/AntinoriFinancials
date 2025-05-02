@@ -1196,6 +1196,9 @@ def get_entity_options():
                 results = db.execute(query, {"date": latest_date}).fetchall()
                 entities = [row[0] for row in results if row[0]]
                 
+                # Add "All Clients" option for global view
+                entities.insert(0, "All Clients")
+                
             elif entity_type == 'portfolio':
                 query = text("""
                 SELECT DISTINCT portfolio

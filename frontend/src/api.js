@@ -203,5 +203,23 @@ const api = {
             console.error('Performance chart error:', error);
             throw error;
         }
+    },
+    
+    /**
+     * Get entity options (clients, portfolios, accounts)
+     * @param {string} type - Entity type (client, portfolio, account)
+     */
+    getEntityOptions: async (type = 'client') => {
+        try {
+            const response = await axios.get(
+                `${API_BASE_URL}/api/entity-options`, {
+                    params: { type }
+                }
+            );
+            return response.data.data || [];
+        } catch (error) {
+            console.error('Entity options error:', error);
+            return [];
+        }
     }
 };
