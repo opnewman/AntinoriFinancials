@@ -1377,25 +1377,25 @@ def get_liquidity_chart_data():
                 query = text("""
                 SELECT liquid_vs_illiquid, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                 FROM financial_positions 
-                WHERE report_date = :date AND portfolio = :portfolio
+                WHERE date = :date AND portfolio = :portfolio
                 GROUP BY liquid_vs_illiquid
                 """)
                 result = db.execute(query, {"date": date, "portfolio": level_key})
             elif level == 'account':
                 # For a specific account
                 query = text("""
-                SELECT liquid_vs_illiquid, SUM(adjusted_value) as total_value 
+                SELECT liquid_vs_illiquid, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                 FROM financial_positions 
-                WHERE report_date = :date AND holding_account = :account
+                WHERE date = :date AND holding_account = :account
                 GROUP BY liquid_vs_illiquid
                 """)
                 result = db.execute(query, {"date": date, "account": level_key})
             else:
                 # Default to all data if level is not recognized
                 query = text("""
-                SELECT liquid_vs_illiquid, SUM(adjusted_value) as total_value 
+                SELECT liquid_vs_illiquid, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                 FROM financial_positions 
-                WHERE report_date = :date
+                WHERE date = :date
                 GROUP BY liquid_vs_illiquid
                 """)
                 result = db.execute(query, {"date": date})
