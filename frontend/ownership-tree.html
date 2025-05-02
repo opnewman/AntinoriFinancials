@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ANTINORI - Ownership Tree Visualization</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono&display=swap">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         :root {
@@ -282,9 +284,14 @@
 <body>
     <div class="container">
         <div class="sidebar">
-            <h1>ANTINORI</h1>
+            <h1><a href="/" style="text-decoration: none; color: var(--color-primary);">ANTINORI</a></h1>
             
             <div class="control-panel">
+                <div class="view-controls" style="margin-bottom: 15px;">
+                    <a href="/" class="btn btn-outline" style="text-decoration: none;">
+                        <i class="fas fa-arrow-left" style="margin-right: 5px;"></i> Back to Dashboard
+                    </a>
+                </div>
                 <input type="text" class="search-box" id="clientSearch" placeholder="Search clients...">
                 <div class="view-controls">
                     <button class="btn" id="expandAllBtn">Expand All</button>
@@ -305,7 +312,7 @@
         <div class="main-content">
             <div class="tree-header">
                 <div class="breadcrumb">
-                    <a href="#">Home</a> <span>›</span> <strong id="currentClient">All Clients</strong>
+                    <a href="/">Home</a> <span>›</span> <a href="/ownership-tree">Ownership Tree</a> <span>›</span> <strong id="currentClient">All Clients</strong>
                 </div>
                 <div class="view-controls">
                     <button class="btn btn-outline" id="downloadBtn">Export PNG</button>
