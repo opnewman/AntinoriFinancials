@@ -42,6 +42,11 @@ def test_page():
 def ownership_tree_page():
     return send_from_directory('frontend', 'ownership-tree.html')
 
+# Ownership relationship explorer page
+@app.route('/ownership-explorer')
+def ownership_explorer_page():
+    return send_from_directory('frontend', 'ownership-explorer.html')
+
 # API root endpoint
 @app.route("/api")
 def api_root():
@@ -1284,6 +1289,278 @@ def get_performance_chart_data():
             "tension": 0.4
         }]
     })
+    
+# Endpoints for new ownership relationship explorer
+
+@app.route("/api/metadata-options", methods=["GET"])
+def get_metadata_options():
+    """
+    Get available metadata options for ownership data
+    Returns a list of metadata records with flags indicating which ones have proper classifications
+    """
+    try:
+        from src.models.models import OwnershipMetadata, OwnershipItem
+        from src.database import get_db_connection
+        from sqlalchemy import func, distinct
+        
+        with get_db_connection() as db:
+            # Get all metadata records
+            metadata_records = db.query(OwnershipMetadata).order_by(
+                OwnershipMetadata.id.desc()
+            ).all()
+            
+            # Prepare the result
+            options = []
+            
+            for metadata in metadata_records:
+                # Check if this metadata has proper classifications
+                has_classifications = db.query(func.count()).filter(
+                    OwnershipItem.metadata_id == metadata.id,
+                    OwnershipItem.grouping_attribute_name.in_(["Client", "Group", "Holding Account"])
+                ).scalar() > 0
+                
+                options.append({
+                    "id": metadata.id,
+                    "view_name": metadata.view_name,
+                    "date_range_start": metadata.date_range_start.isoformat() if metadata.date_range_start else None,
+                    "date_range_end": metadata.date_range_end.isoformat() if metadata.date_range_end else None,
+                    "portfolio_coverage": metadata.portfolio_coverage,
+                    "upload_date": metadata.upload_date.isoformat() if metadata.upload_date else None,
+                    "is_current": metadata.is_current,
+                    "properClassification": has_classifications
+                })
+            
+            return jsonify({
+                "success": True,
+                "options": options
+            })
+            
+    except Exception as e:
+        logger.error(f"Error fetching metadata options: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Error fetching metadata options: {str(e)}"
+        }), 500
+
+@app.route("/api/ownership-network", methods=["GET"])
+def get_ownership_network():
+    """
+    Get ownership relationship network data for visualization
+    This creates a network graph of clients, groups, and accounts
+    """
+    try:
+        from src.models.models import OwnershipMetadata, OwnershipItem
+        from src.database import get_db_connection
+        from sqlalchemy import func, distinct
+        import time
+        
+        # Start timing
+        start_time = time.time()
+        
+        # Get filter parameters
+        metadata_id = request.args.get('metadata_id')
+        client_filter = request.args.get('client')
+        
+        # Entity type filters
+        hide_clients = request.args.get('hide_clients', 'false').lower() == 'true'
+        hide_groups = request.args.get('hide_groups', 'false').lower() == 'true'
+        hide_accounts = request.args.get('hide_accounts', 'false').lower() == 'true'
+        
+        with get_db_connection() as db:
+            # If no metadata_id specified, find one with proper classifications
+            if not metadata_id:
+                metadata_with_classifications = db.query(OwnershipMetadata).join(
+                    OwnershipItem, 
+                    OwnershipMetadata.id == OwnershipItem.metadata_id
+                ).filter(
+                    OwnershipItem.grouping_attribute_name.in_(["Client", "Group", "Holding Account"])
+                ).order_by(
+                    OwnershipMetadata.id.desc()
+                ).first()
+                
+                if metadata_with_classifications:
+                    logger.info(f"Using metadata ID {metadata_with_classifications.id} with proper classifications")
+                    metadata_id = metadata_with_classifications.id
+                else:
+                    # Fall back to the latest metadata
+                    latest_metadata = db.query(OwnershipMetadata).order_by(
+                        OwnershipMetadata.id.desc()
+                    ).first()
+                    
+                    if latest_metadata:
+                        metadata_id = latest_metadata.id
+                    else:
+                        return jsonify({
+                            "success": False,
+                            "message": "No ownership data found"
+                        }), 404
+            
+            # Convert to int if we got a string
+            metadata_id = int(metadata_id)
+            
+            # Build query filters
+            filters = [OwnershipItem.metadata_id == metadata_id]
+            
+            # Add entity type filters
+            entity_type_filters = []
+            if not hide_clients:
+                entity_type_filters.append(OwnershipItem.grouping_attribute_name == "Client")
+            if not hide_groups:
+                entity_type_filters.append(OwnershipItem.grouping_attribute_name == "Group")
+            if not hide_accounts:
+                entity_type_filters.append(OwnershipItem.grouping_attribute_name == "Holding Account")
+            
+            # Add entity types to filters if any were selected
+            if entity_type_filters:
+                filters.append(OwnershipItem.grouping_attribute_name.in_(["Client", "Group", "Holding Account"]))
+            
+            # Add client filter if specified
+            client_items = []
+            if client_filter:
+                # If specific client requested, get that client and its related entities
+                client_items = db.query(OwnershipItem).filter(
+                    OwnershipItem.metadata_id == metadata_id,
+                    OwnershipItem.client == client_filter
+                ).all()
+                
+                # Get portfolios associated with this client
+                client_portfolios = set([item.portfolio for item in client_items if item.portfolio])
+                
+                # Add to filters to get related entities
+                if client_portfolios:
+                    filters.append(OwnershipItem.portfolio.in_(client_portfolios))
+            
+            # Get all relevant ownership items based on filters
+            ownership_items = db.query(OwnershipItem).filter(*filters).all()
+            
+            if not ownership_items:
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "nodes": [],
+                        "links": []
+                    },
+                    "processing_time_seconds": round(time.time() - start_time, 3)
+                })
+            
+            # Build network data
+            nodes = []
+            links = []
+            node_ids = set()  # To avoid duplicates
+            
+            # Helper function to add node if not already added
+            def add_node(id, name, type, portfolio=None, entity_id=None, account_number=None):
+                if id not in node_ids:
+                    node_ids.add(id)
+                    node = {
+                        "id": id,
+                        "name": name,
+                        "type": type
+                    }
+                    if portfolio:
+                        node["portfolio"] = portfolio
+                    if entity_id:
+                        node["entity_id"] = entity_id
+                    if account_number:
+                        node["account_number"] = account_number
+                    nodes.append(node)
+                    return True
+                return False
+            
+            # First, add all entities as nodes
+            for item in ownership_items:
+                # Node ID is combination of name and type to avoid collisions
+                node_id = f"{item.client}_{item.grouping_attribute_name}"
+                
+                # Only add node if it passes the filters
+                should_add = True
+                if item.grouping_attribute_name == "Client" and hide_clients:
+                    should_add = False
+                elif item.grouping_attribute_name == "Group" and hide_groups:
+                    should_add = False
+                elif item.grouping_attribute_name == "Holding Account" and hide_accounts:
+                    should_add = False
+                
+                if should_add:
+                    add_node(
+                        id=node_id,
+                        name=item.client,
+                        type=item.grouping_attribute_name,
+                        portfolio=item.portfolio,
+                        entity_id=item.entity_id,
+                        account_number=item.holding_account_number
+                    )
+            
+            # Now add links based on portfolio relationships
+            portfolio_to_nodes = {}
+            
+            # First, collect nodes by portfolio
+            for item in ownership_items:
+                if item.portfolio:
+                    if item.portfolio not in portfolio_to_nodes:
+                        portfolio_to_nodes[item.portfolio] = []
+                    
+                    node_id = f"{item.client}_{item.grouping_attribute_name}"
+                    if node_id in node_ids:  # Only add if node exists
+                        portfolio_to_nodes[item.portfolio].append({
+                            "id": node_id,
+                            "type": item.grouping_attribute_name
+                        })
+            
+            # Then create links between nodes in the same portfolio
+            # Hierarchy: Client -> Group -> Account
+            for portfolio, portfolio_nodes in portfolio_to_nodes.items():
+                # Get clients, groups, and accounts in this portfolio
+                clients = [n for n in portfolio_nodes if n["type"] == "Client"]
+                groups = [n for n in portfolio_nodes if n["type"] == "Group"]
+                accounts = [n for n in portfolio_nodes if n["type"] == "Holding Account"]
+                
+                # Link clients to groups
+                for client in clients:
+                    for group in groups:
+                        links.append({
+                            "source": client["id"],
+                            "target": group["id"],
+                            "value": 1
+                        })
+                
+                # Link groups to accounts
+                for group in groups:
+                    for account in accounts:
+                        links.append({
+                            "source": group["id"],
+                            "target": account["id"],
+                            "value": 1
+                        })
+                
+                # If no groups, link clients directly to accounts
+                if not groups and clients:
+                    for client in clients:
+                        for account in accounts:
+                            links.append({
+                                "source": client["id"],
+                                "target": account["id"],
+                                "value": 1
+                            })
+            
+            # Calculate processing time
+            processing_time = time.time() - start_time
+            
+            return jsonify({
+                "success": True,
+                "data": {
+                    "nodes": nodes,
+                    "links": links
+                },
+                "processing_time_seconds": round(processing_time, 3)
+            })
+    
+    except Exception as e:
+        logger.error(f"Error generating ownership network: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Error generating ownership network: {str(e)}"
+        }), 500
 
 # Run the server
 if __name__ == "__main__":

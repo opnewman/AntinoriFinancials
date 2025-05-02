@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANTINORI Ownership Explorer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- D3.js for visualization -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .network-diagram .links line {
+            stroke: #999;
+            stroke-opacity: 0.6;
+        }
+        
+        .network-diagram .nodes circle {
+            stroke: #fff;
+            stroke-width: 1.5px;
+        }
+        
+        .network-diagram text {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+        }
+        
+        /* Node colors by entity type */
+        .node-client {
+            fill: #14532D; /* Deep green */
+        }
+        
+        .node-group {
+            fill: #22C55E; /* Accent green */
+        }
+        
+        .node-account {
+            fill: #0F172A; /* Navy */
+        }
+        
+        .node-unknown {
+            fill: #CBD5E1; /* Light gray */
+        }
+        
+        /* Custom tooltip */
+        .tooltip {
+            position: absolute;
+            padding: 8px;
+            background: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            pointer-events: none;
+            font-size: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Navigation Bar -->
+    <nav class="bg-[#14532D] text-white shadow-md p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <a href="/" class="text-xl font-semibold">ANTINORI</a>
+                <span class="hidden md:inline text-sm">Financial Portfolio Reporting</span>
+            </div>
+            <div class="space-x-4">
+                <a href="/upload.html" class="hover:text-green-200 transition">Upload</a>
+                <a href="/ownership-tree.html" class="hover:text-green-200 transition">Ownership Tree</a>
+                <a href="/ownership-explorer.html" class="text-green-200 font-bold">Relationship Explorer</a>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Breadcrumb Navigation -->
+    <div class="bg-white shadow-sm">
+        <div class="container mx-auto py-2 px-4">
+            <div class="text-sm breadcrumbs text-gray-600">
+                <ul class="flex space-x-2">
+                    <li><a href="/">Dashboard</a> /</li>
+                    <li class="font-semibold">Ownership Relationship Explorer</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <main class="container mx-auto p-4">
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="p-4 border-b border-gray-200">
+                <h2 class="text-xl font-semibold text-gray-800">Ownership Relationship Explorer</h2>
+                <p class="text-gray-600 text-sm mt-1">Explore the connections between clients, groups, and accounts using an interactive network diagram</p>
+            </div>
+            
+            <!-- Filter Controls -->
+            <div class="p-4 bg-gray-50 border-b border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label for="clientFilter" class="block text-sm font-medium text-gray-700">Client Filter</label>
+                    <select id="clientFilter" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        <option value="">All Clients</option>
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+                <div>
+                    <label for="entityType" class="block text-sm font-medium text-gray-700">Entity Type</label>
+                    <div class="mt-1 flex space-x-2">
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" id="showClients" class="form-checkbox text-[#14532D]" checked>
+                            <span class="ml-2 text-sm">Clients</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" id="showGroups" class="form-checkbox text-[#22C55E]" checked>
+                            <span class="ml-2 text-sm">Groups</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" id="showAccounts" class="form-checkbox text-[#0F172A]" checked>
+                            <span class="ml-2 text-sm">Accounts</span>
+                        </label>
+                    </div>
+                </div>
+                <div>
+                    <label for="metadataSelector" class="block text-sm font-medium text-gray-700">Data Source</label>
+                    <select id="metadataSelector" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Visualization Space -->
+            <div class="p-4 bg-white">
+                <div id="loadingIndicator" class="flex items-center justify-center h-96">
+                    <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#14532D]"></div>
+                    <span class="ml-3 text-gray-600">Loading network data...</span>
+                </div>
+                
+                <div id="networkContainer" class="hidden">
+                    <div id="networkViz" class="network-diagram h-[600px] border border-gray-200 rounded overflow-hidden"></div>
+                    <div class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4 text-sm text-gray-700">
+                        <div class="p-3 bg-gray-50 rounded">
+                            <h3 class="font-semibold">Total Entities: <span id="totalEntities">0</span></h3>
+                        </div>
+                        <div class="p-3 bg-gray-50 rounded">
+                            <h3 class="font-semibold">Clients: <span id="clientCount">0</span></h3>
+                        </div>
+                        <div class="p-3 bg-gray-50 rounded">
+                            <h3 class="font-semibold">Groups: <span id="groupCount">0</span></h3>
+                        </div>
+                        <div class="p-3 bg-gray-50 rounded">
+                            <h3 class="font-semibold">Accounts: <span id="accountCount">0</span></h3>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="noDataMessage" class="hidden p-8 text-center text-gray-600">
+                    <p>No relationship data available for the selected filters.</p>
+                    <p class="mt-2">Try changing your filters or selecting a different metadata source.</p>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <footer class="bg-gray-100 text-gray-600 p-4 mt-8">
+        <div class="container mx-auto text-center text-sm">
+            <p>ANTINORI Financial Portfolio Reporting &copy; 2025</p>
+        </div>
+    </footer>
+    
+    <script>
+        // Utility functions
+        function createTooltip() {
+            return d3.select("body").append("div")
+                .attr("class", "tooltip")
+                .style("opacity", 0);
+        }
+        
+        // Data fetching functions
+        async function fetchMetadataOptions() {
+            const response = await fetch('/api/metadata-options');
+            const data = await response.json();
+            
+            if (data.success) {
+                const selector = document.getElementById('metadataSelector');
+                // Clear existing options
+                selector.innerHTML = '';
+                
+                data.options.forEach(option => {
+                    const optElement = document.createElement('option');
+                    optElement.value = option.id;
+                    optElement.textContent = `${option.view_name} (${option.date_range_start} to ${option.date_range_end})`;
+                    selector.appendChild(optElement);
+                });
+                
+                // Select the option with properClassification=true by default
+                const defaultOption = data.options.find(opt => opt.properClassification);
+                if (defaultOption) {
+                    selector.value = defaultOption.id;
+                }
+                
+                // Fetch network data after setting up selector
+                fetchNetworkData();
+            }
+        }
+        
+        async function fetchNetworkData() {
+            // Show loading indicator
+            document.getElementById('loadingIndicator').classList.remove('hidden');
+            document.getElementById('networkContainer').classList.add('hidden');
+            document.getElementById('noDataMessage').classList.add('hidden');
+            
+            const metadataId = document.getElementById('metadataSelector').value;
+            const clientFilter = document.getElementById('clientFilter').value;
+            
+            const showClients = document.getElementById('showClients').checked;
+            const showGroups = document.getElementById('showGroups').checked;
+            const showAccounts = document.getElementById('showAccounts').checked;
+            
+            // Build query parameters
+            let params = new URLSearchParams();
+            if (metadataId) params.append('metadata_id', metadataId);
+            if (clientFilter) params.append('client', clientFilter);
+            if (!showClients) params.append('hide_clients', 'true');
+            if (!showGroups) params.append('hide_groups', 'true');
+            if (!showAccounts) params.append('hide_accounts', 'true');
+            
+            try {
+                const response = await fetch(`/api/ownership-network?${params.toString()}`);
+                const data = await response.json();
+                
+                if (data.success && data.data.nodes.length > 0) {
+                    // Hide loading, show network
+                    document.getElementById('loadingIndicator').classList.add('hidden');
+                    document.getElementById('networkContainer').classList.remove('hidden');
+                    
+                    // Update statistics
+                    document.getElementById('totalEntities').textContent = data.data.nodes.length;
+                    document.getElementById('clientCount').textContent = data.data.nodes.filter(n => n.type === 'Client').length;
+                    document.getElementById('groupCount').textContent = data.data.nodes.filter(n => n.type === 'Group').length;
+                    document.getElementById('accountCount').textContent = data.data.nodes.filter(n => n.type === 'Holding Account').length;
+                    
+                    // Update client filter options if not already set
+                    if (document.getElementById('clientFilter').children.length <= 1) {
+                        const clientNodes = data.data.nodes.filter(n => n.type === 'Client');
+                        const clientSelect = document.getElementById('clientFilter');
+                        
+                        clientNodes.sort((a, b) => a.name.localeCompare(b.name)).forEach(client => {
+                            const option = document.createElement('option');
+                            option.value = client.name;
+                            option.textContent = client.name;
+                            clientSelect.appendChild(option);
+                        });
+                    }
+                    
+                    // Render the network diagram
+                    renderNetworkDiagram(data.data);
+                } else {
+                    // Show no data message
+                    document.getElementById('loadingIndicator').classList.add('hidden');
+                    document.getElementById('noDataMessage').classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error fetching network data:', error);
+                document.getElementById('loadingIndicator').classList.add('hidden');
+                document.getElementById('noDataMessage').classList.remove('hidden');
+            }
+        }
+        
+        // Network visualization
+        function renderNetworkDiagram(data) {
+            // Clear previous visualization
+            document.getElementById('networkViz').innerHTML = '';
+            
+            // Create SVG container
+            const container = document.getElementById('networkViz');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            const svg = d3.select('#networkViz')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+            
+            // Add zoom behavior
+            const g = svg.append('g');
+            
+            svg.call(d3.zoom()
+                .scaleExtent([0.1, 4])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                })
+            );
+            
+            // Create tooltip
+            const tooltip = createTooltip();
+            
+            // Create the simulation
+            const simulation = d3.forceSimulation(data.nodes)
+                .force('link', d3.forceLink(data.links).id(d => d.id).distance(100))
+                .force('charge', d3.forceManyBody().strength(-300))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('x', d3.forceX(width / 2).strength(0.1))
+                .force('y', d3.forceY(height / 2).strength(0.1));
+            
+            // Create links
+            const link = g.append('g')
+                .attr('class', 'links')
+                .selectAll('line')
+                .data(data.links)
+                .enter().append('line')
+                .attr('stroke-width', d => Math.sqrt(d.value || 1))
+                .attr('stroke', '#999');
+            
+            // Create nodes
+            const node = g.append('g')
+                .attr('class', 'nodes')
+                .selectAll('g')
+                .data(data.nodes)
+                .enter().append('g');
+            
+            // Add circles to nodes
+            node.append('circle')
+                .attr('r', d => {
+                    // Size by type
+                    if (d.type === 'Client') return 10;
+                    if (d.type === 'Group') return 8;
+                    if (d.type === 'Holding Account') return 6;
+                    return 5;
+                })
+                .attr('class', d => {
+                    // Color by type
+                    if (d.type === 'Client') return 'node-client';
+                    if (d.type === 'Group') return 'node-group';
+                    if (d.type === 'Holding Account') return 'node-account';
+                    return 'node-unknown';
+                })
+                .on('mouseover', function(event, d) {
+                    // Highlight connected links and nodes
+                    link.style('stroke', l => (l.source.id === d.id || l.target.id === d.id) ? '#14532D' : '#999')
+                        .style('stroke-width', l => (l.source.id === d.id || l.target.id === d.id) ? 2 : 1);
+                    
+                    // Show tooltip
+                    tooltip.transition()
+                        .duration(200)
+                        .style('opacity', 0.9);
+                    
+                    let tooltipContent = `
+                        <div class="font-semibold">${d.name}</div>
+                        <div>Type: ${d.type}</div>
+                    `;
+                    
+                    if (d.portfolio) tooltipContent += `<div>Portfolio: ${d.portfolio}</div>`;
+                    if (d.entity_id) tooltipContent += `<div>Entity ID: ${d.entity_id}</div>`;
+                    if (d.account_number) tooltipContent += `<div>Account #: ${d.account_number}</div>`;
+                    
+                    tooltip.html(tooltipContent)
+                        .style('left', (event.pageX + 10) + 'px')
+                        .style('top', (event.pageY - 28) + 'px');
+                })
+                .on('mouseout', function() {
+                    // Reset link styles
+                    link.style('stroke', '#999')
+                        .style('stroke-width', d => Math.sqrt(d.value || 1));
+                    
+                    // Hide tooltip
+                    tooltip.transition()
+                        .duration(500)
+                        .style('opacity', 0);
+                })
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended)
+                );
+            
+            // Add labels to nodes (for larger ones)
+            node.append('text')
+                .attr('dx', 12)
+                .attr('dy', '.35em')
+                .text(d => {
+                    // Only show labels for clients and groups, not accounts (too many)
+                    if (d.type === 'Client' || d.type === 'Group') return d.name;
+                    return '';
+                })
+                .style('font-size', d => {
+                    if (d.type === 'Client') return '10px';
+                    if (d.type === 'Group') return '8px';
+                    return '6px';
+                })
+                .style('fill', '#333');
+            
+            // Set up animation
+            simulation.on('tick', () => {
+                link
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+                
+                node.attr('transform', d => `translate(${d.x},${d.y})`);
+            });
+            
+            // Drag functions
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+            
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+            
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchMetadataOptions();
+            
+            // Set up event listeners
+            document.getElementById('metadataSelector').addEventListener('change', fetchNetworkData);
+            document.getElementById('clientFilter').addEventListener('change', fetchNetworkData);
+            document.getElementById('showClients').addEventListener('change', fetchNetworkData);
+            document.getElementById('showGroups').addEventListener('change', fetchNetworkData);
+            document.getElementById('showAccounts').addEventListener('change', fetchNetworkData);
+        });
+    </script>
+</body>
+</html>
