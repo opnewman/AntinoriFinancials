@@ -47,6 +47,16 @@ const api = {
             });
             
             clearTimeout(timeoutId);
+            
+            // Check if this is a background processing response
+            if (response.data.success && response.data.status === 'processing' && response.data.status_url) {
+                // Return the response with a flag to indicate background processing is happening
+                return {
+                    ...response.data,
+                    isBackgroundProcessing: true
+                };
+            }
+            
             return response.data;
         } catch (error) {
             console.error('Upload error:', error);
@@ -80,6 +90,24 @@ const api = {
                     message: error.message || 'An unexpected error occurred' 
                 };
             }
+        }
+    },
+    
+    /**
+     * Check the status of a background upload
+     * @param {string} statusUrl - URL to check status
+     */
+    checkUploadStatus: async (statusUrl) => {
+        try {
+            const response = await axios.get(`${API_BASE_URL}${statusUrl}`);
+            return response.data;
+        } catch (error) {
+            console.error('Status check error:', error);
+            return { 
+                success: false, 
+                status: 'error',
+                message: 'Error checking upload status' 
+            };
         }
     },
     
