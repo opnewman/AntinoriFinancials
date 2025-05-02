@@ -468,20 +468,26 @@ def check_upload_status():
 
 @app.route("/api/upload/ownership", methods=["POST"])
 def upload_ownership_tree():
+    # Set the response content type to ensure proper JSON response
+    response_headers = {"Content-Type": "application/json"}
+    
     if 'file' not in request.files:
-        return jsonify({"success": False, "message": "No file part in the request"}), 400
+        response = jsonify({"success": False, "message": "No file part in the request"})
+        return response, 400, response_headers
     
     file = request.files['file']
     if file.filename == '':
-        return jsonify({"success": False, "message": "No file selected"}), 400
+        response = jsonify({"success": False, "message": "No file selected"})
+        return response, 400, response_headers
     
     # Check file extension
     file_ext = os.path.splitext(file.filename)[1].lower()
     if file_ext not in ['.xlsx', '.xls', '.csv', '.txt']:
-        return jsonify({
+        response = jsonify({
             "success": False, 
             "message": "Only Excel files (.xlsx, .xls), CSV or TXT files are supported"
-        }), 400
+        })
+        return response, 400, response_headers
     
     try:
         import pandas as pd
@@ -571,13 +577,14 @@ def upload_ownership_tree():
             
             except Exception as e:
                 logger.error(f"Error parsing Excel file: {str(e)}")
-                return jsonify({
+                response = jsonify({
                     "success": False,
                     "message": f"Error parsing Excel file: {str(e)}",
                     "rows_processed": 0,
                     "rows_inserted": 0,
                     "errors": [str(e)]
-                }), 400
+                })
+                return response, 400, response_headers
                 
         elif file_ext in ['.csv', '.txt']:
             # CSV or TXT file - use StringIO with optimized approach
