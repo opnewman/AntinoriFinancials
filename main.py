@@ -50,6 +50,11 @@ def test_page():
 def ownership_tree_page():
     return send_from_directory('frontend', 'ownership-tree.html')
 
+# Upload data page
+@app.route('/upload')
+def upload_page():
+    return send_from_directory('frontend', 'upload.html')
+
 # Ownership relationship explorer page
 @app.route('/ownership-explorer')
 def ownership_explorer_page():
