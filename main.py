@@ -1260,7 +1260,12 @@ def generate_portfolio_report():
     
     # Connect to DB first to get the latest date if not specified
     with get_db_connection() as db:
-        date = request.args.get('date', get_latest_data_date(db))
+        # If date param is empty string or None, use latest date from DB
+        date_param = request.args.get('date')
+        if not date_param:
+            date = get_latest_data_date(db)
+        else:
+            date = date_param
         logger.info(f"Portfolio report: Using date {date} for level={level}, level_key={level_key}")
         
         try:
@@ -1394,7 +1399,12 @@ def get_allocation_chart_data():
     
     # Connect to DB first to get the latest date if not specified
     with get_db_connection() as db:
-        date = request.args.get('date', get_latest_data_date(db))
+        # If date param is empty string or None, use latest date from DB
+        date_param = request.args.get('date')
+        if not date_param:
+            date = get_latest_data_date(db)
+        else:
+            date = date_param
         logger.info(f"Allocation chart: Using date {date} for level={level}, level_key={level_key}")
     
     try:
@@ -1521,7 +1531,12 @@ def get_liquidity_chart_data():
     
     # Connect to DB first to get the latest date if not specified
     with get_db_connection() as db:
-        date = request.args.get('date', get_latest_data_date(db))
+        # If date param is empty string or None, use latest date from DB
+        date_param = request.args.get('date')
+        if not date_param:
+            date = get_latest_data_date(db)
+        else:
+            date = date_param
         logger.info(f"Liquidity chart: Using date {date} for level={level}, level_key={level_key}")
     
     try:
@@ -1649,7 +1664,12 @@ def get_performance_chart_data():
     
     # Connect to DB first to get the latest date if not specified
     with get_db_connection() as db:
-        date = request.args.get('date', get_latest_data_date(db))
+        # If date param is empty string or None, use latest date from DB
+        date_param = request.args.get('date')
+        if not date_param:
+            date = get_latest_data_date(db)
+        else:
+            date = date_param
         logger.info(f"Performance chart: Using date {date} for level={level}, level_key={level_key}, period={period}")
     
     if period == 'YTD':

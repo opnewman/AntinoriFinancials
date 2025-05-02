@@ -1,6 +1,6 @@
 const Dashboard = () => {
     const [loading, setLoading] = React.useState(true);
-    const [reportDate, setReportDate] = React.useState('');  // Don't set default date, use API's date
+    const [reportDate, setReportDate] = React.useState('');  // Empty string will make backend use the latest date
     const [reportLevel, setReportLevel] = React.useState('client');
     const [levelKey, setLevelKey] = React.useState('');
     const [levelOptions, setLevelOptions] = React.useState([]);
