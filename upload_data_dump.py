@@ -127,22 +127,28 @@ def process_excel_file(file_path):
         # Now read the data with batching
         logger.info(f"Processing data for date: {report_date}")
         
-        # Read in chunks using an iterator
-        excel_iterator = pd.read_excel(
+        # Read the entire file first
+        df = pd.read_excel(
             file_path, 
             header=3,  # Header is in row 4 (0-indexed)
             engine='openpyxl',
-            chunksize=1000,  # Process 1000 rows at a time
             dtype=str  # Use string for all columns initially
         )
         
-        # Process in batches
-        total_rows = 0
+        # Get total row count
+        total_rows = len(df)
+        logger.info(f"Found {total_rows} rows to process")
+        
+        # Process in batches of 1000 rows
+        batch_size = 1000
         processed_rows = 0
-        for chunk_idx, df_chunk in enumerate(excel_iterator):
+        
+        # Split into chunks manually
+        for chunk_idx in range(0, total_rows, batch_size):
+            end_idx = min(chunk_idx + batch_size, total_rows)
+            df_chunk = df.iloc[chunk_idx:end_idx].copy()
             # Get chunk size
             chunk_size = len(df_chunk)
-            total_rows += chunk_size
             
             logger.info(f"Processing chunk {chunk_idx+1} with {chunk_size} rows")
             

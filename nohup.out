@@ -1,0 +1,14 @@
+/home/runner/workspace/upload_data_dump.py:39: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  Base = declarative_base()
+2025-05-02 18:01:24,289 - INFO - Processing Excel file: /tmp/data_dump_ql6xtek_/All_clients_DATA_DUMP_05-01-2025.xlsx
+/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/openpyxl/styles/stylesheet.py:237: UserWarning: Workbook contains no default style, apply openpyxl's default
+  warn("Workbook contains no default style, apply openpyxl's default")
+2025-05-02 18:01:25,922 - INFO - Processing data for date: 2025-05-01
+2025-05-02 18:01:25,922 - ERROR - Error processing file: read_excel() got an unexpected keyword argument 'chunksize'
+2025-05-02 18:01:25,923 - ERROR - Traceback (most recent call last):
+  File "/home/runner/workspace/upload_data_dump.py", line 131, in process_excel_file
+    excel_iterator = pd.read_excel(
+                     ^^^^^^^^^^^^^^
+TypeError: read_excel() got an unexpected keyword argument 'chunksize'
+
+2025-05-02 18:01:25,923 - ERROR - Processing failed: read_excel() got an unexpected keyword argument 'chunksize'
