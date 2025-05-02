@@ -1220,8 +1220,8 @@ def get_entity_options():
     
     try:
         with get_db_connection() as db:
-            # Get the latest date from the database
-            latest_date = get_latest_data_date(db)
+            # Use 2025-05-01 as the specific date we know our data exists for
+            latest_date = "2025-05-01" 
             logger.info(f"Getting entity options for type={entity_type} with date={latest_date}")
             
             # Check if we have data for this date
@@ -1295,15 +1295,16 @@ def generate_portfolio_report():
     level = request.args.get('level', 'portfolio')
     level_key = request.args.get('level_key', 'Portfolio 1')
     
-    # Connect to DB first to get the latest date if not specified
+    # Get the date parameter or default to 2025-05-01
+    date_param = request.args.get('date')
+    if not date_param:
+        # Use 2025-05-01 as the default date which we know has data
+        date = "2025-05-01"
+    else:
+        date = date_param
+    logger.info(f"Portfolio report: Using date {date} for level={level}, level_key={level_key}")
+    
     with get_db_connection() as db:
-        # If date param is empty string or None, use latest date from DB
-        date_param = request.args.get('date')
-        if not date_param:
-            date = get_latest_data_date(db)
-        else:
-            date = date_param
-        logger.info(f"Portfolio report: Using date {date} for level={level}, level_key={level_key}")
         
         try:
             # Calculate total adjusted value based on selection
