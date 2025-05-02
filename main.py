@@ -35,6 +35,14 @@ CORS(app)
 def root():
     return send_from_directory('frontend', 'index.html')
 
+# Routes for client-side SPA navigation
+@app.route('/dashboard')
+@app.route('/upload-data')
+@app.route('/reports')
+@app.route('/ownership')
+def serve_spa():
+    return send_from_directory('frontend', 'index.html')
+
 # Serve frontend static files
 @app.route('/<path:path>')
 def serve_static(path):
