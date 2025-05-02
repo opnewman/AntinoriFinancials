@@ -95,6 +95,9 @@ const App = () => {
                                 </div>
                             </div>
                         </Route>
+                        <Route path="/ownership">
+                            <OwnershipTreePage />
+                        </Route>
                         <Route path="/reports">
                             <div className="container mx-auto p-4">
                                 <h1 className="text-2xl font-bold mb-6">Portfolio Reports</h1>

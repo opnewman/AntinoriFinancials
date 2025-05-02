@@ -252,97 +252,89 @@ const Dashboard = () => {
     
     return (
         <div className="container mx-auto p-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                <div className="md:col-span-2">
-                    <div className="bg-white rounded-lg shadow-md p-6 h-full">
-                        <h2 className="text-xl font-bold mb-4">Portfolio Report Generator</h2>
-                        
-                        {error && (
-                            <div className="bg-red-50 text-red-600 p-3 rounded-md mb-4">
-                                <i className="fas fa-exclamation-circle mr-2"></i>
-                                {error}
-                            </div>
-                        )}
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                            <div>
-                                <label htmlFor="reportDate" className="block text-sm font-medium text-gray-700 mb-1">
-                                    Report Date
-                                </label>
-                                <input
-                                    type="date"
-                                    id="reportDate"
-                                    value={reportDate}
-                                    onChange={(e) => setReportDate(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                                />
-                            </div>
-                            
-                            <div>
-                                <label htmlFor="reportLevel" className="block text-sm font-medium text-gray-700 mb-1">
-                                    Report Level
-                                </label>
-                                <select
-                                    id="reportLevel"
-                                    value={reportLevel}
-                                    onChange={handleLevelChange}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                                >
-                                    <option value="client">Client</option>
-                                    <option value="portfolio">Portfolio</option>
-                                    <option value="group">Group</option>
-                                    <option value="account">Account</option>
-                                </select>
-                            </div>
-                            
-                            <div>
-                                <label htmlFor="levelKey" className="block text-sm font-medium text-gray-700 mb-1">
-                                    Select {reportLevel.charAt(0).toUpperCase() + reportLevel.slice(1)}
-                                </label>
-                                <select
-                                    id="levelKey"
-                                    value={levelKey}
-                                    onChange={(e) => setLevelKey(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                                >
-                                    <option value="">Select...</option>
-                                    {levelOptions.map((option) => (
-                                        <option key={option.value} value={option.value}>
-                                            {option.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            
-                            <div className="flex items-end">
-                                <button
-                                    onClick={generateReport}
-                                    disabled={loading || !levelKey}
-                                    className={`w-full py-2 px-4 rounded-md font-medium ${
-                                        loading || !levelKey
-                                            ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
-                                            : 'bg-green-700 text-white hover:bg-green-800'
-                                    }`}
-                                >
-                                    {loading ? (
-                                        <span className="flex items-center justify-center">
-                                            <i className="fas fa-spinner fa-spin mr-2"></i>
-                                            Generating...
-                                        </span>
-                                    ) : (
-                                        <span className="flex items-center justify-center">
-                                            <i className="fas fa-chart-line mr-2"></i>
-                                            Generate Report
-                                        </span>
-                                    )}
-                                </button>
-                            </div>
-                        </div>
+            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h2 className="text-xl font-bold mb-4">Portfolio Report Generator</h2>
+                
+                {error && (
+                    <div className="bg-red-50 text-red-600 p-3 rounded-md mb-4">
+                        <i className="fas fa-exclamation-circle mr-2"></i>
+                        {error}
+                    </div>
+                )}
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label htmlFor="reportDate" className="block text-sm font-medium text-gray-700 mb-1">
+                            Report Date
+                        </label>
+                        <input
+                            type="date"
+                            id="reportDate"
+                            value={reportDate}
+                            onChange={(e) => setReportDate(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                        />
+                    </div>
+                    
+                    <div>
+                        <label htmlFor="reportLevel" className="block text-sm font-medium text-gray-700 mb-1">
+                            Report Level
+                        </label>
+                        <select
+                            id="reportLevel"
+                            value={reportLevel}
+                            onChange={handleLevelChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                        >
+                            <option value="client">Client</option>
+                            <option value="portfolio">Portfolio</option>
+                            <option value="group">Group</option>
+                            <option value="account">Account</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label htmlFor="levelKey" className="block text-sm font-medium text-gray-700 mb-1">
+                            Select {reportLevel.charAt(0).toUpperCase() + reportLevel.slice(1)}
+                        </label>
+                        <select
+                            id="levelKey"
+                            value={levelKey}
+                            onChange={(e) => setLevelKey(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                        >
+                            <option value="">Select...</option>
+                            {levelOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </select>
                     </div>
                 </div>
                 
-                <div className="md:col-span-1">
-                    <OwnershipTree data={ownershipTree} />
+                <div className="flex justify-end">
+                    <button
+                        onClick={generateReport}
+                        disabled={loading || !levelKey}
+                        className={`py-2 px-6 rounded-md font-medium ${
+                            loading || !levelKey
+                                ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                                : 'bg-green-700 text-white hover:bg-green-800'
+                        }`}
+                    >
+                        {loading ? (
+                            <span className="flex items-center justify-center">
+                                <i className="fas fa-spinner fa-spin mr-2"></i>
+                                Generating...
+                            </span>
+                        ) : (
+                            <span className="flex items-center justify-center">
+                                <i className="fas fa-chart-line mr-2"></i>
+                                Generate Report
+                            </span>
+                        )}
+                    </button>
                 </div>
             </div>
             
