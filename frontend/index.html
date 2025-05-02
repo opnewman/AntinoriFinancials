@@ -507,8 +507,11 @@
                         });
                     });
                 
-                // Update last data refresh time
-                document.getElementById('lastRefreshed').textContent = new Date().toLocaleString();
+                // Update last data refresh time if the element exists
+                const lastRefreshedEl = document.getElementById('lastRefreshed');
+                if (lastRefreshedEl) {
+                    lastRefreshedEl.textContent = new Date().toLocaleString();
+                }
             }
             
             // Update allocation chart with data
@@ -571,44 +574,7 @@
                 performanceChart.update();
             }
             
-            // Also fetch performance data in loadDashboardData function
-            // Add this inside the loadDashboardData function before the closing curly brace
-            fetch(`/api/charts/performance?date=${today}&level=${defaultLevel}&level_key=${encodeURIComponent(defaultLevelKey)}&period=YTD`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data && data.labels && data.datasets) {
-                        updatePerformanceChart(data);
-                    } else {
-                        console.error('Invalid performance data format:', data);
-                        // Fallback to sample data if API fails
-                        updatePerformanceChart({
-                            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-                            datasets: [{
-                                label: 'Performance (%)',
-                                data: [1.2, 0.8, -0.5, 1.5, 2.0, 1.0, 1.8, 0.7, -1.0, 2.5, 1.0, 1.0],
-                                borderColor: '#4C72B0',
-                                backgroundColor: 'rgba(76, 114, 176, 0.1)',
-                                fill: true,
-                                tension: 0.4
-                            }]
-                        });
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching performance data:', error);
-                    // Fallback to sample data if API fails
-                    updatePerformanceChart({
-                        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-                        datasets: [{
-                            label: 'Performance (%)',
-                            data: [1.2, 0.8, -0.5, 1.5, 2.0, 1.0, 1.8, 0.7, -1.0, 2.5, 1.0, 1.0],
-                            borderColor: '#4C72B0',
-                            backgroundColor: 'rgba(76, 114, 176, 0.1)',
-                            fill: true,
-                            tension: 0.4
-                        }]
-                    });
-                });
+            // Note: Performance chart data is already being fetched in the loadDashboardData function
         });
     </script>
 </body>

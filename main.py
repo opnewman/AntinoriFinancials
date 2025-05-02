@@ -1214,32 +1214,248 @@ def generate_portfolio_report():
 @app.route("/api/charts/allocation", methods=["GET"])
 def get_allocation_chart_data():
     date = request.args.get('date', datetime.date.today().isoformat())
-    level = request.args.get('level', 'portfolio')
-    level_key = request.args.get('level_key', 'Portfolio 1')
+    level = request.args.get('level', 'client')
+    level_key = request.args.get('level_key', 'All Clients')
     
-    return jsonify({
-        "labels": ["Equities", "Fixed Income", "Alternatives", "Cash"],
-        "datasets": [{
-            "data": [45.5, 30.0, 15.5, 9.0],
-            "backgroundColor": ["#4C72B0", "#55A868", "#C44E52", "#8172B3"],
-            "borderWidth": 1
-        }]
-    })
+    try:
+        with get_db_connection() as db:
+            # Create a connection to query the database
+            if level == 'client':
+                # For 'All Clients' or a specific client
+                if level_key == 'All Clients':
+                    # Query all asset classes and sum their values
+                    query = text("""
+                    SELECT asset_class, SUM(adjusted_value) as total_value 
+                    FROM financial_positions 
+                    WHERE report_date = :date
+                    GROUP BY asset_class
+                    """)
+                    result = db.execute(query, {"date": date})
+                else:
+                    # For a specific client
+                    query = text("""
+                    SELECT asset_class, SUM(adjusted_value) as total_value 
+                    FROM financial_positions 
+                    WHERE report_date = :date AND top_level_client = :client
+                    GROUP BY asset_class
+                    """)
+                    result = db.execute(query, {"date": date, "client": level_key})
+            elif level == 'group':
+                # For a specific group
+                query = text("""
+                SELECT asset_class, SUM(adjusted_value) as total_value 
+                FROM financial_positions 
+                WHERE report_date = :date AND group_name = :group
+                GROUP BY asset_class
+                """)
+                result = db.execute(query, {"date": date, "group": level_key})
+            elif level == 'portfolio':
+                # For a specific portfolio
+                query = text("""
+                SELECT asset_class, SUM(adjusted_value) as total_value 
+                FROM financial_positions 
+                WHERE report_date = :date AND portfolio = :portfolio
+                GROUP BY asset_class
+                """)
+                result = db.execute(query, {"date": date, "portfolio": level_key})
+            elif level == 'account':
+                # For a specific account
+                query = text("""
+                SELECT asset_class, SUM(adjusted_value) as total_value 
+                FROM financial_positions 
+                WHERE report_date = :date AND holding_account = :account
+                GROUP BY asset_class
+                """)
+                result = db.execute(query, {"date": date, "account": level_key})
+            else:
+                # Default to all data if level is not recognized
+                query = text("""
+                SELECT asset_class, SUM(adjusted_value) as total_value 
+                FROM financial_positions 
+                WHERE report_date = :date
+                GROUP BY asset_class
+                """)
+                result = db.execute(query, {"date": date})
+            
+            # Fetch results
+            results = result.fetchall()
+            
+            if not results:
+                # If no data is found, return default values
+                logger.warning(f"No data found for allocation chart with date={date}, level={level}, level_key={level_key}")
+                return jsonify({
+                    "labels": ["Equities", "Fixed Income", "Alternatives", "Cash"],
+                    "datasets": [{
+                        "data": [45.5, 30.0, 15.5, 9.0],
+                        "backgroundColor": ["#4C72B0", "#55A868", "#C44E52", "#8172B3"],
+                        "borderWidth": 1
+                    }]
+                })
+            
+            # Extract labels and data from query results
+            labels = []
+            data = []
+            
+            for row in results:
+                if hasattr(row, 'asset_class'):
+                    # SQLAlchemy Row object
+                    label = row.asset_class if row.asset_class else "Unclassified"
+                    value = float(row.total_value)
+                else:
+                    # Tuple
+                    label = row[0] if row[0] else "Unclassified"
+                    value = float(row[1])
+                
+                labels.append(label)
+                data.append(value)
+            
+            # Define a fixed set of colors for consistency
+            colors = ["#4C72B0", "#55A868", "#C44E52", "#8172B3", "#CCB974", "#64B5CD", "#E59C59", "#8C8C8C"]
+            # Repeat colors if we have more categories than colors
+            backgroundColor = [colors[i % len(colors)] for i in range(len(labels))]
+            
+            return jsonify({
+                "labels": labels,
+                "datasets": [{
+                    "data": data,
+                    "backgroundColor": backgroundColor,
+                    "borderWidth": 1
+                }]
+            })
+    except Exception as e:
+        logger.error(f"Error retrieving allocation chart data: {str(e)}")
+        # Return default values on error
+        return jsonify({
+            "labels": ["Equities", "Fixed Income", "Alternatives", "Cash"],
+            "datasets": [{
+                "data": [45.5, 30.0, 15.5, 9.0],
+                "backgroundColor": ["#4C72B0", "#55A868", "#C44E52", "#8172B3"],
+                "borderWidth": 1
+            }]
+        })
 
 @app.route("/api/charts/liquidity", methods=["GET"])
 def get_liquidity_chart_data():
     date = request.args.get('date', datetime.date.today().isoformat())
-    level = request.args.get('level', 'portfolio')
-    level_key = request.args.get('level_key', 'Portfolio 1')
+    level = request.args.get('level', 'client')
+    level_key = request.args.get('level_key', 'All Clients')
     
-    return jsonify({
-        "labels": ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly"],
-        "datasets": [{
-            "data": [60.0, 15.0, 10.0, 10.0, 5.0],
-            "backgroundColor": ["#4C72B0", "#55A868", "#C44E52", "#8172B3", "#CCB974"],
-            "borderWidth": 1
-        }]
-    })
+    try:
+        with get_db_connection() as db:
+            # Create a connection to query the database
+            if level == 'client':
+                # For 'All Clients' or a specific client
+                if level_key == 'All Clients':
+                    # Query all liquidity categories and sum their values
+                    query = text("""
+                    SELECT liquid_vs_illiquid, SUM(adjusted_value) as total_value 
+                    FROM financial_positions 
+                    WHERE report_date = :date
+                    GROUP BY liquid_vs_illiquid
+                    """)
+                    result = db.execute(query, {"date": date})
+                else:
+                    # For a specific client
+                    query = text("""
+                    SELECT liquid_vs_illiquid, SUM(adjusted_value) as total_value 
+                    FROM financial_positions 
+                    WHERE report_date = :date AND top_level_client = :client
+                    GROUP BY liquid_vs_illiquid
+                    """)
+                    result = db.execute(query, {"date": date, "client": level_key})
+            elif level == 'group':
+                # For a specific group
+                query = text("""
+                SELECT liquid_vs_illiquid, SUM(adjusted_value) as total_value 
+                FROM financial_positions 
+                WHERE report_date = :date AND group_name = :group
+                GROUP BY liquid_vs_illiquid
+                """)
+                result = db.execute(query, {"date": date, "group": level_key})
+            elif level == 'portfolio':
+                # For a specific portfolio
+                query = text("""
+                SELECT liquid_vs_illiquid, SUM(adjusted_value) as total_value 
+                FROM financial_positions 
+                WHERE report_date = :date AND portfolio = :portfolio
+                GROUP BY liquid_vs_illiquid
+                """)
+                result = db.execute(query, {"date": date, "portfolio": level_key})
+            elif level == 'account':
+                # For a specific account
+                query = text("""
+                SELECT liquid_vs_illiquid, SUM(adjusted_value) as total_value 
+                FROM financial_positions 
+                WHERE report_date = :date AND holding_account = :account
+                GROUP BY liquid_vs_illiquid
+                """)
+                result = db.execute(query, {"date": date, "account": level_key})
+            else:
+                # Default to all data if level is not recognized
+                query = text("""
+                SELECT liquid_vs_illiquid, SUM(adjusted_value) as total_value 
+                FROM financial_positions 
+                WHERE report_date = :date
+                GROUP BY liquid_vs_illiquid
+                """)
+                result = db.execute(query, {"date": date})
+            
+            # Fetch results
+            results = result.fetchall()
+            
+            if not results:
+                # If no data is found, return default values
+                logger.warning(f"No data found for liquidity chart with date={date}, level={level}, level_key={level_key}")
+                return jsonify({
+                    "labels": ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly"],
+                    "datasets": [{
+                        "data": [60.0, 15.0, 10.0, 10.0, 5.0],
+                        "backgroundColor": ["#4C72B0", "#55A868", "#C44E52", "#8172B3", "#CCB974"],
+                        "borderWidth": 1
+                    }]
+                })
+            
+            # Extract labels and data from query results
+            labels = []
+            data = []
+            
+            for row in results:
+                if hasattr(row, 'liquid_vs_illiquid'):
+                    # SQLAlchemy Row object
+                    label = row.liquid_vs_illiquid if row.liquid_vs_illiquid else "Unclassified"
+                    value = float(row.total_value)
+                else:
+                    # Tuple
+                    label = row[0] if row[0] else "Unclassified"
+                    value = float(row[1])
+                
+                labels.append(label)
+                data.append(value)
+            
+            # Define a fixed set of colors for consistency
+            colors = ["#4C72B0", "#55A868", "#C44E52", "#8172B3", "#CCB974"]
+            # Repeat colors if we have more categories than colors
+            backgroundColor = [colors[i % len(colors)] for i in range(len(labels))]
+            
+            return jsonify({
+                "labels": labels,
+                "datasets": [{
+                    "data": data,
+                    "backgroundColor": backgroundColor,
+                    "borderWidth": 1
+                }]
+            })
+    except Exception as e:
+        logger.error(f"Error retrieving liquidity chart data: {str(e)}")
+        # Return default values on error
+        return jsonify({
+            "labels": ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly"],
+            "datasets": [{
+                "data": [60.0, 15.0, 10.0, 10.0, 5.0],
+                "backgroundColor": ["#4C72B0", "#55A868", "#C44E52", "#8172B3", "#CCB974"],
+                "borderWidth": 1
+            }]
+        })
 
 @app.route("/api/charts/performance", methods=["GET"])
 def get_performance_chart_data():
