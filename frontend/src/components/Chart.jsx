@@ -63,8 +63,13 @@ class ChartComponentClass extends React.Component {
     }
     
     destroyChart() {
-        if (this.chartInstance) {
-            this.chartInstance.destroy();
+        try {
+            if (this.chartInstance && typeof this.chartInstance.destroy === 'function') {
+                this.chartInstance.destroy();
+            }
+        } catch (error) {
+            console.error('Error destroying chart:', error);
+        } finally {
             this.chartInstance = null;
         }
     }
@@ -73,20 +78,40 @@ class ChartComponentClass extends React.Component {
         const { data, type } = this.props;
         
         if (!this.chartRef.current || !data) {
+            console.warn('Missing chart reference or data, skipping chart creation');
             return;
         }
         
         try {
-            const ctx = this.chartRef.current.getContext('2d');
-            const ChartJS = window.Chart; // Use the global Chart object
+            // First, ensure any previous chart is properly destroyed
+            this.destroyChart();
             
+            // Get the context
+            const ctx = this.chartRef.current.getContext('2d');
+            if (!ctx) {
+                console.error('Could not get 2d context from canvas');
+                return;
+            }
+            
+            // Ensure Chart.js is loaded globally
+            const ChartJS = window.Chart;
+            if (!ChartJS) {
+                console.error('Chart.js not found globally');
+                return;
+            }
+            
+            // Create chart with error handling
             this.chartInstance = new ChartJS(ctx, {
                 type: type || 'bar',
                 data: data,
                 options: this.getChartOptions()
             });
+            
+            console.log(`Created ${type || 'bar'} chart successfully`);
         } catch (error) {
             console.error('Error creating chart:', error);
+            // Ensure the chart instance is nullified if creation fails
+            this.chartInstance = null;
         }
     }
     

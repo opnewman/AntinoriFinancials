@@ -14,10 +14,16 @@ class Dashboard extends React.Component {
             error: '',
             loading: false
         };
+        this._isMounted = false; // Track component mount state
     }
     
     componentDidMount() {
+        this._isMounted = true;
         this.fetchEntityOptions();
+    }
+    
+    componentWillUnmount() {
+        this._isMounted = false;
     }
     
     // Fetch entity options on component mount
@@ -26,6 +32,9 @@ class Dashboard extends React.Component {
             console.log('Fetching client options...');
             const entityOptions = await api.getEntityOptions('client');
             console.log('Received entity options:', entityOptions);
+            
+            // Make sure component is still mounted before updating state
+            if (!this._isMounted) return;
             
             if (entityOptions && entityOptions.length > 0) {
                 const formattedOptions = entityOptions.map(entity => ({
@@ -48,7 +57,9 @@ class Dashboard extends React.Component {
             }
         } catch (err) {
             console.error('Error fetching initial data:', err);
-            this.setState({ error: 'Failed to load entity options. Please try again later.' });
+            if (this._isMounted) {
+                this.setState({ error: 'Failed to load entity options. Please try again later.' });
+            }
         }
     };
     
@@ -58,6 +69,9 @@ class Dashboard extends React.Component {
             console.log(`Fetching options for level: ${newLevel}`);
             const options = await api.getEntityOptions(newLevel);
             console.log(`Received ${options.length} options for level ${newLevel}`);
+            
+            // Only update state if component is still mounted
+            if (!this._isMounted) return;
             
             const formattedOptions = options.map(opt => ({
                 value: opt,
@@ -71,7 +85,9 @@ class Dashboard extends React.Component {
             console.log('Set level options:', formattedOptions.slice(0, 5)); // Log only first 5 for brevity
         } catch (err) {
             console.error(`Error fetching ${newLevel} options:`, err);
-            this.setState({ error: `Failed to load ${newLevel} options. Please try again later.` });
+            if (this._isMounted) {
+                this.setState({ error: `Failed to load ${newLevel} options. Please try again later.` });
+            }
         }
     };
     
@@ -91,6 +107,7 @@ class Dashboard extends React.Component {
             return;
         }
         
+        // Clear previous data to avoid stale chart instances
         this.setState({
             loading: true,
             error: '',
@@ -100,63 +117,97 @@ class Dashboard extends React.Component {
             performanceChart: null
         });
         
+        // Create all API request promises but handle them individually
+        const portfolioReportPromise = api.getPortfolioReport(reportDate, reportLevel, levelKey);
+        const allocationChartPromise = api.getAllocationChartData(reportDate, reportLevel, levelKey);
+        const liquidityChartPromise = api.getLiquidityChartData(reportDate, reportLevel, levelKey);
+        const performanceChartPromise = api.getPerformanceChartData(reportDate, reportLevel, levelKey, 'YTD');
+        
         try {
             // Get portfolio report
+            let hasFatalError = false;
+            
             try {
-                const report = await api.getPortfolioReport(reportDate, reportLevel, levelKey);
-                this.setState({ reportData: report });
+                const report = await portfolioReportPromise;
+                if (this._isMounted) {
+                    this.setState({ reportData: report });
+                }
             } catch (err) {
                 console.error('Portfolio report error:', err);
-                this.setState({ error: err.message || 'Failed to load portfolio report' });
-                // Continue with other chart data to show partial information
+                if (this._isMounted) {
+                    this.setState({ error: err.message || 'Failed to load portfolio report' });
+                }
             }
             
-            // Get allocation chart data - will fallback to default values if there's an error
-            const allocations = await api.getAllocationChartData(reportDate, reportLevel, levelKey);
-            this.setState({
-                allocationsChart: {
-                    labels: allocations.labels,
-                    datasets: [{
-                        data: allocations.datasets[0].data,
-                        backgroundColor: allocations.datasets[0].backgroundColor,
-                        borderWidth: 1,
-                        borderColor: '#fff'
-                    }]
+            // Process other chart data only if component is still mounted
+            if (this._isMounted && !hasFatalError) {
+                // Get allocation chart data
+                try {
+                    const allocations = await allocationChartPromise;
+                    if (this._isMounted) {
+                        this.setState({
+                            allocationsChart: {
+                                labels: allocations.labels,
+                                datasets: [{
+                                    data: allocations.datasets[0].data,
+                                    backgroundColor: allocations.datasets[0].backgroundColor,
+                                    borderWidth: 1,
+                                    borderColor: '#fff'
+                                }]
+                            }
+                        });
+                    }
+                } catch (err) {
+                    console.error('Allocation chart error:', err);
                 }
-            });
-            
-            // Get liquidity chart data - will fallback to default values if there's an error
-            const liquidity = await api.getLiquidityChartData(reportDate, reportLevel, levelKey);
-            this.setState({
-                liquidityChart: {
-                    labels: liquidity.labels,
-                    datasets: [{
-                        data: liquidity.datasets[0].data,
-                        backgroundColor: liquidity.datasets[0].backgroundColor,
-                        borderWidth: 1,
-                        borderColor: '#fff'
-                    }]
+                
+                // Get liquidity chart data
+                try {
+                    const liquidity = await liquidityChartPromise;
+                    if (this._isMounted) {
+                        this.setState({
+                            liquidityChart: {
+                                labels: liquidity.labels,
+                                datasets: [{
+                                    data: liquidity.datasets[0].data,
+                                    backgroundColor: liquidity.datasets[0].backgroundColor,
+                                    borderWidth: 1,
+                                    borderColor: '#fff'
+                                }]
+                            }
+                        });
+                    }
+                } catch (err) {
+                    console.error('Liquidity chart error:', err);
                 }
-            });
-            
-            // Get performance chart data - will fallback to default values if there's an error
-            const performance = await api.getPerformanceChartData(reportDate, reportLevel, levelKey, 'YTD');
-            this.setState({
-                performanceChart: {
-                    labels: performance.labels,
-                    datasets: performance.datasets
+                
+                // Get performance chart data
+                try {
+                    const performance = await performanceChartPromise;
+                    if (this._isMounted) {
+                        this.setState({
+                            performanceChart: {
+                                labels: performance.labels,
+                                datasets: performance.datasets
+                            }
+                        });
+                    }
+                } catch (err) {
+                    console.error('Performance chart error:', err);
                 }
-            });
+            }
             
             console.log('Report data generation complete');
             
         } catch (err) {
             console.error('Error in overall report generation process:', err);
-            if (!this.state.error) { // Only set if not already set by a specific chart error
+            if (this._isMounted && !this.state.error) {
                 this.setState({ error: 'Failed to generate complete report. Some data may be missing.' });
             }
         } finally {
-            this.setState({ loading: false });
+            if (this._isMounted) {
+                this.setState({ loading: false });
+            }
         }
     };
     
