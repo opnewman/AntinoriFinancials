@@ -1261,6 +1261,7 @@ def generate_portfolio_report():
     # Connect to DB first to get the latest date if not specified
     with get_db_connection() as db:
         date = request.args.get('date', get_latest_data_date(db))
+        logger.info(f"Portfolio report: Using date {date} for level={level}, level_key={level_key}")
         
         try:
             # Calculate total adjusted value based on selection
@@ -1372,13 +1373,19 @@ def get_latest_data_date(db):
         """)).fetchone()
         
         if result and result.latest_date:
-            return result.latest_date.isoformat()
+            latest_date = result.latest_date.isoformat()
+            logger.info(f"Found latest date in database: {latest_date}")
+            return latest_date
         else:
             # Fallback to today's date if no data found
-            return datetime.date.today().isoformat()
+            today = datetime.date.today().isoformat()
+            logger.warning(f"No data found in database, using today's date: {today}")
+            return today
     except Exception as e:
         logger.error(f"Error getting latest data date: {str(e)}")
-        return datetime.date.today().isoformat()
+        today = datetime.date.today().isoformat()
+        logger.warning(f"Using today's date due to error: {today}")
+        return today
 
 @app.route("/api/charts/allocation", methods=["GET"])
 def get_allocation_chart_data():
@@ -1388,6 +1395,7 @@ def get_allocation_chart_data():
     # Connect to DB first to get the latest date if not specified
     with get_db_connection() as db:
         date = request.args.get('date', get_latest_data_date(db))
+        logger.info(f"Allocation chart: Using date {date} for level={level}, level_key={level_key}")
     
     try:
         with get_db_connection() as db:
@@ -1514,6 +1522,7 @@ def get_liquidity_chart_data():
     # Connect to DB first to get the latest date if not specified
     with get_db_connection() as db:
         date = request.args.get('date', get_latest_data_date(db))
+        logger.info(f"Liquidity chart: Using date {date} for level={level}, level_key={level_key}")
     
     try:
         with get_db_connection() as db:
@@ -1641,6 +1650,7 @@ def get_performance_chart_data():
     # Connect to DB first to get the latest date if not specified
     with get_db_connection() as db:
         date = request.args.get('date', get_latest_data_date(db))
+        logger.info(f"Performance chart: Using date {date} for level={level}, level_key={level_key}, period={period}")
     
     if period == 'YTD':
         labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
