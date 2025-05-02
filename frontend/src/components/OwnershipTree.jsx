@@ -72,8 +72,11 @@ const OwnershipTree = ({ data }) => {
         );
     };
     
+    // Ensure data is an array before attempting to map over it
+    const safeData = Array.isArray(data) ? data : [];
+    
     // Empty state
-    if (!data || data.length === 0) {
+    if (!safeData.length) {
         return (
             <div className="bg-white rounded-lg shadow-md p-4 text-center text-gray-500">
                 <i className="fas fa-sitemap text-2xl mb-2"></i>
@@ -87,7 +90,7 @@ const OwnershipTree = ({ data }) => {
         <div className="bg-white rounded-lg shadow-md p-4 ownership-tree">
             <h3 className="text-lg font-semibold mb-3">Ownership Structure</h3>
             <div className="tree-container max-h-96 overflow-y-auto border border-gray-200 rounded p-2">
-                {data.map(client => renderNode(client))}
+                {safeData.map(client => renderNode(client))}
             </div>
         </div>
     );

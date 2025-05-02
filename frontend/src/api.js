@@ -117,10 +117,24 @@ const api = {
     getOwnershipTree: async () => {
         try {
             const response = await axios.get(`${API_BASE_URL}/api/ownership-tree`);
+            
+            // Ensure we're returning an array even if the server doesn't
+            if (!response.data) {
+                console.warn('Ownership tree data is empty or undefined');
+                return [];
+            }
+            
+            // If data is not an array, wrap it in one
+            if (!Array.isArray(response.data)) {
+                console.warn('Ownership tree data is not an array, converting to array');
+                return [response.data];
+            }
+            
             return response.data;
         } catch (error) {
             console.error('Ownership tree error:', error);
-            throw error;
+            // Return empty array instead of throwing
+            return [];
         }
     },
     
@@ -137,10 +151,18 @@ const api = {
                     params: { date, level, level_key: levelKey }
                 }
             );
+            
+            // Validate response data
+            if (!response.data) {
+                console.warn('Portfolio report data is empty');
+                throw new Error('No portfolio data available');
+            }
+            
             return response.data;
         } catch (error) {
             console.error('Portfolio report error:', error);
-            throw error;
+            // Let the component handle this error
+            throw new Error(error.response?.data?.detail || 'Failed to generate portfolio report');
         }
     },
     
@@ -157,10 +179,31 @@ const api = {
                     params: { date, level, level_key: levelKey }
                 }
             );
+            
+            if (!response.data || !response.data.labels || !response.data.datasets) {
+                console.warn('Allocation chart data is incomplete');
+                return {
+                    labels: ['No Data'],
+                    datasets: [{ 
+                        data: [100], 
+                        backgroundColor: ['#e0e0e0'],
+                        label: 'No allocation data available'
+                    }]
+                };
+            }
+            
             return response.data;
         } catch (error) {
             console.error('Allocation chart error:', error);
-            throw error;
+            // Return a default structure so UI doesn't break
+            return {
+                labels: ['Error'],
+                datasets: [{ 
+                    data: [100], 
+                    backgroundColor: ['#ffebee'],
+                    label: 'Error loading data'
+                }]
+            };
         }
     },
     
@@ -177,10 +220,31 @@ const api = {
                     params: { date, level, level_key: levelKey }
                 }
             );
+            
+            if (!response.data || !response.data.labels || !response.data.datasets) {
+                console.warn('Liquidity chart data is incomplete');
+                return {
+                    labels: ['No Data'],
+                    datasets: [{ 
+                        data: [100], 
+                        backgroundColor: ['#e0e0e0'],
+                        label: 'No liquidity data available'
+                    }]
+                };
+            }
+            
             return response.data;
         } catch (error) {
             console.error('Liquidity chart error:', error);
-            throw error;
+            // Return a default structure so UI doesn't break
+            return {
+                labels: ['Error'],
+                datasets: [{ 
+                    data: [100], 
+                    backgroundColor: ['#ffebee'],
+                    label: 'Error loading data'
+                }]
+            };
         }
     },
     
@@ -198,10 +262,33 @@ const api = {
                     params: { date, level, level_key: levelKey, period }
                 }
             );
+            
+            if (!response.data || !response.data.labels || !response.data.datasets) {
+                console.warn('Performance chart data is incomplete');
+                return {
+                    labels: ['No Data'],
+                    datasets: [{ 
+                        data: [0],
+                        label: 'No performance data available',
+                        borderColor: '#e0e0e0',
+                        backgroundColor: 'rgba(224, 224, 224, 0.2)'
+                    }]
+                };
+            }
+            
             return response.data;
         } catch (error) {
             console.error('Performance chart error:', error);
-            throw error;
+            // Return a default structure so UI doesn't break
+            return {
+                labels: ['Error'],
+                datasets: [{ 
+                    data: [0],
+                    label: 'Error loading performance data',
+                    borderColor: '#f44336',
+                    backgroundColor: 'rgba(244, 67, 54, 0.2)'
+                }]
+            };
         }
     },
     

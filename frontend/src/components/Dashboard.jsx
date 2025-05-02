@@ -40,30 +40,41 @@ const Dashboard = () => {
                         console.log('Set level key to first option:', formattedOptions[0].value);
                     }
                     
-                    // Generate initial report once we have the level key
-                    setTimeout(() => {
-                        generateReport();
-                    }, 500);
-                    
-                    // Still load ownership tree for structure visualization
+                    // Fetch ownership structure data
                     try {
                         console.log('Fetching ownership tree...');
                         const treeData = await api.getOwnershipTree();
-                        setOwnershipTree(treeData);
+                        console.log('Tree data received:', treeData);
+                        
+                        // Ensure we have an array
+                        if (treeData) {
+                            setOwnershipTree(Array.isArray(treeData) ? treeData : []);
+                        } else {
+                            setOwnershipTree([]);
+                        }
                         console.log('Set ownership tree data');
                     } catch (err) {
                         console.error('Error fetching ownership tree:', err);
                         // Non-critical error, continue without ownership tree
+                        setOwnershipTree([]);
                     }
+                    
+                    // Generate initial report once we have the level key
+                    setTimeout(() => {
+                        generateReport();
+                    }, 500);
                 } else {
                     console.error('No client options received from API');
                     // Instead of showing an error, just leave the dropdown empty
                     // Users can still use the interface with no error message shown
+                    setLevelOptions([]);
                 }
             } catch (err) {
                 console.error('Error fetching initial data:', err);
                 // Instead of showing an error, we'll initialize with default values
                 // so the UI is still usable without an error message
+                setLevelOptions([]);
+                setOwnershipTree([]);
             } finally {
                 setLoading(false);
             }
@@ -136,10 +147,16 @@ const Dashboard = () => {
         
         try {
             // Get portfolio report
-            const report = await api.getPortfolioReport(reportDate, reportLevel, levelKey);
-            setReportData(report);
+            try {
+                const report = await api.getPortfolioReport(reportDate, reportLevel, levelKey);
+                setReportData(report);
+            } catch (err) {
+                console.error('Portfolio report error:', err);
+                setError(err.message || 'Failed to load portfolio report');
+                // Continue with other chart data to show partial information
+            }
             
-            // Get allocation chart data
+            // Get allocation chart data - will fallback to default values if there's an error
             const allocations = await api.getAllocationChartData(reportDate, reportLevel, levelKey);
             setAllocationsChart({
                 labels: allocations.labels,
@@ -151,7 +168,7 @@ const Dashboard = () => {
                 }]
             });
             
-            // Get liquidity chart data
+            // Get liquidity chart data - will fallback to default values if there's an error
             const liquidity = await api.getLiquidityChartData(reportDate, reportLevel, levelKey);
             setLiquidityChart({
                 labels: liquidity.labels,
@@ -163,16 +180,20 @@ const Dashboard = () => {
                 }]
             });
             
-            // Get performance chart data
+            // Get performance chart data - will fallback to default values if there's an error
             const performance = await api.getPerformanceChartData(reportDate, reportLevel, levelKey, 'YTD');
             setPerformanceChart({
                 labels: performance.labels,
                 datasets: performance.datasets
             });
             
+            console.log('Report data generation complete');
+            
         } catch (err) {
-            console.error('Error generating report:', err);
-            setError(err.response?.data?.detail || 'Failed to generate report. Please check your inputs.');
+            console.error('Error in overall report generation process:', err);
+            if (!error) { // Only set if not already set by a specific chart error
+                setError('Failed to generate complete report. Some data may be missing.');
+            }
         } finally {
             setLoading(false);
         }
