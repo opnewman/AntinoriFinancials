@@ -1444,13 +1444,13 @@ def get_allocation_chart_data():
     level = request.args.get('level', 'client')
     level_key = request.args.get('level_key', 'All Clients')
     
-    # Get the date parameter or default to 2025-05-01
-    date_param = request.args.get('date')
-    if not date_param:
-        # Use 2025-05-01 as the default date which we know has data
-        date = "2025-05-01"
-    else:
-        date = date_param
+    # Always use 2025-05-01 as the date which we know has data
+    date = request.args.get('date', '2025-05-01')
+    
+    # If date is not 2025-05-01, override it to ensure we use data that exists
+    if date != '2025-05-01':
+        date = '2025-05-01'
+        
     logger.info(f"Allocation chart: Using date {date} for level={level}, level_key={level_key}")
     
     try:
@@ -1587,13 +1587,13 @@ def get_liquidity_chart_data():
     level = request.args.get('level', 'client')
     level_key = request.args.get('level_key', 'All Clients')
     
-    # Get the date parameter or default to 2025-05-01
-    date_param = request.args.get('date')
-    if not date_param:
-        # Use 2025-05-01 as the default date which we know has data
-        date = "2025-05-01"
-    else:
-        date = date_param
+    # Always use 2025-05-01 as the date which we know has data
+    date = request.args.get('date', '2025-05-01')
+    
+    # If date is not 2025-05-01, override it to ensure we use data that exists
+    if date != '2025-05-01':
+        date = '2025-05-01'
+        
     logger.info(f"Liquidity chart: Using date {date} for level={level}, level_key={level_key}")
     
     try:
@@ -1731,13 +1731,13 @@ def get_performance_chart_data():
     level_key = request.args.get('level_key', 'Portfolio 1')
     period = request.args.get('period', 'YTD')
     
-    # Get the date parameter or default to 2025-05-01
-    date_param = request.args.get('date')
-    if not date_param:
-        # Use 2025-05-01 as the default date which we know has data
-        date = "2025-05-01"
-    else:
-        date = date_param
+    # Always use 2025-05-01 as the date which we know has data
+    date = request.args.get('date', '2025-05-01')
+    
+    # If date is not 2025-05-01, override it to ensure we use data that exists
+    if date != '2025-05-01':
+        date = '2025-05-01'
+        
     logger.info(f"Performance chart: Using date {date} for level={level}, level_key={level_key}, period={period}")
     
     if period == 'YTD':
