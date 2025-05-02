@@ -96,7 +96,7 @@ const App = () => {
                             </div>
                         </Route>
                         <Route path="/ownership">
-                            <OwnershipTreePage />
+                            <SimpleOwnershipTreePage />
                         </Route>
                         <Route path="/reports">
                             <div className="container mx-auto p-4">
