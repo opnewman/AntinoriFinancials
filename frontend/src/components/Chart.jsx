@@ -46,7 +46,8 @@ const Chart = ({ type, data, options, height }) => {
             }
             
             const ctx = chartRef.current.getContext('2d');
-            const newChartInstance = new Chart(ctx, {
+            // Use window.Chart to avoid name collision with our Chart component
+            const newChartInstance = new window.Chart(ctx, {
                 type: type || 'bar',
                 data: data,
                 options: chartOptions
