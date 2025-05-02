@@ -1,0 +1,53 @@
+View Name:	DATA DUMP											
+Date Range:	05-01-2025 to 05-01-2025											
+Portfolio:	All clients											
+Position	Top Level Client	Holding Account	Holding Account Number	Portfolio	CUSIP	Ticker Symbol	Asset Class	New Second Level	New Third Level	ADV Classification	Liquid vs. Illiquid Asset	Adjusted Value (USD)
+"
+INFLECTION STRATEGIC OPPORTUNITIES FUND"	Aspenwood	Aspenwood Proficio / KJH	-	Aspenwood		-	Equity	Global Markets	Canada	Securities Issued by Registered Investment Companies or Business Development Companies	Illiquid	$46,598.42
+$ Tree Inc SR NTS 4.0% 05/15/2025 DTD 4.00 % Due May 15, 2025	Leslie Wexner	Trust 100 Taxable Bond Account	G41312002	Leslie Wexner & Trust 100 Assets	256746AG3	-	Fixed Income	Investment Grade	Corporate Bonds	Investment Grade Corporate Bonds	Liquid	$6,152,498.52
+100 Barclay's Apt 19B, NY, NY	Prashant Lal	Lal Personal Real Estate	-	-		100BARCLAYS_RE	Equity	Real Estate	Personal Real Estate	Other	Illiquid	$8,500,000.00
+100 Barclay's Apt 19B, NY, NY Mortgage	Prashant Lal	Lal Personal Real Estate	-	-		100BARCLAYS_MORT	Equity	High Yield	Mortgage 	Other	Illiquid	-$6,800,000.00
+100 FAMILY COURT, BECKET	Robert Haber	Robert Haber Hard Assets	-	-		-	Equity	Real Estate	Personal Real Estate	Other	Illiquid	$2,400,000.00
+1010 Washington RSK LLC	Sheldon Hanau	Hanau Outside Investments 	-	Hanau, Sheldon Reporting		WASHRSK_RE	Equity	Real Estate	Personal Real Estate	Other	Illiquid	$141,446.99
+102 COTSWOLD, BALTIMORE, MD 21210, SECOND HOME	Dellon-Greer	D-G Outside Interests	-	Dellon-Greer Family		-	Equity	Real Estate	Personal Real Estate	Other	Illiquid	$2,500,000.00
+10X Genomics Inc CL	The Linden West II Trust (Leslie Wexner)	Linden West II Trust JP Morgan Parametric Russell 1000 Tax Loss Harvesting Account PTC	T20357007	The Linden West II Trust	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	$4,041.90
+10X Genomics Inc CL	The Rose Trust (Wexner)	Rose Trust JP Morgan Parametric Russell 1000 Tax Loss Harvesting Account PTC	T20530009	Rose Trust	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	$4,025.70
+10X Genomics Inc CL	 The Linden East II Trust (Abigail Wexner)	Linden East II Trust JP Morgan Parametric Russell 1000 Tax Loss Harvesting Account PTC	T20465008	The Linden East II Trust	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	$4,025.70
+10X Genomics Inc CL	Seth Finkelstein 	Seth Finkelstein 2006 Trust Proficio Quantinno SMA	663031672	Finkelstein Core Proficio	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$445.50
+10X Genomics Inc CL	Sam & Tami Wald	Sam & Tami Wald Parametric Account	663027365	Wald, Sam & Tami Reporting	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$850.50
+10X Genomics Inc CL	Sheridan Steer Family	Sheridan Steer Parametric SMA	663023564	Sheridan Steer Portfolio	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$1,449.90
+10X Genomics Inc CL	Lynn Wheeler	The Lynn T. Wheeler Trust Fidelity Quantinno Account	663050332	Wheeler, Craig & Lynn	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$1,044.90
+10X Genomics Inc CL	Craig Wheeler	The Craig A. Wheeler Trust Fidelity Quantinno Account	663050327	Wheeler, Craig & Lynn	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$1,044.90
+10X Genomics Inc CL	John Mulliken 	Mulliken Chernock SLAT Quantinno	663037080	Mulliken Chernock Liquid + Illiquid	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$2,081.70
+10X Genomics Inc CL	Luis Vidal 	Vidal Slifka Parametric SMA	663025882	Vidal Slifka Portfolio	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	$1,385.10
+10X Genomics Inc CL	Michael Hackel	Hackel Quantinno SMA	663141528	Hackel Equity Portfolio 100%, Hackel Family All 100%, Hackel Reporting Portfolio 100%	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$259.20
+10X Genomics Inc CL	Terrence & Sarah Burgess	Burgess Joint Parametric	663040864	Burgess Investable Assets ex. Partner Payout	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$753.30
+10X Genomics Inc CL	Prashant & Saira Lal	Lal Family Investments, LLC Parametric Account	663038373	Lal, Prashant Portfolio	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$6,253.20
+10X Genomics Inc CL	Steve & Marissa Brown	Brown Family Revocable Trust Quantinno Fidelity 5246	663055246	Brown Proficio Managed Assets	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$3,944.70
+10X Genomics Inc CL	Tref (Alice) Borden	Tref Borden Non-Exempt Trust Quantinno Account	663044828	Tref Borden All Assets	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$1,109.70
+10X Genomics Inc CL	Lawrence K. Fish	Lawrence K Fish Revocable Trust Parametric Account	663053646	Larry and Atsuko Fish	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	$113.40
+10X Genomics Inc CL	David Ephraim 	David Ephraim Rev Trust Parametric  Account	663048889	Ephraim Family	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	$1,385.10
+10X Genomics Inc CL	Dana Munick 	Dana Munick Trust Quantinno Account (Russell 1k)	663053035	Dana Munick Reporting 	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$226.80
+10X Genomics Inc CL	Wade & Heather Clark 	Clark Quantinno Fidelity Account 4765	663054765	Clark Proficio Portfolio - x529s 100%, Clark Family All  100%	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$2,527.20
+10X Genomics Inc CL	BelWolf LLC	BelWolf LLC Fidelity Quantinno Account	663050323	Wheeler Out of Estate	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$980.10
+10X Genomics Inc CL	LKD Future LLC	LKD Future LLC Fidelity Quantinno Account	663050329	Wheeler Out of Estate	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$631.80
+10X Genomics Inc CL	John Mulliken 	Mulliken and Chernock CRUT Quantinno	663028001	Mulliken Chernock CRUT	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$162.00
+10X Genomics Inc CL	Richard Blond	Richard Blond Parametric 	663031321	Blond, Z Reporting	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$939.60
+10X Genomics Inc CL		DSB, WG LLC Quantinno Account	663053033	Dana Munick Reporting 	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$363.89
+10X Genomics Inc CL	Sheldon Hanau	Hanau Quantinno SMA	663023771	Hanau, Sheldon Reporting	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$899.10
+10X Genomics Inc CL	Igor Sereda	Igor Sereda Quantinno SMA	663041223	Igor Sereda Reporting	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$2,292.30
+10X Genomics Inc CL	Robert Griffith	Robert E. Griffith GST Trust Parametric Tax Harvesting Account	663033838	Griffith GST Trust	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	$299.70
+10X Genomics Inc CL	Scott Yaphe	Yaphe Quantinno SMA	663000040	Yaphe Reporting	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$226.80
+10X Genomics Inc CL	Dellon-Greer	Dellon/Greer Family 2008 Trust Quantinno Tax Harvesting Account	663034577	Dellon-Greer Family 100%, Dellon-Greer Reporting 100%	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$2,446.20
+10X Genomics Inc CL	John Gans	John Gans Quantinno Account 	663042191	John Gans Liquid + Illiquid	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$307.80
+10X Genomics Inc CL	Sam Wilderman 2020 Irrevocable Trust	Wilderman 2020 Irrevocable Trust Quantinno Account	663031195	Wilderman, Generation Skipping Trust	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$648.00
+10X Genomics Inc CL	Melania Barange 	Barange Family Investors LLC Quantinno Tax Harvesting SMA	663033127	Barange Family Investors LLC	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	$5,094.90
+10X Genomics Inc CL	Joshua Klevens & Anna Sinaiko	Joshua A. Klevens Revocable Trust of 2008 Quantinno Account	663047214	Josh Klevens & Anna Sinaiko Assets (ex-Charlesbank)	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$672.30
+10X Genomics Inc CL	Jean Hynes 	It's a Family Dinner LLC Quantinno Tax Harvesting SMA	663032225	Condon Hynes Gift Trust	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$2,219.40
+10X Genomics Inc CL	John Borden	John Borden GST Exemption Trust Parametric Account	663050772	John Borden GST	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	$137.70
+10X Genomics Inc CL	Leslie Wexner	The Linden West Trust Parametric Tax Loss Harvesting Account	G07037007	The Linden West Trust	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	$132,054.30
+10X Genomics Inc CL	Isabella Borden	Isabella Borden GST Exemption Trust Parametric Account	663050773	Isabella Borden GST	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	$137.70
+10X Genomics Inc CL	Matt Niblack & Lorenda Layne	ASL Capital LLC Quantinno Account	663051430	Matt Niblack & Lorenda Layne (LCL)	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$348.30
+10X Genomics Inc CL	Matt Shucker	Shucker Rev Trust Fidelity Quantinno Account	663044808	Shucker Reporting	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$2,292.30
+10X Genomics Inc CL	Dana Munick 	The DMMSI Trust Quantinno Account	663045600	Dana Munick Reporting 	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	-$1,101.60
+10X Genomics Inc CL	Oaz Nir	Oaz Nir Proficio Fidelity Parametric Tax Harvesting Account	663049014	Nir, Oaz Proficio	88025U109	TXG	Equity	US Markets	Single Stock	Exchange Traded Securities	Liquid	$1,903.50

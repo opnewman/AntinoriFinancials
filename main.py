@@ -4,7 +4,12 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import datetime
-from sqlalchemy import text
+from sqlalchemy import text, func
+import time
+from collections import defaultdict, Counter
+import json
+import re
+import traceback
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, 
@@ -12,7 +17,9 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 # Import database module
-from src.database import init_db, get_db
+from src.database import init_db, get_db, get_db_connection
+from src.models.models import OwnershipMetadata, OwnershipItem, FinancialPosition, FinancialSummary
+from src.utils.encryption import encryption_service
 
 # Initialize database (create tables)
 init_db()
@@ -58,9 +65,195 @@ def api_root():
 def health():
     return jsonify({"status": "healthy"})
 
+def generate_financial_summary(db, report_date):
+    """
+    Generate financial summary data by aggregating financial positions.
+    
+    This function calculates and stores summary data at multiple levels:
+    - Client level
+    - Group level
+    - Portfolio level
+    - Account level
+    
+    Args:
+        db: Database session
+        report_date: The report date
+    """
+    try:
+        logger.info(f"Generating financial summary for {report_date}")
+        
+        # Delete existing summary data for the report date
+        db.execute(text(
+            "DELETE FROM financial_summary WHERE report_date = :report_date"
+        ), {"report_date": report_date})
+        
+        # Get all positions for the report date
+        positions = db.query(FinancialPosition).filter(
+            FinancialPosition.date == report_date
+        ).all()
+        
+        # Prepare summary data at different levels
+        summary_data = {}
+        
+        # First, get latest metadata with proper classifications
+        metadata_id = db.execute(text("""
+            SELECT id 
+            FROM ownership_metadata 
+            WHERE id IN (
+                SELECT DISTINCT metadata_id FROM ownership_items
+                WHERE grouping_attribute_name IN ('Client', 'Group', 'Holding Account')
+                GROUP BY metadata_id
+                HAVING COUNT(DISTINCT grouping_attribute_name) = 3
+            )
+            ORDER BY id DESC 
+            LIMIT 1
+        """)).fetchone()[0]
+        
+        logger.info(f"Using metadata ID {metadata_id} for ownership relationships")
+        
+        # Build maps for relationship lookups
+        # 1. Map account numbers to groups
+        account_to_groups = defaultdict(set)
+        # 2. Map account numbers to portfolios
+        account_to_portfolio = {}
+        # 3. Map portfolios to client names
+        portfolio_to_client = {}
+        
+        # Get all ownership items for efficient lookups
+        ownership_items = db.query(
+            OwnershipItem.client,
+            OwnershipItem.portfolio,
+            OwnershipItem.holding_account_number,
+            OwnershipItem.grouping_attribute_name,
+            OwnershipItem.group_id
+        ).filter(
+            OwnershipItem.metadata_id == metadata_id
+        ).all()
+        
+        # Build the relationship maps
+        for item in ownership_items:
+            if item.grouping_attribute_name == 'Client' and item.portfolio:
+                portfolio_to_client[item.portfolio] = item.client
+                
+            elif item.grouping_attribute_name == 'Holding Account' and item.holding_account_number:
+                if item.portfolio:
+                    account_to_portfolio[item.holding_account_number] = item.portfolio
+        
+        # Get group relationships
+        group_relationships = db.execute(text("""
+            SELECT g.group_id, g.client AS group_name, a.holding_account_number
+            FROM ownership_items g
+            JOIN ownership_items a ON g.portfolio = a.portfolio
+            WHERE g.metadata_id = :metadata_id 
+              AND g.grouping_attribute_name = 'Group'
+              AND a.metadata_id = :metadata_id
+              AND a.grouping_attribute_name = 'Holding Account'
+              AND a.holding_account_number IS NOT NULL
+        """), {"metadata_id": metadata_id}).fetchall()
+        
+        # Build account to groups map
+        for _, group_name, account_number in group_relationships:
+            if account_number and group_name:
+                account_to_groups[account_number].add(group_name)
+        
+        # Process all positions
+        for position in positions:
+            # Decrypt the adjusted value
+            adjusted_value = encryption_service.decrypt_to_float(position.adjusted_value)
+            
+            # Skip positions with zero or negative values if needed
+            # if adjusted_value <= 0:
+            #     continue
+            
+            # Aggregate by client
+            if position.top_level_client:
+                client_key = f"client:{position.top_level_client}"
+                if client_key not in summary_data:
+                    summary_data[client_key] = 0
+                summary_data[client_key] += adjusted_value
+            
+            # Aggregate by account
+            if position.holding_account_number:
+                account_key = f"account:{position.holding_account_number}"
+                if account_key not in summary_data:
+                    summary_data[account_key] = 0
+                summary_data[account_key] += adjusted_value
+            
+            # Aggregate by portfolio
+            if position.portfolio and position.portfolio != "-":
+                portfolio_key = f"portfolio:{position.portfolio}"
+                if portfolio_key not in summary_data:
+                    summary_data[portfolio_key] = 0
+                summary_data[portfolio_key] += adjusted_value
+                
+                # Also aggregate to client via portfolio relationship if not already done
+                if position.portfolio in portfolio_to_client:
+                    client_name = portfolio_to_client[position.portfolio]
+                    alt_client_key = f"client:{client_name}"
+                    if alt_client_key not in summary_data:
+                        summary_data[alt_client_key] = 0
+                    summary_data[alt_client_key] += adjusted_value
+            
+            # Aggregate by groups based on account number
+            if position.holding_account_number in account_to_groups:
+                for group_name in account_to_groups[position.holding_account_number]:
+                    group_key = f"group:{group_name}"
+                    if group_key not in summary_data:
+                        summary_data[group_key] = 0
+                    summary_data[group_key] += adjusted_value
+        
+        # Create summary records
+        summary_records = []
+        for key, total_value in summary_data.items():
+            level, level_key = key.split(':', 1)
+            summary = FinancialSummary(
+                level=level,
+                level_key=level_key,
+                total_adjusted_value=total_value,
+                report_date=report_date
+            )
+            summary_records.append(summary)
+        
+        # Bulk insert summaries
+        db.bulk_save_objects(summary_records)
+        db.commit()
+        
+        logger.info(f"Generated {len(summary_records)} financial summary records")
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error generating financial summary: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise
+
 # API Endpoints
 @app.route("/api/upload/data-dump", methods=["POST"])
 def upload_data_dump():
+    """
+    Upload and process data_dump.xlsx file which contains financial position data.
+    
+    This endpoint processes an Excel file with the following columns:
+    - Position (security name)
+    - Top Level Client (client name)
+    - Holding Account (account name)
+    - Holding Account Number
+    - Portfolio (portfolio name)
+    - CUSIP (unique security identifier)
+    - Ticker Symbol
+    - Asset Class
+    - Second Level (secondary classification)
+    - Third Level (tertiary classification)
+    - ADV Classification
+    - Liquid vs. Illiquid
+    - Adjusted Value (in dollars)
+    
+    The first 3 rows of the file contain metadata:
+    - Row 1: View Name (e.g., "DATA DUMP")
+    - Row 2: Date Range (e.g., "05-01-2025 to 05-01-2025")
+    - Row 3: Portfolio (e.g., "All clients")
+    
+    The actual column headers are in row 4.
+    """
     if 'file' not in request.files:
         return jsonify({"success": False, "message": "No file part in the request"}), 400
     
@@ -68,13 +261,320 @@ def upload_data_dump():
     if file.filename == '':
         return jsonify({"success": False, "message": "No file selected"}), 400
     
-    return jsonify({
-        "success": True,
-        "message": "File uploaded successfully",
-        "rows_processed": 0,
-        "rows_inserted": 0,
-        "errors": []
-    })
+    # Check file extension
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in ['.xlsx', '.xls', '.csv', '.txt']:
+        return jsonify({
+            "success": False, 
+            "message": "Only Excel files (.xlsx, .xls), CSV or TXT files are supported"
+        }), 400
+    
+    try:
+        import pandas as pd
+        from io import BytesIO, StringIO
+        
+        # Start timing the process
+        start_time = time.time()
+        logger.info(f"Data dump upload started for file: {file.filename}")
+        
+        # Read the file content
+        file_content = file.read()
+        logger.info(f"File size: {len(file_content)} bytes")
+        
+        # Process the file based on its type
+        view_name = "DATA DUMP"
+        report_date = datetime.date.today()
+        
+        if file_ext in ['.xlsx', '.xls']:
+            # Excel file - use BytesIO with optimized settings
+            excel_data = BytesIO(file_content)
+            
+            # Extract metadata from first 3 rows only
+            try:
+                metadata_df = pd.read_excel(excel_data, nrows=3, header=None, engine='openpyxl')
+                
+                # Extract view name and date range
+                if len(metadata_df) > 0 and len(metadata_df.columns) > 1 and not pd.isna(metadata_df.iloc[0, 1]):
+                    view_name = str(metadata_df.iloc[0, 1])
+                
+                # Parse date range
+                if len(metadata_df) > 1 and len(metadata_df.columns) > 1 and not pd.isna(metadata_df.iloc[1, 1]):
+                    date_range_str = str(metadata_df.iloc[1, 1])
+                    # Try multiple date formats and patterns
+                    date_patterns = [
+                        r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})',  # MM-DD-YYYY to MM-DD-YYYY
+                        r'(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD to YYYY-MM-DD
+                        r'(\w+ \d{1,2}, \d{4})\s+to\s+(\w+ \d{1,2}, \d{4})'  # Month DD, YYYY to Month DD, YYYY
+                    ]
+                    
+                    # Try each pattern
+                    for pattern in date_patterns:
+                        match = re.search(pattern, date_range_str)
+                        if match:
+                            try:
+                                # We use the end date for reporting
+                                if pattern == r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})':
+                                    _, end_date_str = match.groups()
+                                    report_date = datetime.datetime.strptime(end_date_str, '%m-%d-%Y').date()
+                                    break
+                                elif pattern == r'(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})':
+                                    _, end_date_str = match.groups()
+                                    report_date = datetime.datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                                    break
+                                elif pattern == r'(\w+ \d{1,2}, \d{4})\s+to\s+(\w+ \d{1,2}, \d{4})':
+                                    _, end_date_str = match.groups()
+                                    report_date = datetime.datetime.strptime(end_date_str, '%B %d, %Y').date()
+                                    break
+                            except ValueError:
+                                continue  # Try next pattern if this one fails
+                
+                # Reset file pointer for data rows
+                excel_data.seek(0)
+                
+                # Read data with optimized settings
+                df = pd.read_excel(
+                    excel_data, 
+                    header=3,  # Header is in row 4 (0-indexed)
+                    engine='openpyxl',
+                    dtype={
+                        'Position': str,
+                        'Top Level Client': str,
+                        'Holding Account': str,
+                        'Holding Account Number': str,
+                        'Portfolio': str,
+                        'CUSIP': str,
+                        'Ticker Symbol': str,
+                        'Asset Class': str,
+                        'New Second Level': str,
+                        'New Third Level': str,
+                        'ADV Classification': str,
+                        'Liquid vs. Illiquid Asset': str,
+                        'Adjusted Value (USD)': str
+                    }
+                )
+                
+                logger.info(f"Excel file parsed, rows: {len(df)}")
+            
+            except Exception as e:
+                logger.error(f"Error parsing Excel file: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "message": f"Error parsing Excel file: {str(e)}",
+                    "rows_processed": 0,
+                    "rows_inserted": 0,
+                    "errors": [str(e)]
+                }), 400
+                
+        elif file_ext in ['.csv', '.txt']:
+            # CSV or TXT file - use StringIO with optimized approach
+            try:
+                # Decode file content
+                text_content = file_content.decode('utf-8')
+                
+                # Split by lines to get metadata
+                lines = text_content.splitlines()
+                if len(lines) >= 3:
+                    # Extract view name and date range
+                    if ':' in lines[0]:
+                        view_name = lines[0].split(':', 1)[1].strip()
+                    
+                    if ':' in lines[1]:
+                        date_range_str = lines[1].split(':', 1)[1].strip()
+                        # Parse date range similarly to Excel
+                        date_patterns = [
+                            r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})',  # MM-DD-YYYY to MM-DD-YYYY
+                            r'(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD to YYYY-MM-DD
+                            r'(\w+ \d{1,2}, \d{4})\s+to\s+(\w+ \d{1,2}, \d{4})'  # Month DD, YYYY to Month DD, YYYY
+                        ]
+                        
+                        for pattern in date_patterns:
+                            match = re.search(pattern, date_range_str)
+                            if match:
+                                try:
+                                    # We use the end date for reporting
+                                    if pattern == r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})':
+                                        _, end_date_str = match.groups()
+                                        report_date = datetime.datetime.strptime(end_date_str, '%m-%d-%Y').date()
+                                        break
+                                    elif pattern == r'(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})':
+                                        _, end_date_str = match.groups()
+                                        report_date = datetime.datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                                        break
+                                    elif pattern == r'(\w+ \d{1,2}, \d{4})\s+to\s+(\w+ \d{1,2}, \d{4})':
+                                        _, end_date_str = match.groups()
+                                        report_date = datetime.datetime.strptime(end_date_str, '%B %d, %Y').date()
+                                        break
+                                except ValueError:
+                                    continue  # Try next pattern if this one fails
+                
+                # Create a new buffer with just the data rows (skip metadata and header)
+                data_buffer = StringIO('\n'.join(lines[4:]))  # Skip first 4 lines
+                
+                # Determine the delimiter
+                delimiter = '\t' if file_ext == '.txt' else ','
+                
+                # Read the data with optimized settings
+                df = pd.read_csv(
+                    data_buffer,
+                    sep=delimiter,
+                    dtype={
+                        'Position': str,
+                        'Top Level Client': str,
+                        'Holding Account': str,
+                        'Holding Account Number': str,
+                        'Portfolio': str,
+                        'CUSIP': str,
+                        'Ticker Symbol': str,
+                        'Asset Class': str,
+                        'New Second Level': str,
+                        'New Third Level': str,
+                        'ADV Classification': str,
+                        'Liquid vs. Illiquid Asset': str,
+                        'Adjusted Value (USD)': str
+                    }
+                )
+                
+                logger.info(f"{file_ext} file parsed, rows: {len(df)}")
+                
+            except Exception as e:
+                logger.error(f"Error parsing text file: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "message": f"Error parsing text file: {str(e)}",
+                    "rows_processed": 0,
+                    "rows_inserted": 0,
+                    "errors": [str(e)]
+                }), 400
+        
+        # Function to clean numeric values
+        def clean_numeric_value(value):
+            """Clean and convert a value to float"""
+            if pd.isna(value) or value is None:
+                return 0.0
+                
+            if isinstance(value, (int, float)):
+                return float(value)
+                
+            # Remove non-numeric characters except decimal point and minus sign
+            clean_value = str(value).replace('$', '').replace(',', '').strip()
+            
+            # Handle empty strings
+            if not clean_value:
+                return 0.0
+                
+            try:
+                return float(clean_value)
+            except ValueError:
+                # For values that can't be converted to float
+                return 0.0
+        
+        # Prepare to process the dataframe
+        with get_db_connection() as db:
+            # Delete existing positions for this report date to avoid duplicates
+            db.execute(text(
+                "DELETE FROM financial_positions WHERE date = :report_date"
+            ), {"report_date": report_date})
+            
+            # Process the dataframe in batches for better memory management
+            total_rows = len(df)
+            BATCH_SIZE = 500
+            rows_processed = 0
+            rows_inserted = 0
+            errors = []
+            
+            for i in range(0, total_rows, BATCH_SIZE):
+                batch_df = df.iloc[i:i+BATCH_SIZE]
+                positions = []
+                
+                for _, row in batch_df.iterrows():
+                    try:
+                        rows_processed += 1
+                        
+                        # Map column names properly - handle both formats
+                        position = row.get('Position', row.get('position', ''))
+                        top_level_client = row.get('Top Level Client', row.get('top_level_client', ''))
+                        holding_account = row.get('Holding Account', row.get('holding_account', ''))
+                        holding_account_number = row.get('Holding Account Number', row.get('holding_account_number', ''))
+                        portfolio = row.get('Portfolio', row.get('portfolio', ''))
+                        cusip = row.get('CUSIP', row.get('cusip', ''))
+                        ticker_symbol = row.get('Ticker Symbol', row.get('ticker_symbol', ''))
+                        asset_class = row.get('Asset Class', row.get('asset_class', ''))
+                        second_level = row.get('New Second Level', row.get('second_level', ''))
+                        third_level = row.get('New Third Level', row.get('third_level', ''))
+                        adv_classification = row.get('ADV Classification', row.get('adv_classification', ''))
+                        liquid_vs_illiquid = row.get('Liquid vs. Illiquid Asset', row.get('liquid_vs_illiquid', ''))
+                        adjusted_value = row.get('Adjusted Value (USD)', row.get('adjusted_value', 0))
+                        
+                        # Handle required fields
+                        if not position or not top_level_client or not holding_account:
+                            raise ValueError("Missing required fields: position, top_level_client, or holding_account")
+                        
+                        # Clean and encrypt the adjusted value
+                        adjusted_value_clean = clean_numeric_value(adjusted_value)
+                        encrypted_value = encryption_service.encrypt(adjusted_value_clean)
+                        
+                        # Create financial position object
+                        position_obj = FinancialPosition(
+                            position=position,
+                            top_level_client=top_level_client,
+                            holding_account=holding_account,
+                            holding_account_number=str(holding_account_number) if holding_account_number else "-",
+                            portfolio=str(portfolio) if portfolio else "-",
+                            cusip=str(cusip) if cusip else "",
+                            ticker_symbol=str(ticker_symbol) if ticker_symbol else "",
+                            asset_class=str(asset_class) if asset_class else "Other",
+                            second_level=str(second_level) if second_level else "",
+                            third_level=str(third_level) if third_level else "",
+                            adv_classification=str(adv_classification) if adv_classification else "",
+                            liquid_vs_illiquid=str(liquid_vs_illiquid) if liquid_vs_illiquid else "Liquid",
+                            adjusted_value=encrypted_value,
+                            date=report_date
+                        )
+                        
+                        positions.append(position_obj)
+                        rows_inserted += 1
+                        
+                    except Exception as e:
+                        error_msg = f"Error processing row {rows_processed}: {str(e)}"
+                        errors.append(error_msg)
+                        logger.error(error_msg)
+                
+                # Bulk insert the batch
+                db.bulk_save_objects(positions)
+                db.commit()
+                logger.info(f"Batch processed: {i}-{i+len(batch_df)} of {total_rows}")
+            
+            # Generate financial summary data
+            try:
+                generate_financial_summary(db, report_date)
+            except Exception as e:
+                logger.error(f"Error generating financial summary: {str(e)}")
+                errors.append(f"Error generating financial summary: {str(e)}")
+            
+            # Calculate processing time
+            end_time = time.time()
+            processing_time = end_time - start_time
+            
+            return jsonify({
+                "success": True,
+                "message": f"Successfully processed {rows_inserted} positions for {report_date}",
+                "rows_processed": rows_processed,
+                "rows_inserted": rows_inserted,
+                "processing_time_seconds": round(processing_time, 3),
+                "report_date": report_date.isoformat(),
+                "errors": errors[:10]  # Limit number of errors returned
+            })
+    
+    except Exception as e:
+        logger.error(f"Error processing data dump file: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            "success": False,
+            "message": f"Error processing file: {str(e)}",
+            "rows_processed": 0,
+            "rows_inserted": 0,
+            "errors": [str(e)]
+        }), 500
 
 @app.route("/api/upload/ownership", methods=["POST"])
 def upload_ownership_tree():
@@ -96,12 +596,6 @@ def upload_ownership_tree():
     try:
         import pandas as pd
         from io import BytesIO, StringIO
-        import re
-        import datetime
-        import time
-        from sqlalchemy import text, func
-        from src.models.models import OwnershipMetadata, OwnershipItem
-        from src.database import get_db_connection
         
         # Start timing the process
         start_time = time.time()
@@ -277,254 +771,161 @@ def upload_ownership_tree():
                     "errors": [str(e)]
                 }), 400
         
-        # Process metadata first - record the upload timing
-        metadata_time = time.time() - start_time
-        logger.info(f"Metadata processed in {metadata_time:.2f} seconds")
+        # Standardize column names (convert to lowercase and replace spaces with underscores)
+        df.columns = [col.lower().replace(' ', '_') for col in df.columns]
         
-        # Now process the dataframe efficiently
-        total_rows = len(df)
-        errors = []
+        # Handle special case for data_inception_date
+        data_inception_col = None
+        for col in df.columns:
+            if 'inception' in col.lower():
+                data_inception_col = col
+                break
         
-        # Normalize columns with a function instead of loops for better performance
-        expected_columns = ['Client', 'Entity ID', 'Holding Account Number', 'Portfolio', 
-                           'Group ID', 'Data Inception Date', '% Ownership', 'Grouping Attribute Name']
-        
-        # Map actual column names to expected ones
-        column_mapping = {}
-        for expected_col in expected_columns:
-            if expected_col not in df.columns:
-                # Find a case-insensitive match
-                for actual_col in df.columns:
-                    if actual_col.strip().lower() == expected_col.lower():
-                        column_mapping[actual_col] = expected_col
-                        break
-        
-        # Apply the column renaming if needed
-        if column_mapping:
-            df.rename(columns=column_mapping, inplace=True)
-        
-        # Pre-filter - remove empty clients and "Total" rows in one step
-        client_col = 'Client'
-        if client_col in df.columns:
-            # Efficient filtering
-            df = df[df[client_col].notna() & ~df[client_col].str.contains('total', case=False, na=False)]
-        
-        # Record valid rows after filtering
-        valid_rows = len(df)
-        logger.info(f"After filtering: {valid_rows} valid rows")
-        
-        # Efficiently clean up string columns in a single pass
-        string_cols = ['Client', 'Entity ID', 'Holding Account Number', 'Portfolio', 
-                      'Group ID', 'Grouping Attribute Name']
-        
-        # Handle string columns
-        for col in string_cols:
-            if col in df.columns:
-                # Filter out NaN values
-                df[col] = df[col].fillna('')
-                # For certain columns, replace '-' with empty string
-                if col in ['Entity ID', 'Holding Account Number', 'Group ID']:
-                    df[col] = df[col].replace('-', '')
-        
-        # Process dates with optimal conversion
-        if 'Data Inception Date' in df.columns:
-            # Try direct conversion first (fastest)
-            df['parsed_date'] = pd.to_datetime(df['Data Inception Date'], errors='coerce')
-        
-        # Process ownership percentages with optimal conversion
-        if '% Ownership' in df.columns:
-            # Fast one-step conversion
-            df['ownership_percentage'] = pd.to_numeric(
-                df['% Ownership'].astype(str).str.replace('%', '').str.strip(), 
-                errors='coerce'
-            ) / 100
-        
-        # Create metadata record
-        metadata_id = None
         with get_db_connection() as db:
-            try:
-                # Mark existing metadata as not current
-                db.query(OwnershipMetadata).filter(OwnershipMetadata.is_current == True).update({"is_current": False})
-                db.flush()  # Ensure update is processed before the insert
-                
-                # Create new metadata
-                new_metadata = OwnershipMetadata(
-                    view_name=view_name,
-                    date_range_start=start_date,
-                    date_range_end=end_date,
-                    portfolio_coverage=portfolio_coverage,
-                    is_current=True
-                )
-                db.add(new_metadata)
-                db.commit()
-                db.refresh(new_metadata)
-                metadata_id = new_metadata.id
-                
-                logger.info(f"Metadata created, id: {metadata_id}")
-            except Exception as e:
-                db.rollback()
-                logger.error(f"Error creating metadata: {str(e)}")
+            # Check if we have all the required columns
+            required_cols = ['client', 'grouping_attribute_name']
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            
+            if missing_cols:
                 return jsonify({
                     "success": False,
-                    "message": f"Error creating metadata: {str(e)}",
+                    "message": f"Missing required columns: {', '.join(missing_cols)}",
                     "rows_processed": 0,
                     "rows_inserted": 0,
-                    "errors": [str(e)]
-                }), 500
-        
-        # Process data rows with high-performance approach
-        rows_inserted = 0
-        if metadata_id is not None and valid_rows > 0:
-            # Calculate optimal batch size based on data size
-            batch_size = min(1000, max(100, valid_rows // 10))
-            logger.info(f"Using batch size: {batch_size}")
+                    "errors": [f"Missing required columns: {', '.join(missing_cols)}"]
+                }), 400
             
-            # Prepare data for insertion using bulk SQL
-            records = []
+            # Create new metadata record
+            new_metadata = OwnershipMetadata(
+                view_name=view_name,
+                date_range_start=start_date,
+                date_range_end=end_date,
+                portfolio_coverage=portfolio_coverage,
+                is_current=True  # This is the new current metadata
+            )
             
-            # Create connection for data insertion
-            with get_db_connection() as db:
-                try:
-                    # Process rows efficiently
-                    for i, row in enumerate(df.itertuples(index=False)):
-                        try:
-                            # Extract data safely
-                            client = getattr(row, 'Client', '') or ''
-                            
-                            # Only process rows with valid client names
-                            if client and client.lower() != 'total':
-                                entity_id = getattr(row, 'Entity ID', None) or None
-                                holding_account_number = getattr(row, 'Holding Account Number', None) or None
-                                portfolio = getattr(row, 'Portfolio', None) or None
-                                group_id = getattr(row, 'Group ID', None) or None
-                                
-                                # Handle date values more carefully
-                                parsed_date = None
-                                if hasattr(row, 'parsed_date'):
-                                    date_val = getattr(row, 'parsed_date')
-                                    if pd.notna(date_val) and date_val is not None:
-                                        try:
-                                            if isinstance(date_val, datetime.datetime):
-                                                parsed_date = date_val.date()
-                                            elif isinstance(date_val, str):
-                                                parsed_date = datetime.datetime.strptime(date_val, '%Y-%m-%d').date()
-                                        except (ValueError, TypeError):
-                                            parsed_date = None
-                                
-                                # Handle ownership percentage with safety checks
-                                ownership_pct = None
-                                if hasattr(row, 'ownership_percentage'):
-                                    pct_val = getattr(row, 'ownership_percentage')
-                                    if pd.notna(pct_val) and pct_val is not None:
-                                        try:
-                                            ownership_pct = float(pct_val)
-                                        except (ValueError, TypeError):
-                                            ownership_pct = None
-                                
-                                # Get grouping attribute with fallback
-                                try:
-                                    grouping_attr = getattr(row, 'Grouping Attribute Name', 'Unknown')
-                                    if not grouping_attr or pd.isna(grouping_attr):
-                                        grouping_attr = 'Unknown'
-                                except:
-                                    grouping_attr = 'Unknown'
-                                
-                                # Clean and validate all fields before insertion
-                                # Make sure we don't have any problematic values
-                                if grouping_attr and isinstance(grouping_attr, str) and len(grouping_attr) <= 100:
-                                    # Create dictionary for bulk insert with explicit type conversion
-                                    record = {
-                                        'client': str(client)[:100] if client else '',
-                                        'entity_id': str(entity_id)[:50] if entity_id else None,
-                                        'holding_account_number': str(holding_account_number)[:50] if holding_account_number else None,
-                                        'portfolio': str(portfolio)[:100] if portfolio else None,
-                                        'group_id': str(group_id)[:50] if group_id else None,
-                                        'data_inception_date': parsed_date,
-                                        'ownership_percentage': ownership_pct,
-                                        'grouping_attribute_name': str(grouping_attr)[:50],
-                                        'metadata_id': metadata_id,
-                                        'upload_date': datetime.date.today()
-                                    }
-                                    
-                                    records.append(record)
-                                    rows_inserted += 1
-                                    
-                                    # Insert in batches with proper error handling
-                                    if len(records) >= batch_size:
-                                        try:
-                                            # Use raw SQL insert for maximum speed
-                                            db.execute(OwnershipItem.__table__.insert(), records)
-                                            db.commit()
-                                            logger.info(f"Inserted batch, total: {rows_inserted}")
-                                            records = []  # Clear the batch
-                                        except Exception as e:
-                                            db.rollback()
-                                            logger.error(f"Error during batch insert: {str(e)}")
-                                            # Try inserting one by one to identify problematic records
-                                            for idx, rec in enumerate(records):
-                                                try:
-                                                    db.execute(OwnershipItem.__table__.insert(), [rec])
-                                                    db.commit()
-                                                except Exception as e2:
-                                                    logger.error(f"Problem with record {idx}: {str(e2)}")
-                                            records = []  # Clear the batch after recovery attempt
-                            
-                        except Exception as e:
-                            error_msg = f"Error processing row {i+5}: {str(e)}"
-                            errors.append(error_msg)
-                            logger.error(error_msg)
-                    
-                    # Insert any remaining records with proper error handling
-                    if records:
-                        try:
-                            db.execute(OwnershipItem.__table__.insert(), records)
-                            db.commit()
-                            logger.info(f"Inserted final batch, total: {rows_inserted}")
-                        except Exception as e:
-                            db.rollback()
-                            logger.error(f"Error during final batch insert: {str(e)}")
-                            # Try inserting one by one to identify problematic records
-                            for idx, rec in enumerate(records):
-                                try:
-                                    db.execute(OwnershipItem.__table__.insert(), [rec])
-                                    db.commit()
-                                except Exception as e2:
-                                    logger.error(f"Problem with record {idx}: {str(e2)}")
+            # Add metadata record and get its ID
+            db.add(new_metadata)
+            
+            # Mark other metadata as not current
+            db.execute(text("""
+                UPDATE ownership_metadata
+                SET is_current = FALSE
+                WHERE id != (SELECT MAX(id) FROM ownership_metadata)
+            """))
+            
+            db.commit()
+            
+            # Get the new metadata ID
+            metadata_id = new_metadata.id
+            logger.info(f"Created new metadata record with ID: {metadata_id}")
+            
+            # Process the dataframe in batches for better memory management
+            total_rows = len(df)
+            BATCH_SIZE = 500
+            rows_processed = 0
+            rows_inserted = 0
+            errors = []
+            
+            for i in range(0, total_rows, BATCH_SIZE):
+                batch_df = df.iloc[i:i+BATCH_SIZE]
+                ownership_items = []
                 
-                except Exception as e:
-                    db.rollback()
-                    error_msg = f"Error during batch insert: {str(e)}"
-                    errors.append(error_msg)
-                    logger.error(error_msg)
-                    
-                    # Return a proper JSON response even on error
-                    return jsonify({
-                        "success": False,
-                        "message": f"Error during data insertion: {str(e)}",
-                        "rows_processed": total_rows,
-                        "rows_inserted": rows_inserted,
-                        "errors": errors,
-                        "processing_time_seconds": round(time.time() - start_time, 3)
-                    }), 500
-        
-        # Calculate total processing time
-        end_time = time.time()
-        processing_time = end_time - start_time
-        
-        # Return success response with timing information
-        return jsonify({
-            "success": True,
-            "message": "Ownership tree uploaded successfully",
-            "rows_processed": total_rows,
-            "rows_inserted": rows_inserted,
-            "processing_time_seconds": round(processing_time, 3),
-            "errors": errors
-        })
+                # Use row order for ordering in the Excel file
+                for idx, row in enumerate(batch_df.itertuples(), start=1):
+                    try:
+                        rows_processed += 1
+                        
+                        # Handle missing values
+                        client = getattr(row, 'client', '') or ''
+                        entity_id = getattr(row, 'entity_id', None)
+                        holding_account_number = getattr(row, 'holding_account_number', None)
+                        portfolio = getattr(row, 'portfolio', None)
+                        group_id = getattr(row, 'group_id', None)
+                        grouping_attribute_name = getattr(row, 'grouping_attribute_name', '') or 'Unknown'
+                        
+                        # Parse data inception date if available
+                        data_inception_date = None
+                        if data_inception_col and hasattr(row, data_inception_col):
+                            inception_value = getattr(row, data_inception_col)
+                            if inception_value and not pd.isna(inception_value):
+                                try:
+                                    if isinstance(inception_value, datetime.datetime):
+                                        data_inception_date = inception_value.date()
+                                    elif isinstance(inception_value, str):
+                                        # Try different date formats
+                                        for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%d-%b-%Y', '%d/%m/%Y']:
+                                            try:
+                                                data_inception_date = datetime.datetime.strptime(inception_value, fmt).date()
+                                                break
+                                            except ValueError:
+                                                continue
+                                except Exception as e:
+                                    logger.warning(f"Could not parse inception date '{inception_value}': {str(e)}")
+                        
+                        # Parse ownership percentage if available
+                        ownership_percentage = None
+                        if hasattr(row, 'ownership_percentage'):
+                            pct_value = getattr(row, 'ownership_percentage')
+                            if pct_value and not pd.isna(pct_value):
+                                try:
+                                    if isinstance(pct_value, (int, float)):
+                                        ownership_percentage = float(pct_value)
+                                    elif isinstance(pct_value, str):
+                                        # Remove % sign and convert to float
+                                        ownership_percentage = float(pct_value.replace('%', '')) / 100
+                                except Exception as e:
+                                    logger.warning(f"Could not parse ownership percentage '{pct_value}': {str(e)}")
+                        
+                        # Create ownership item
+                        item = OwnershipItem(
+                            client=client,
+                            entity_id=entity_id if entity_id and not pd.isna(entity_id) else None,
+                            holding_account_number=holding_account_number if holding_account_number and not pd.isna(holding_account_number) else None,
+                            portfolio=portfolio if portfolio and not pd.isna(portfolio) else None,
+                            group_id=group_id if group_id and not pd.isna(group_id) else None,
+                            data_inception_date=data_inception_date,
+                            ownership_percentage=ownership_percentage,
+                            grouping_attribute_name=grouping_attribute_name,
+                            metadata_id=metadata_id,
+                            row_order=i + idx  # Store original Excel row order
+                        )
+                        
+                        ownership_items.append(item)
+                        rows_inserted += 1
+                        
+                    except Exception as e:
+                        error_msg = f"Error processing row {rows_processed}: {str(e)}"
+                        errors.append(error_msg)
+                        logger.error(error_msg)
+                
+                # Bulk insert the batch
+                db.bulk_save_objects(ownership_items)
+                db.commit()
+                logger.info(f"Batch processed: {i}-{i+len(batch_df)} of {total_rows}")
+            
+            # Calculate processing time
+            end_time = time.time()
+            processing_time = end_time - start_time
+            
+            # Clear any ownership tree cache
+            # The ownership tree endpoint will rebuild the cache on next request
+            
+            return jsonify({
+                "success": True,
+                "message": f"Successfully processed {rows_inserted} ownership items",
+                "rows_processed": rows_processed,
+                "rows_inserted": rows_inserted,
+                "processing_time_seconds": round(processing_time, 3),
+                "metadata_id": metadata_id,
+                "errors": errors[:10]  # Limit number of errors returned
+            })
     
     except Exception as e:
-        logger.error(f"Error uploading ownership file: {str(e)}")
+        logger.error(f"Error processing ownership file: {str(e)}")
+        logger.error(traceback.format_exc())
         return jsonify({
-            "success": False, 
+            "success": False,
             "message": f"Error processing file: {str(e)}",
             "rows_processed": 0,
             "rows_inserted": 0,
@@ -540,470 +941,180 @@ def upload_security_risk_stats():
     if file.filename == '':
         return jsonify({"success": False, "message": "No file selected"}), 400
     
+    # Placeholder for implementation
     return jsonify({
         "success": True,
-        "message": "Risk statistics uploaded successfully",
+        "message": "Risk statistics upload not implemented yet",
         "rows_processed": 0,
         "rows_inserted": 0,
         "errors": []
     })
 
-# Cache for ownership tree data
+# Cache for ownership tree to improve performance
 ownership_tree_cache = {
-    "tree": None,             # The full tree structure
-    "metadata_id": None,      # The metadata ID this tree was built from
-    "timestamp": None,        # When the cache was last updated
+    "tree": None,
+    "metadata_id": None,
+    "timestamp": 0,
     "client_count": 0,
     "total_records": 0
 }
+CACHE_TTL = 300  # 5 minutes
 
 @app.route("/api/ownership-tree", methods=["GET"])
 def get_ownership_tree():
+    """
+    Get the complete ownership hierarchy tree.
+    
+    This builds a hierarchical tree structure showing the relationships between:
+    - Clients
+    - Groups
+    - Holding Accounts (financial accounts)
+    
+    The tree follows the order of the original Excel file.
+    """
     try:
-        from src.models.models import OwnershipMetadata, OwnershipItem
-        from src.database import get_db_connection
-        from collections import defaultdict, namedtuple
-        from sqlalchemy import func, distinct
-        import time
-        import hashlib
+        # Get query parameters for filtering
+        client_filter = request.args.get('client', '')
         
-        # Performance timing
+        # Start timing the process
         start_time = time.time()
         
-        # Check if force_refresh is set as a query parameter
-        force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+        # Initialize the tree structure
+        tree = {
+            "name": "All Clients",
+            "children": []
+        }
         
-        # Use our improved connection context manager to get metadata and check if we need to refresh cache
         with get_db_connection() as db:
-            # CRITICAL FIX: Ensure we have metadata with proper Client/Group/Holding Account classifications
-            # First check which metadata has proper classifications
-            classification_metadata = db.query(OwnershipMetadata).join(
-                OwnershipItem, 
-                OwnershipMetadata.id == OwnershipItem.metadata_id
-            ).filter(
-                OwnershipItem.grouping_attribute_name.in_(["Client", "Group", "Holding Account"])
-            ).order_by(
-                OwnershipMetadata.id.desc()
-            ).first()
-            
-            if classification_metadata:
-                logger.info(f"Using metadata ID {classification_metadata.id} which has proper Client/Group/Holding Account classifications")
-                latest_metadata = classification_metadata
-            else:
-                # Fall back to the current metadata if no classification metadata is found
-                latest_metadata = db.query(OwnershipMetadata).filter(OwnershipMetadata.is_current == True).first()
-                logger.warning(f"No metadata with proper classifications found, using current metadata (ID: {latest_metadata.id if latest_metadata else None})")
+            # Try to find the latest metadata with proper client/group/account classifications
+            # Avoid using metadata with all "Unknown" grouping attributes
+            latest_metadata = db.execute(text("""
+                SELECT m.* 
+                FROM ownership_metadata m
+                WHERE m.id IN (
+                    SELECT DISTINCT metadata_id FROM ownership_items
+                    WHERE grouping_attribute_name IN ('Client', 'Group', 'Holding Account')
+                    GROUP BY metadata_id
+                    HAVING COUNT(DISTINCT grouping_attribute_name) = 3
+                )
+                ORDER BY m.id DESC
+                LIMIT 1
+            """)).fetchone()
             
             if not latest_metadata:
-                return jsonify({
-                    "success": False,
-                    "message": "No ownership data available. Please upload ownership data first."
-                }), 404
+                # Fallback to most recent metadata if no good one is found
+                latest_metadata = db.execute(text("""
+                    SELECT * FROM ownership_metadata 
+                    ORDER BY id DESC LIMIT 1
+                """)).fetchone()
                 
-            # Check if we can use the cached tree
-            cache_valid = (
-                not force_refresh and
-                ownership_tree_cache["tree"] is not None and
-                ownership_tree_cache["metadata_id"] == latest_metadata.id
-            )
+            logger.info(f"Using metadata ID {latest_metadata.id} which has proper Client/Group/Holding Account classifications")
             
-            # If cache is valid, return it immediately
-            if cache_valid:
-                # Calculate time for cache hit
-                end_time = time.time()
-                processing_time = end_time - start_time
+            # Check if we have a valid cached tree for this metadata
+            use_cache = False
+            if (ownership_tree_cache["tree"] and 
+                ownership_tree_cache["metadata_id"] == latest_metadata.id and
+                time.time() - ownership_tree_cache["timestamp"] < CACHE_TTL):
                 
-                # Return the cached tree with updated timestamps
-                return jsonify({
-                    "success": True, 
-                    "data": ownership_tree_cache["tree"],
-                    "client_count": ownership_tree_cache["client_count"],
-                    "total_records": ownership_tree_cache["total_records"],
-                    "processing_time_seconds": round(processing_time, 3),
-                    "from_cache": True
-                })
+                # Use cached tree if query parameters match
+                if client_filter == '':
+                    logger.info("Using cached ownership tree")
+                    return jsonify({
+                        "success": True,
+                        "data": ownership_tree_cache["tree"],
+                        "client_count": ownership_tree_cache["client_count"],
+                        "total_records": ownership_tree_cache["total_records"],
+                        "processing_time_seconds": 0.0,
+                        "from_cache": True
+                    })
             
-            # If we get here, we need to build the tree from scratch
-            # Get metadata information
-            metadata_info = {
-                "view_name": latest_metadata.view_name,
-                "date_range_start": latest_metadata.date_range_start.isoformat() if latest_metadata.date_range_start else None,
-                "date_range_end": latest_metadata.date_range_end.isoformat() if latest_metadata.date_range_end else None,
-                "portfolio_coverage": latest_metadata.portfolio_coverage,
-                "upload_date": latest_metadata.upload_date.isoformat() if latest_metadata.upload_date else None
-            }
+            # Count total number of records
+            total_records = db.execute(text("""
+                SELECT COUNT(*) FROM ownership_items 
+                WHERE metadata_id = :metadata_id
+            """), {"metadata_id": latest_metadata.id}).fetchone()[0]
             
-            # Use database-level aggregation for faster data extraction
-            # First, get the count of clients and total records for statistics
-            # Check if we have any "Client" labeled entries
-            client_with_label_count = db.query(func.count(distinct(OwnershipItem.client))).filter(
-                OwnershipItem.metadata_id == latest_metadata.id,
-                OwnershipItem.grouping_attribute_name == "Client"
-            ).scalar()
+            # Count client entries
+            client_count = db.execute(text("""
+                SELECT COUNT(*) FROM ownership_items 
+                WHERE metadata_id = :metadata_id 
+                AND grouping_attribute_name = 'Client'
+            """), {"metadata_id": latest_metadata.id}).fetchone()[0]
             
-            # If we found "Client" entries, use that count
-            if client_with_label_count > 0:
-                client_count = client_with_label_count
-            # Otherwise, count all distinct clients
-            else:
-                client_count = db.query(func.count(distinct(OwnershipItem.client))).filter(
-                    OwnershipItem.metadata_id == latest_metadata.id
-                ).scalar()
-                
             logger.info(f"Total client count: {client_count}")
             
-            total_records = db.query(func.count(OwnershipItem.id)).filter(
-                OwnershipItem.metadata_id == latest_metadata.id
-            ).scalar()
+            # Verify we have client records
+            client_count_check = db.execute(text("""
+                SELECT COUNT(*) FROM ownership_items 
+                WHERE metadata_id = :metadata_id 
+                AND grouping_attribute_name = 'Client'
+            """), {"metadata_id": latest_metadata.id}).fetchone()[0]
             
-            # Check if we have any entries with grouping_attribute_name = "Client"
-            client_count_check = db.query(func.count()).filter(
-                OwnershipItem.metadata_id == latest_metadata.id,
-                OwnershipItem.grouping_attribute_name == "Client"
-            ).scalar()
+            logger.info(f"Found {client_count_check} entries with grouping_attribute_name = 'Client'")
             
-            # Initialize sets to store client identification info
-            # These will be used later for filtering
-            potential_true_clients = set()
-            likely_accounts = set()
+            # Get all distinct clients
+            clients_query = db.execute(text("""
+                SELECT DISTINCT client FROM ownership_items 
+                WHERE metadata_id = :metadata_id 
+                ORDER BY client
+                LIMIT 100
+            """), {"metadata_id": latest_metadata.id})
             
-            # Create a namedtuple to match the format of our client query results
-            ClientRow = namedtuple('ClientRow', ['client'])
+            clients = [row[0] for row in clients_query if row[0]]
             
-            # If we have "Client" entries, use them - this is the primary method since
-            # the grouping_attribute_name directly identifies clients
-            if client_count_check > 0:
-                logger.info(f"Found {client_count_check} entries with grouping_attribute_name = 'Client'")
-                client_rows = db.query(
-                    OwnershipItem.client,
-                    OwnershipItem.portfolio
-                ).filter(
-                    OwnershipItem.metadata_id == latest_metadata.id,
-                    OwnershipItem.grouping_attribute_name == "Client"
-                ).distinct().all()
-                
-                # Build a map of client names to portfolio names (which may also be client names)
-                client_portfolio_map = {}
-                
-                # Add these to our potential_true_clients set
-                for row in client_rows:
-                    if row.client:
-                        potential_true_clients.add(row.client)
-                        # Store the portfolio associated with this client if available
-                        if row.portfolio:
-                            client_portfolio_map[row.client] = row.portfolio
-                
-                # Convert to our client row format
-                client_rows = [ClientRow(client=client) for client in potential_true_clients]
-            # If no "Client" entries, we need an advanced approach to identify true clients
-            else:
-                logger.info("No 'Client' grouping attribute found, using advanced identification logic")
-                
-                # STEP 1: Build a full relationship map of the data
-                # This will help us identify the true hierarchy
-                
-                # Get all unique portfolios first
-                all_portfolios = db.query(
-                    distinct(OwnershipItem.portfolio)
-                ).filter(
-                    OwnershipItem.metadata_id == latest_metadata.id,
-                    OwnershipItem.portfolio != None,
-                    OwnershipItem.portfolio != ''
-                ).all()
-                
-                # Map to track clients that appear as portfolio names
-                portfolio_to_clients = defaultdict(set)
-                client_to_portfolios = defaultdict(set)
-                
-                # Get mappings between clients and portfolios
-                client_portfolio_mapping = db.query(
-                    OwnershipItem.client,
-                    OwnershipItem.portfolio
-                ).filter(
-                    OwnershipItem.metadata_id == latest_metadata.id,
-                    OwnershipItem.portfolio != None,
-                    OwnershipItem.portfolio != ''
-                ).all()
-                
-                for mapping in client_portfolio_mapping:
-                    if mapping.client and mapping.portfolio:
-                        portfolio_to_clients[mapping.portfolio].add(mapping.client)
-                        client_to_portfolios[mapping.client].add(mapping.portfolio)
-                
-                # STEP 2: Identify leaf nodes (likely accounts)
-                # Accounts typically have holding_account_number, entity_id, and appear as leaf nodes
-                likely_accounts = set()
-                
-                account_candidates = db.query(
-                    OwnershipItem.client
-                ).filter(
-                    OwnershipItem.metadata_id == latest_metadata.id,
-                    OwnershipItem.holding_account_number != None,
-                    OwnershipItem.holding_account_number != ''
-                ).distinct().all()
-                
-                for candidate in account_candidates:
-                    if candidate.client:
-                        likely_accounts.add(candidate.client)
-                
-                # STEP 3: Identify portfolio-level entities
-                # These are entries that have the same name as a portfolio, indicating they're parent-level
-                portfolio_names = [p[0] for p in all_portfolios if p[0]]
-                
-                # STEP 4: Identify potential true clients
-                # A true client is any entity that:
-                # - Has entity_id but no holding_account_number, OR
-                # - Is referenced as a portfolio by other entities, OR
-                # - Has entries with group_id referencing it
-                
-                potential_true_clients = set()
-                
-                # Entities with entity_id but no holding_account_number
-                entity_id_clients = db.query(
-                    OwnershipItem.client
-                ).filter(
-                    OwnershipItem.metadata_id == latest_metadata.id,
-                    OwnershipItem.entity_id != None,
-                    OwnershipItem.entity_id != '',
-                    (OwnershipItem.holding_account_number == None) | (OwnershipItem.holding_account_number == '')
-                ).distinct().all()
-                
-                for client in entity_id_clients:
-                    if client.client:
-                        potential_true_clients.add(client.client)
-                
-                # Add clients that match portfolio names or have group_id references
-                for portfolio in portfolio_names:
-                    if portfolio in client_to_portfolios:
-                        potential_true_clients.add(portfolio)
-                
-                # Get group references
-                group_references = db.query(
-                    OwnershipItem.client
-                ).filter(
-                    OwnershipItem.metadata_id == latest_metadata.id,
-                    OwnershipItem.group_id != None,
-                    OwnershipItem.group_id != ''
-                ).distinct().all()
-                
-                for ref in group_references:
-                    if ref.client:
-                        potential_true_clients.add(ref.client)
-                
-                # STEP 5: Apply hierarchical filtering
-                # Remove likely_accounts from potential_true_clients if they're in both sets
-                true_clients = potential_true_clients - likely_accounts
-                
-                if true_clients:
-                    logger.info(f"Identified {len(true_clients)} true clients using advanced hierarchical logic")
-                    # Create client rows from the identified true clients
-                    client_rows = [ClientRow(client=client) for client in true_clients]
-                else:
-                    # As a fallback, get clients that don't have holding account numbers
-                    logger.info("No clear clients identified, falling back to non-account entities")
-                    client_rows = db.query(
-                        OwnershipItem.client
-                    ).filter(
-                        OwnershipItem.metadata_id == latest_metadata.id,
-                        (OwnershipItem.holding_account_number == None) | (OwnershipItem.holding_account_number == '')
-                    ).distinct().all()
-                    
-                # If we still don't have any clients, take a small subset as a last resort
-                if len(client_rows) == 0:
-                    logger.info("No clients identified with advanced logic, falling back to top 20 distinct clients")
-                    client_rows = db.query(
-                        OwnershipItem.client
-                    ).filter(
-                        OwnershipItem.metadata_id == latest_metadata.id
-                    ).distinct().limit(20).all()
-            
-            # Sort and limit to first 100 clients for initial testing 
-            # (to avoid overwhelming the browser)
-            clients = sorted([client.client for client in client_rows if client.client])[:100]
             logger.info(f"Found {len(clients)} distinct clients (showing first 100)")
             
-            # Use a more optimized query with joins to get all the data at once
-            # First, get client to group relationships
-            client_group_query = db.query(
-                OwnershipItem.client,
-                OwnershipItem.group_id
-            ).filter(
-                OwnershipItem.metadata_id == latest_metadata.id,
-                OwnershipItem.group_id != None,  # Only get items with a group_id
-                OwnershipItem.group_id != ''     # Ensure group_id is not empty
-            ).distinct().all()
+            # Apply client filter if provided
+            if client_filter:
+                clients = [c for c in clients if client_filter.lower() in c.lower()]
             
-            # Build a mapping of clients to their groups
-            client_to_groups = defaultdict(set)
-            for row in client_group_query:
-                if row.client and row.group_id:
-                    client_to_groups[row.client].add(row.group_id)
+            # Determine which entities are accounts
+            account_type_check = db.execute(text("""
+                SELECT COUNT(*) FROM ownership_items 
+                WHERE metadata_id = :metadata_id 
+                AND grouping_attribute_name = 'Holding Account'
+            """), {"metadata_id": latest_metadata.id}).fetchone()[0]
             
-            # Get group to portfolio relationships
-            group_portfolio_query = db.query(
-                OwnershipItem.group_id,
-                OwnershipItem.portfolio
-            ).filter(
-                OwnershipItem.metadata_id == latest_metadata.id,
-                OwnershipItem.group_id != None,  # Only get items with a group_id
-                OwnershipItem.group_id != '',    # Ensure group_id is not empty
-                OwnershipItem.portfolio != None, # Only get items with a portfolio
-                OwnershipItem.portfolio != ''    # Ensure portfolio is not empty
-            ).distinct().all()
-            
-            # Build a mapping of groups to their portfolios
-            group_to_portfolios = defaultdict(set)
-            for row in group_portfolio_query:
-                if row.group_id and row.portfolio:
-                    group_to_portfolios[row.group_id].add(row.portfolio)
-            
-            # Check if we have any "Holding Account" entries
-            has_holding_accounts = db.query(func.count()).filter(
-                OwnershipItem.metadata_id == latest_metadata.id,
-                OwnershipItem.grouping_attribute_name == "Holding Account"
-            ).scalar() > 0
-            
-            # Get accounts for each portfolio - this is more complex
-            if has_holding_accounts:
-                logger.info("Using 'Holding Account' grouping attribute to identify accounts")
-                portfolio_accounts_query = db.query(
-                    OwnershipItem.portfolio,
-                    OwnershipItem.group_id,
-                    OwnershipItem.client,
-                    OwnershipItem.entity_id,
-                    OwnershipItem.holding_account_number
-                ).filter(
-                    OwnershipItem.metadata_id == latest_metadata.id,
-                    OwnershipItem.grouping_attribute_name == "Holding Account",
-                    OwnershipItem.portfolio != None,
-                    OwnershipItem.portfolio != ''
-                ).all()
+            if account_type_check > 0:
+                account_type = 'Holding Account'
+                logger.info(f"Using '{account_type}' grouping attribute to identify accounts")
             else:
-                # If no "Holding Account" entries, try to use holding_account_number to identify accounts
-                logger.info("No 'Holding Account' entries found, using holding_account_number to identify accounts")
-                portfolio_accounts_query = db.query(
-                    OwnershipItem.portfolio,
-                    OwnershipItem.group_id,
-                    OwnershipItem.client,
-                    OwnershipItem.entity_id,
-                    OwnershipItem.holding_account_number
-                ).filter(
-                    OwnershipItem.metadata_id == latest_metadata.id,
-                    OwnershipItem.holding_account_number.isnot(None),
-                    OwnershipItem.holding_account_number != '',
-                    OwnershipItem.portfolio != None,
-                    OwnershipItem.portfolio != ''
-                ).all()
+                # Fallback - look for account numbers
+                account_type = 'Unknown'
+                logger.warning("No 'Holding Account' entries found, using fallback detection")
             
-            # Build mappings for portfolio to accounts
-            portfolio_to_accounts = defaultdict(list)
-            for row in portfolio_accounts_query:
-                if row.portfolio:
-                    # Create an account object
-                    account = {
-                        "name": row.client,
-                        "value": 1,
-                        "entity_id": row.entity_id,
-                        "account_number": row.holding_account_number
-                    }
-                    # Key includes both portfolio and group_id (or 'direct')
-                    key = (row.portfolio, row.group_id or "direct")
-                    portfolio_to_accounts[key].append(account)
+            # Determine which entities are groups
+            group_type_check = db.execute(text("""
+                SELECT COUNT(*) FROM ownership_items 
+                WHERE metadata_id = :metadata_id 
+                AND grouping_attribute_name = 'Group'
+            """), {"metadata_id": latest_metadata.id}).fetchone()[0]
             
-            # Check if we have any "Group" labeled entries
-            has_group_labels = db.query(func.count()).filter(
-                OwnershipItem.metadata_id == latest_metadata.id,
-                OwnershipItem.grouping_attribute_name == "Group"
-            ).scalar() > 0
-            
-            # Get group names - groups are represented as clients with group_id
-            if has_group_labels:
-                logger.info("Using 'Group' grouping attribute to identify groups")
-                group_names_query = db.query(
-                    OwnershipItem.group_id,
-                    OwnershipItem.client
-                ).filter(
-                    OwnershipItem.metadata_id == latest_metadata.id,
-                    OwnershipItem.grouping_attribute_name == "Group",
-                    OwnershipItem.group_id != None,
-                    OwnershipItem.group_id != ''
-                ).all()
+            if group_type_check > 0:
+                group_type = 'Group'
+                logger.info(f"Using '{group_type}' grouping attribute to identify groups")
             else:
-                # If no "Group" entries, use any entry with a group_id
-                logger.info("No 'Group' entries found, using any entries with group_id")
-                group_names_query = db.query(
-                    OwnershipItem.group_id,
-                    OwnershipItem.client
-                ).filter(
-                    OwnershipItem.metadata_id == latest_metadata.id,
-                    OwnershipItem.group_id != None,
-                    OwnershipItem.group_id != ''
-                ).distinct().all()
+                # Fallback - look for group_id
+                group_type = 'Unknown'
+                logger.warning("No 'Group' entries found, using fallback detection")
             
-            # Map group IDs to names
-            group_id_to_name = {}
-            for row in group_names_query:
-                if row.group_id:
-                    group_id_to_name[row.group_id] = row.client
+            # Get entities that are likely accounts but may be misclassified
+            likely_accounts = set()
+            potential_true_clients = set()
+            
+            # Count word frequency to help identify clients vs accounts
+            client_words = Counter()
+            
+            for client in clients:
+                if client:
+                    words = client.split()
+                    client_words.update(words)
                     
-            # Get direct portfolios (not in groups)
-            direct_portfolios_query = db.query(
-                OwnershipItem.client,
-                OwnershipItem.portfolio
-            ).filter(
-                OwnershipItem.metadata_id == latest_metadata.id,
-                (OwnershipItem.group_id == None) | (OwnershipItem.group_id == ''),
-                OwnershipItem.portfolio != None,
-                OwnershipItem.portfolio != ''
-            ).distinct().all()
+                    # Heuristics to identify true clients
+                    if " Trust" in client or " Family" in client:
+                        potential_true_clients.add(client)
             
-            # Map clients to their direct portfolios
-            client_to_direct_portfolios = defaultdict(set)
-            for row in direct_portfolios_query:
-                if row.client and row.portfolio:
-                    client_to_direct_portfolios[row.client].add(row.portfolio)
-        
-        # Get additional client-portfolio relationships based on account data
-        # In many cases, the portfolio field contains the true client name
-        # This is essential for building a proper hierarchical structure
-        portfolio_client_mapping = defaultdict(set)
-        account_portfolio_mapping = defaultdict(str)
-        
-        # Query all portfolio-account relationships
-        portfolio_account_rel = db.query(
-            OwnershipItem.portfolio,
-            OwnershipItem.client,
-            OwnershipItem.holding_account_number
-        ).filter(
-            OwnershipItem.metadata_id == latest_metadata.id,
-            OwnershipItem.portfolio != None,
-            OwnershipItem.portfolio != '',
-            OwnershipItem.holding_account_number != None,
-            OwnershipItem.holding_account_number != ''
-        ).all()
-        
-        # Build mappings - many "client" entries with account numbers are actually accounts
-        # belonging to portfolios, which are the true clients
-        for rel in portfolio_account_rel:
-            if rel.portfolio and rel.client and rel.holding_account_number:
-                portfolio_client_mapping[rel.portfolio].add(rel.client)
-                account_portfolio_mapping[rel.client] = rel.portfolio
-                
-        # Outside the database connection, we have all our optimized data
-        # Now build the tree very efficiently
-        try:
-            # Build the tree structure
-            tree = {
-                "name": "ANTINORI Family Office",
-                "children": [],
-                "metadata": metadata_info
-            }
-            
-            # CRITICAL: Follow the exact grouping_attribute_name structure
-            # This is the backbone of how the reports are built
-            # Hierarchy: Client -> Group -> Holding Account
-            
-            # Step 1: Get all entities in their ORIGINAL ROW ORDER from the Excel file
+            # Get all entities in their ORIGINAL ROW ORDER from the Excel file
             # This is critical to maintaining the hierarchical structure based on row appearance
             logger.info("Building ownership tree based on Excel file row ordering")
             
@@ -1020,7 +1131,6 @@ def get_ownership_tree():
                 OwnershipItem.metadata_id == latest_metadata.id
             ).order_by(
                 # First try to use row_order if available, fall back to id if not
-                # This ensures we maintain the Excel file's original sequence
                 text("COALESCE(row_order, id) ASC")
             ).all()
             
@@ -1087,7 +1197,7 @@ def get_ownership_tree():
                         # Direct account owned by the client (no group)
                         client_to_accounts[current_client].append(account_data)
             
-            # Step 2: Build the tree following the Excel file ordering hierarchy
+            # Build the tree following the Excel file ordering hierarchy
             # Only include clients in our filtered set
             for client_name in clients:
                 # Skip if not marked as a Client when we have Client markers
@@ -1166,14 +1276,7 @@ def get_ownership_tree():
                 "processing_time_seconds": round(processing_time, 3),
                 "from_cache": False
             })
-            
-        except Exception as e:
-            logger.error(f"Error building ownership tree: {str(e)}")
-            return jsonify({
-                "success": False,
-                "message": f"Error building ownership tree: {str(e)}"
-            }), 500
-                
+    
     except Exception as e:
         logger.error(f"Error generating ownership tree: {str(e)}")
         return jsonify({
@@ -1266,293 +1369,66 @@ def get_performance_chart_data():
         data = [0.2, 0.1, -0.1, 0.3, 0.4, 0.2, 0.3]
     else:  # 1D
         labels = ["9:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00"]
-        data = [0.1, 0.2, 0.1, -0.1, -0.2, 0.0, 0.1, 0.2, 0.3, 0.1, 0.0, 0.2, 0.4, 0.5]
+        data = [0.1, 0.2, 0.15, -0.1, -0.2, -0.1, 0.0, 0.2, 0.3, 0.25, 0.4, 0.3, 0.5, 0.6]
     
     return jsonify({
         "labels": labels,
         "datasets": [{
-            "label": "Performance (%)",
+            "label": f"{period} Performance",
             "data": data,
             "borderColor": "#4C72B0",
             "backgroundColor": "rgba(76, 114, 176, 0.1)",
-            "fill": True,
-            "tension": 0.4
+            "borderWidth": 2,
+            "fill": True
         }]
     })
-    
-# Endpoints for new ownership relationship explorer
 
-@app.route("/api/metadata-options", methods=["GET"])
+@app.route("/api/ownership-metadata", methods=["GET"])
 def get_metadata_options():
     """
     Get available metadata options for ownership data
     Returns a list of metadata records with flags indicating which ones have proper classifications
     """
     try:
-        from src.models.models import OwnershipMetadata, OwnershipItem
-        from src.database import get_db_connection
-        from sqlalchemy import func, distinct
-        
         with get_db_connection() as db:
             # Get all metadata records
-            metadata_records = db.query(OwnershipMetadata).order_by(
-                OwnershipMetadata.id.desc()
-            ).all()
+            metadata_query = text("""
+                SELECT m.id, m.view_name, m.date_range_start, m.date_range_end, m.is_current,
+                       (SELECT COUNT(DISTINCT grouping_attribute_name) 
+                        FROM ownership_items 
+                        WHERE metadata_id = m.id 
+                        AND grouping_attribute_name IN ('Client', 'Group', 'Holding Account')) AS classification_count
+                FROM ownership_metadata m
+                ORDER BY m.date_range_end DESC, m.id DESC
+            """)
             
-            # Prepare the result
-            options = []
+            metadata_records = db.execute(metadata_query).fetchall()
             
-            for metadata in metadata_records:
-                # Check if this metadata has proper classifications
-                has_classifications = db.query(func.count()).filter(
-                    OwnershipItem.metadata_id == metadata.id,
-                    OwnershipItem.grouping_attribute_name.in_(["Client", "Group", "Holding Account"])
-                ).scalar() > 0
+            result = []
+            for record in metadata_records:
+                # Check if this metadata has proper classification structure
+                has_proper_classification = record.classification_count == 3
                 
-                options.append({
-                    "id": metadata.id,
-                    "view_name": metadata.view_name,
-                    "date_range_start": metadata.date_range_start.isoformat() if metadata.date_range_start else None,
-                    "date_range_end": metadata.date_range_end.isoformat() if metadata.date_range_end else None,
-                    "portfolio_coverage": metadata.portfolio_coverage,
-                    "upload_date": metadata.upload_date.isoformat() if metadata.upload_date else None,
-                    "is_current": metadata.is_current,
-                    "properClassification": has_classifications
+                result.append({
+                    "id": record.id,
+                    "view_name": record.view_name,
+                    "date_range_start": record.date_range_start.isoformat() if record.date_range_start else None,
+                    "date_range_end": record.date_range_end.isoformat() if record.date_range_end else None,
+                    "is_current": record.is_current,
+                    "has_proper_classification": has_proper_classification
                 })
             
             return jsonify({
                 "success": True,
-                "options": options
+                "data": result
             })
             
     except Exception as e:
-        logger.error(f"Error fetching metadata options: {str(e)}")
+        logger.error(f"Error getting metadata options: {str(e)}")
         return jsonify({
             "success": False,
-            "message": f"Error fetching metadata options: {str(e)}"
+            "message": f"Error getting metadata options: {str(e)}"
         }), 500
 
-@app.route("/api/ownership-network", methods=["GET"])
-def get_ownership_network():
-    """
-    Get ownership relationship network data for visualization
-    This creates a network graph of clients, groups, and accounts
-    """
-    try:
-        from src.models.models import OwnershipMetadata, OwnershipItem
-        from src.database import get_db_connection
-        from sqlalchemy import func, distinct
-        import time
-        
-        # Start timing
-        start_time = time.time()
-        
-        # Get filter parameters
-        metadata_id = request.args.get('metadata_id')
-        client_filter = request.args.get('client')
-        
-        # Entity type filters
-        hide_clients = request.args.get('hide_clients', 'false').lower() == 'true'
-        hide_groups = request.args.get('hide_groups', 'false').lower() == 'true'
-        hide_accounts = request.args.get('hide_accounts', 'false').lower() == 'true'
-        
-        with get_db_connection() as db:
-            # If no metadata_id specified, find one with proper classifications
-            if not metadata_id:
-                metadata_with_classifications = db.query(OwnershipMetadata).join(
-                    OwnershipItem, 
-                    OwnershipMetadata.id == OwnershipItem.metadata_id
-                ).filter(
-                    OwnershipItem.grouping_attribute_name.in_(["Client", "Group", "Holding Account"])
-                ).order_by(
-                    OwnershipMetadata.id.desc()
-                ).first()
-                
-                if metadata_with_classifications:
-                    logger.info(f"Using metadata ID {metadata_with_classifications.id} with proper classifications")
-                    metadata_id = metadata_with_classifications.id
-                else:
-                    # Fall back to the latest metadata
-                    latest_metadata = db.query(OwnershipMetadata).order_by(
-                        OwnershipMetadata.id.desc()
-                    ).first()
-                    
-                    if latest_metadata:
-                        metadata_id = latest_metadata.id
-                    else:
-                        return jsonify({
-                            "success": False,
-                            "message": "No ownership data found"
-                        }), 404
-            
-            # Convert to int if we got a string
-            metadata_id = int(metadata_id)
-            
-            # Build query filters
-            filters = [OwnershipItem.metadata_id == metadata_id]
-            
-            # Add entity type filters
-            entity_type_filters = []
-            if not hide_clients:
-                entity_type_filters.append(OwnershipItem.grouping_attribute_name == "Client")
-            if not hide_groups:
-                entity_type_filters.append(OwnershipItem.grouping_attribute_name == "Group")
-            if not hide_accounts:
-                entity_type_filters.append(OwnershipItem.grouping_attribute_name == "Holding Account")
-            
-            # Add entity types to filters if any were selected
-            if entity_type_filters:
-                filters.append(OwnershipItem.grouping_attribute_name.in_(["Client", "Group", "Holding Account"]))
-            
-            # Add client filter if specified
-            client_items = []
-            if client_filter:
-                # If specific client requested, get that client and its related entities
-                client_items = db.query(OwnershipItem).filter(
-                    OwnershipItem.metadata_id == metadata_id,
-                    OwnershipItem.client == client_filter
-                ).all()
-                
-                # Get portfolios associated with this client
-                client_portfolios = set([item.portfolio for item in client_items if item.portfolio])
-                
-                # Add to filters to get related entities
-                if client_portfolios:
-                    filters.append(OwnershipItem.portfolio.in_(client_portfolios))
-            
-            # Get all relevant ownership items based on filters
-            ownership_items = db.query(OwnershipItem).filter(*filters).all()
-            
-            if not ownership_items:
-                return jsonify({
-                    "success": True,
-                    "data": {
-                        "nodes": [],
-                        "links": []
-                    },
-                    "processing_time_seconds": round(time.time() - start_time, 3)
-                })
-            
-            # Build network data
-            nodes = []
-            links = []
-            node_ids = set()  # To avoid duplicates
-            
-            # Helper function to add node if not already added
-            def add_node(id, name, type, portfolio=None, entity_id=None, account_number=None):
-                if id not in node_ids:
-                    node_ids.add(id)
-                    node = {
-                        "id": id,
-                        "name": name,
-                        "type": type
-                    }
-                    if portfolio:
-                        node["portfolio"] = portfolio
-                    if entity_id:
-                        node["entity_id"] = entity_id
-                    if account_number:
-                        node["account_number"] = account_number
-                    nodes.append(node)
-                    return True
-                return False
-            
-            # First, add all entities as nodes
-            for item in ownership_items:
-                # Node ID is combination of name and type to avoid collisions
-                node_id = f"{item.client}_{item.grouping_attribute_name}"
-                
-                # Only add node if it passes the filters
-                should_add = True
-                if item.grouping_attribute_name == "Client" and hide_clients:
-                    should_add = False
-                elif item.grouping_attribute_name == "Group" and hide_groups:
-                    should_add = False
-                elif item.grouping_attribute_name == "Holding Account" and hide_accounts:
-                    should_add = False
-                
-                if should_add:
-                    add_node(
-                        id=node_id,
-                        name=item.client,
-                        type=item.grouping_attribute_name,
-                        portfolio=item.portfolio,
-                        entity_id=item.entity_id,
-                        account_number=item.holding_account_number
-                    )
-            
-            # Now add links based on portfolio relationships
-            portfolio_to_nodes = {}
-            
-            # First, collect nodes by portfolio
-            for item in ownership_items:
-                if item.portfolio:
-                    if item.portfolio not in portfolio_to_nodes:
-                        portfolio_to_nodes[item.portfolio] = []
-                    
-                    node_id = f"{item.client}_{item.grouping_attribute_name}"
-                    if node_id in node_ids:  # Only add if node exists
-                        portfolio_to_nodes[item.portfolio].append({
-                            "id": node_id,
-                            "type": item.grouping_attribute_name
-                        })
-            
-            # Then create links between nodes in the same portfolio
-            # Hierarchy: Client -> Group -> Account
-            for portfolio, portfolio_nodes in portfolio_to_nodes.items():
-                # Get clients, groups, and accounts in this portfolio
-                clients = [n for n in portfolio_nodes if n["type"] == "Client"]
-                groups = [n for n in portfolio_nodes if n["type"] == "Group"]
-                accounts = [n for n in portfolio_nodes if n["type"] == "Holding Account"]
-                
-                # Link clients to groups
-                for client in clients:
-                    for group in groups:
-                        links.append({
-                            "source": client["id"],
-                            "target": group["id"],
-                            "value": 1
-                        })
-                
-                # Link groups to accounts
-                for group in groups:
-                    for account in accounts:
-                        links.append({
-                            "source": group["id"],
-                            "target": account["id"],
-                            "value": 1
-                        })
-                
-                # If no groups, link clients directly to accounts
-                if not groups and clients:
-                    for client in clients:
-                        for account in accounts:
-                            links.append({
-                                "source": client["id"],
-                                "target": account["id"],
-                                "value": 1
-                            })
-            
-            # Calculate processing time
-            processing_time = time.time() - start_time
-            
-            return jsonify({
-                "success": True,
-                "data": {
-                    "nodes": nodes,
-                    "links": links
-                },
-                "processing_time_seconds": round(processing_time, 3)
-            })
-    
-    except Exception as e:
-        logger.error(f"Error generating ownership network: {str(e)}")
-        return jsonify({
-            "success": False,
-            "message": f"Error generating ownership network: {str(e)}"
-        }), 500
-
-# Run the server
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(debug=True, host="0.0.0.0", port=5000)
