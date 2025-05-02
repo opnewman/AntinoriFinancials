@@ -1225,7 +1225,7 @@ def get_allocation_chart_data():
                 if level_key == 'All Clients':
                     # Query all asset classes and sum their values
                     query = text("""
-                    SELECT asset_class, SUM(adjusted_value) as total_value 
+                    SELECT asset_class, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                     FROM financial_positions 
                     WHERE report_date = :date
                     GROUP BY asset_class
@@ -1234,7 +1234,7 @@ def get_allocation_chart_data():
                 else:
                     # For a specific client
                     query = text("""
-                    SELECT asset_class, SUM(adjusted_value) as total_value 
+                    SELECT asset_class, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                     FROM financial_positions 
                     WHERE report_date = :date AND top_level_client = :client
                     GROUP BY asset_class
@@ -1243,7 +1243,7 @@ def get_allocation_chart_data():
             elif level == 'group':
                 # For a specific group
                 query = text("""
-                SELECT asset_class, SUM(adjusted_value) as total_value 
+                SELECT asset_class, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                 FROM financial_positions 
                 WHERE report_date = :date AND group_name = :group
                 GROUP BY asset_class
@@ -1252,7 +1252,7 @@ def get_allocation_chart_data():
             elif level == 'portfolio':
                 # For a specific portfolio
                 query = text("""
-                SELECT asset_class, SUM(adjusted_value) as total_value 
+                SELECT asset_class, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                 FROM financial_positions 
                 WHERE report_date = :date AND portfolio = :portfolio
                 GROUP BY asset_class
@@ -1261,7 +1261,7 @@ def get_allocation_chart_data():
             elif level == 'account':
                 # For a specific account
                 query = text("""
-                SELECT asset_class, SUM(adjusted_value) as total_value 
+                SELECT asset_class, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                 FROM financial_positions 
                 WHERE report_date = :date AND holding_account = :account
                 GROUP BY asset_class
@@ -1270,7 +1270,7 @@ def get_allocation_chart_data():
             else:
                 # Default to all data if level is not recognized
                 query = text("""
-                SELECT asset_class, SUM(adjusted_value) as total_value 
+                SELECT asset_class, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                 FROM financial_positions 
                 WHERE report_date = :date
                 GROUP BY asset_class
@@ -1348,7 +1348,7 @@ def get_liquidity_chart_data():
                 if level_key == 'All Clients':
                     # Query all liquidity categories and sum their values
                     query = text("""
-                    SELECT liquid_vs_illiquid, SUM(adjusted_value) as total_value 
+                    SELECT liquid_vs_illiquid, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                     FROM financial_positions 
                     WHERE report_date = :date
                     GROUP BY liquid_vs_illiquid
@@ -1357,7 +1357,7 @@ def get_liquidity_chart_data():
                 else:
                     # For a specific client
                     query = text("""
-                    SELECT liquid_vs_illiquid, SUM(adjusted_value) as total_value 
+                    SELECT liquid_vs_illiquid, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                     FROM financial_positions 
                     WHERE report_date = :date AND top_level_client = :client
                     GROUP BY liquid_vs_illiquid
@@ -1366,7 +1366,7 @@ def get_liquidity_chart_data():
             elif level == 'group':
                 # For a specific group
                 query = text("""
-                SELECT liquid_vs_illiquid, SUM(adjusted_value) as total_value 
+                SELECT liquid_vs_illiquid, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                 FROM financial_positions 
                 WHERE report_date = :date AND group_name = :group
                 GROUP BY liquid_vs_illiquid
@@ -1375,7 +1375,7 @@ def get_liquidity_chart_data():
             elif level == 'portfolio':
                 # For a specific portfolio
                 query = text("""
-                SELECT liquid_vs_illiquid, SUM(adjusted_value) as total_value 
+                SELECT liquid_vs_illiquid, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                 FROM financial_positions 
                 WHERE report_date = :date AND portfolio = :portfolio
                 GROUP BY liquid_vs_illiquid
