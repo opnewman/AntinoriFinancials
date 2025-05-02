@@ -1,165 +1,194 @@
 // Professional Tree visualization component for ownership structure
 const OwnershipTree = ({ data }) => {
-    const containerRef = React.useRef(null);
-    const [treeData, setTreeData] = React.useState(null);
-    const [loading, setLoading] = React.useState(true);
+    const [expandedNodes, setExpandedNodes] = React.useState({});
+    const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState(null);
     
-    // Initialize d3 visualization when component mounts or data changes
-    React.useEffect(() => {
-        if (!data || !containerRef.current) return;
-        
-        setLoading(true);
-        
-        try {
-            // Process the data to ensure it's in the right format
-            const processedData = processData(data);
-            setTreeData(processedData);
-            
-            // Clear previous visualization
-            d3.select(containerRef.current).selectAll("*").remove();
-            
-            // Only proceed if we have valid data
-            if (processedData && processedData.length > 0) {
-                renderTree(processedData);
-            }
-        } catch (err) {
-            console.error('Error rendering ownership tree:', err);
-            setError('Failed to render the ownership visualization');
-        } finally {
-            setLoading(false);
-        }
-    }, [data, containerRef.current]);
-    
     // Process and prepare data for display
-    const processData = (rawData) => {
-        if (!rawData) return [];
+    const processData = () => {
+        if (!data) return [];
         
         // Handle different data formats
-        if (typeof rawData === 'object' && !Array.isArray(rawData)) {
+        if (typeof data === 'object' && !Array.isArray(data)) {
             // Single object (like {name: "All Clients", children: [...]})
-            return rawData;
+            return [data];
         }
         
-        // If it's an array, wrap it in a parent node
-        if (Array.isArray(rawData)) {
-            return {
-                name: "All Entities",
-                children: rawData
-            };
-        }
-        
-        return rawData;
+        // Already an array
+        return Array.isArray(data) ? data : [];
     };
     
-    // Render the tree visualization using D3
-    const renderTree = (treeData) => {
-        const container = containerRef.current;
-        const width = container.clientWidth;
-        const height = container.clientHeight || 800;
+    // Toggle node expansion
+    const toggleNode = (nodeId) => {
+        setExpandedNodes(prev => ({
+            ...prev,
+            [nodeId]: !prev[nodeId]
+        }));
+    };
+    
+    // Helper to check if a node has children
+    const hasChildren = (node) => {
+        return (node.children && node.children.length > 0) || 
+               (node.groups && node.groups.length > 0) || 
+               (node.accounts && node.accounts.length > 0);
+    };
+    
+    // Generate a unique ID for a node based on its path
+    const getNodeId = (node, parentPath = '') => {
+        return `${parentPath}-${node.name || 'unnamed'}`.replace(/\s+/g, '_');
+    };
+    
+    // Determine node type based on level or node properties
+    const getNodeType = (node, level) => {
+        if (node.type) return node.type;
         
-        // Create SVG container
-        const svg = d3.select(container)
-            .append("svg")
-            .attr("width", width)
-            .attr("height", height)
-            .append("g")
-            .attr("transform", `translate(${width / 2}, 60)`);
-        
-        // Create tree layout
-        const treeLayout = d3.tree()
-            .size([width - 160, height - 120]);
-        
-        // Create hierarchy
-        const root = d3.hierarchy(treeData);
-        
-        // Assign x,y positions to nodes
-        treeLayout(root);
-        
-        // Add links between nodes
-        svg.selectAll(".link")
-            .data(root.links())
-            .enter()
-            .append("path")
-            .attr("class", "link")
-            .attr("d", d => {
-                return `M${d.source.x},${d.source.y}
-                        C${d.source.x},${(d.source.y + d.target.y) / 2}
-                        ${d.target.x},${(d.source.y + d.target.y) / 2}
-                        ${d.target.x},${d.target.y}`;
-            })
-            .attr("fill", "none")
-            .attr("stroke", "#d1d5db")
-            .attr("stroke-width", 1.5);
-        
-        // Add nodes
-        const nodes = svg.selectAll(".node")
-            .data(root.descendants())
-            .enter()
-            .append("g")
-            .attr("class", d => `node ${d.data.type || getNodeTypeByDepth(d.depth)}`)
-            .attr("transform", d => `translate(${d.x},${d.y})`);
-        
-        // Add node circles
-        nodes.append("circle")
-            .attr("r", 8)
-            .attr("fill", d => getNodeColor(d.data.type || getNodeTypeByDepth(d.depth)))
-            .attr("stroke", "#fff")
-            .attr("stroke-width", 2);
-        
-        // Add labels
-        nodes.append("text")
-            .attr("dy", d => d.children ? -15 : 20)
-            .attr("text-anchor", "middle")
-            .attr("font-size", "0.8rem")
-            .text(d => d.data.name)
-            .attr("fill", "#374151");
-        
-        // Add value labels (if they exist)
-        nodes.filter(d => d.data.value || d.data.adjusted_value)
-            .append("text")
-            .attr("dy", 35)
-            .attr("text-anchor", "middle")
-            .attr("font-size", "0.7rem")
-            .attr("fill", "#6B7280")
-            .text(d => {
-                const value = d.data.value || d.data.adjusted_value;
-                return value ? `$${formatNumber(value)}` : '';
-            });
-        
-        // Helper function to get node type based on depth
-        function getNodeTypeByDepth(depth) {
-            if (depth === 0) return 'client';
-            if (depth === 1) return 'group';
-            if (depth === 2) return 'portfolio';
-            return 'account';
-        }
-        
-        // Helper function to get node color based on type
-        function getNodeColor(type) {
-            switch(type) {
-                case 'client': return '#14532D'; // Primary green
-                case 'group': return '#4F46E5';  // Indigo
-                case 'portfolio': return '#7C3AED'; // Purple
-                case 'account': return '#6B7280'; // Gray
-                default: return '#9CA3AF';
-            }
-        }
-        
-        // Format number for display (e.g., 1234567 to "1.2M")
-        function formatNumber(num) {
-            if (num >= 1000000) {
-                return (num / 1000000).toFixed(1) + 'M';
-            }
-            if (num >= 1000) {
-                return (num / 1000).toFixed(1) + 'K';
-            }
-            return num.toString();
+        if (level === 0) return 'client';
+        if (level === 1) return 'group';
+        if (level === 2) return 'portfolio';
+        return 'account';
+    };
+    
+    // Get background color based on node type
+    const getBgColorClass = (type) => {
+        switch (type) {
+            case 'client': return 'bg-green-800';
+            case 'group': return 'bg-indigo-500';
+            case 'portfolio': return 'bg-purple-500';
+            case 'account': return 'bg-gray-500';
+            default: return 'bg-gray-400';
         }
     };
+    
+    // Get icon class based on node type
+    const getIconClass = (type) => {
+        switch (type) {
+            case 'client': return 'user-tie';
+            case 'group': return 'folder';
+            case 'portfolio': return 'briefcase';
+            case 'account': return 'university';
+            default: return 'circle';
+        }
+    };
+    
+    // Format value for display
+    const formatValue = (value) => {
+        if (!value) return '';
+        
+        if (value >= 1000000) {
+            return `$${(value / 1000000).toFixed(1)}M`;
+        }
+        if (value >= 1000) {
+            return `$${(value / 1000).toFixed(1)}K`;
+        }
+        return `$${value}`;
+    };
+    
+    // Render a single node and its children
+    const renderNode = (node, level = 0, parentPath = '') => {
+        if (!node) return null;
+        
+        const nodeId = getNodeId(node, parentPath);
+        const isExpanded = expandedNodes[nodeId] !== false; // Default to expanded
+        const nodeType = getNodeType(node, level);
+        const hasNodeChildren = hasChildren(node);
+        const iconClass = getIconClass(nodeType);
+        const bgColorClass = getBgColorClass(nodeType);
+        
+        // Format value if present
+        const valueDisplay = node.value ? formatValue(node.value) : 
+                            node.adjusted_value ? formatValue(node.adjusted_value) : '';
+        
+        return (
+            <div key={nodeId} className="ownership-node relative">
+                {/* Connection lines */}
+                {level > 0 && (
+                    <div className="absolute left-6 -top-6 h-6 w-px bg-gray-300"></div>
+                )}
+                
+                {/* Node container */}
+                <div className="relative ml-6">
+                    {/* Horizontal line to node */}
+                    {level > 0 && (
+                        <div className="absolute left-0 top-6 w-6 h-px bg-gray-300 -translate-x-6"></div>
+                    )}
+                    
+                    {/* Node content box */}
+                    <div className={`
+                        p-3 rounded-md shadow-sm border border-gray-200 mb-1 ml-2
+                        ${hasNodeChildren ? 'cursor-pointer' : ''}
+                        ${level === 0 ? 'bg-gray-50' : 'bg-white'}
+                    `}>
+                        <div 
+                            className="flex items-center"
+                            onClick={() => hasNodeChildren && toggleNode(nodeId)}
+                        >
+                            {/* Node icon and expanded/collapsed indicator */}
+                            <div className={`
+                                w-8 h-8 rounded-full flex items-center justify-center mr-3
+                                ${bgColorClass} text-white
+                            `}>
+                                <i className={`fas fa-${iconClass}`}></i>
+                            </div>
+                            
+                            <div className="flex-grow">
+                                {/* Node name */}
+                                <div className="font-medium text-gray-800">{node.name || 'Unnamed'}</div>
+                                
+                                {/* Node type and value */}
+                                <div className="flex text-xs text-gray-500 mt-1">
+                                    <div className="capitalize">{nodeType}</div>
+                                    {valueDisplay && (
+                                        <div className="ml-3 font-medium">{valueDisplay}</div>
+                                    )}
+                                </div>
+                            </div>
+                            
+                            {/* Expand/collapse button for nodes with children */}
+                            {hasNodeChildren && (
+                                <div className="ml-2 text-gray-400">
+                                    <i className={`fas fa-chevron-${isExpanded ? 'down' : 'right'}`}></i>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    
+                    {/* Children container, indented and with connection lines */}
+                    {isExpanded && hasNodeChildren && (
+                        <div className="children pl-8 relative">
+                            {/* Vertical connection line for multiple children */}
+                            {((node.children && node.children.length > 1) || 
+                              (node.groups && node.groups.length > 1) ||
+                              (node.accounts && node.accounts.length > 1)) && (
+                                <div className="absolute left-6 top-0 bottom-6 w-px bg-gray-300"></div>
+                            )}
+                            
+                            {/* Render all types of children */}
+                            {node.children?.map(child => 
+                                renderNode(child, level + 1, nodeId)
+                            )}
+                            
+                            {node.groups?.map(group => 
+                                renderNode(group, level + 1, nodeId)
+                            )}
+                            
+                            {node.accounts?.map(account => 
+                                renderNode(account, level + 1, nodeId)
+                            )}
+                            
+                            {node.portfolios?.map(portfolio => 
+                                renderNode(portfolio, level + 1, nodeId)
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
+    
+    const processedData = processData();
     
     // Loading state
-    if (loading && !treeData) {
+    if (loading) {
         return (
             <div className="flex justify-center items-center h-full">
                 <div className="text-center">
@@ -181,7 +210,7 @@ const OwnershipTree = ({ data }) => {
     }
     
     // Empty state
-    if (!data) {
+    if (!processedData.length) {
         return (
             <div className="flex justify-center items-center h-full bg-white">
                 <div className="text-center text-gray-500">
@@ -194,26 +223,23 @@ const OwnershipTree = ({ data }) => {
     }
     
     return (
-        <div className="h-full ownership-tree-container">
-            <div 
-                ref={containerRef} 
-                className="ownership-tree-visualization h-full w-full overflow-auto"
-            >
-                {/* D3 visualization will be rendered here */}
+        <div className="h-full ownership-tree-container relative">
+            <div className="ownership-tree-visualization h-full overflow-auto p-4">
+                {processedData.map(rootNode => renderNode(rootNode))}
             </div>
             
             {/* Legend - helps users understand node colors */}
-            <div className="absolute bottom-4 right-4 bg-white p-2 rounded-md shadow-md text-xs flex gap-3">
+            <div className="absolute bottom-4 right-4 bg-white p-2 rounded-md shadow-md text-xs flex gap-3 z-10">
                 <div className="flex items-center">
                     <span className="inline-block w-3 h-3 rounded-full bg-green-800 mr-1"></span>
                     <span>Client</span>
                 </div>
                 <div className="flex items-center">
-                    <span className="inline-block w-3 h-3 rounded-full bg-indigo-600 mr-1"></span>
+                    <span className="inline-block w-3 h-3 rounded-full bg-indigo-500 mr-1"></span>
                     <span>Group</span>
                 </div>
                 <div className="flex items-center">
-                    <span className="inline-block w-3 h-3 rounded-full bg-purple-600 mr-1"></span>
+                    <span className="inline-block w-3 h-3 rounded-full bg-purple-500 mr-1"></span>
                     <span>Portfolio</span>
                 </div>
                 <div className="flex items-center">
