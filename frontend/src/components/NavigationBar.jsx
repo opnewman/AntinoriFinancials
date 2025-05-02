@@ -8,7 +8,7 @@ const NavigationBar = () => {
     const navItems = [
         { name: 'Dashboard', path: '/', icon: 'fa-tachometer-alt' },
         { name: 'Upload Files', path: '/upload', icon: 'fa-upload' },
-        { name: 'Ownership Tree', path: '/ownership', icon: 'fa-sitemap' },
+        { name: 'Ownership Tree', path: '/ownership-tree', icon: 'fa-sitemap' },
         { name: 'Reports', path: '/reports', icon: 'fa-file-text' }
     ];
     
