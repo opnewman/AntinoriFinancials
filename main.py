@@ -283,388 +283,105 @@ def upload_data_dump():
         return response, 400, response_headers
     
     try:
-        import pandas as pd
-        from io import BytesIO, StringIO
-        from concurrent.futures import ThreadPoolExecutor
-        
         # Start timing the process
         start_time = time.time()
         logger.info(f"Data dump upload started for file: {file.filename}")
         
-        # First, just save the file temporarily to avoid holding it in memory
-        temp_path = f"/tmp/{secure_filename(file.filename)}"
-        file.save(temp_path)
-        file_size = os.path.getsize(temp_path)
-        logger.info(f"File saved temporarily, size: {file_size} bytes")
+        # Save the file to temporary storage
+        import tempfile
+        import subprocess
         
-        # Initialize variables
-        view_name = "DATA DUMP"
-        report_date = datetime.date.today()
+        # Create a temporary directory to store the file
+        temp_dir = tempfile.mkdtemp(prefix="data_dump_")
+        file_path = os.path.join(temp_dir, secure_filename(file.filename))
         
-        # For very large files, we'll use different approaches
-        is_large_file = file_size > 50 * 1024 * 1024  # 50MB threshold
+        # Save the file
+        file.save(file_path)
+        file_size = os.path.getsize(file_path)
+        logger.info(f"File saved to: {file_path}, size: {file_size} bytes")
         
-        # Function to clean numeric values
-        def clean_numeric_value(value):
-            """Clean and convert a value to float"""
-            if pd.isna(value) or value is None:
-                return 0.0
-                
-            if isinstance(value, (int, float)):
-                return float(value)
-                
-            # Remove non-numeric characters except decimal point and minus sign
-            clean_value = str(value).replace('$', '').replace(',', '').strip()
+        # For large files (>10MB), process asynchronously
+        if file_size > 10 * 1024 * 1024:  # 10MB
+            logger.info("File is large, processing asynchronously")
             
-            # Handle empty strings
-            if not clean_value:
-                return 0.0
-                
-            try:
-                return float(clean_value)
-            except ValueError:
-                # For values that can't be converted to float
-                return 0.0
-        
-        # Process Excel file
-        if file_ext in ['.xlsx', '.xls']:
-            # Extract metadata first (small read)
-            try:
-                # Only read the first few rows for metadata
-                metadata_df = pd.read_excel(temp_path, nrows=3, header=None, engine='openpyxl')
-                
-                # Extract view name and date range
-                if len(metadata_df) > 0 and len(metadata_df.columns) > 1 and not pd.isna(metadata_df.iloc[0, 1]):
-                    view_name = str(metadata_df.iloc[0, 1])
-                
-                # Parse date range
-                if len(metadata_df) > 1 and len(metadata_df.columns) > 1 and not pd.isna(metadata_df.iloc[1, 1]):
-                    date_range_str = str(metadata_df.iloc[1, 1])
-                    # Try multiple date formats and patterns
-                    date_patterns = [
-                        r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})',  # MM-DD-YYYY to MM-DD-YYYY
-                        r'(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD to YYYY-MM-DD
-                        r'(\w+ \d{1,2}, \d{4})\s+to\s+(\w+ \d{1,2}, \d{4})'  # Month DD, YYYY to Month DD, YYYY
-                    ]
-                    
-                    # Try each pattern
-                    for pattern in date_patterns:
-                        match = re.search(pattern, date_range_str)
-                        if match:
-                            try:
-                                # We use the end date for reporting
-                                if pattern == r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})':
-                                    _, end_date_str = match.groups()
-                                    report_date = datetime.datetime.strptime(end_date_str, '%m-%d-%Y').date()
-                                    break
-                                elif pattern == r'(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})':
-                                    _, end_date_str = match.groups()
-                                    report_date = datetime.datetime.strptime(end_date_str, '%Y-%m-%d').date()
-                                    break
-                                elif pattern == r'(\w+ \d{1,2}, \d{4})\s+to\s+(\w+ \d{1,2}, \d{4})':
-                                    _, end_date_str = match.groups()
-                                    report_date = datetime.datetime.strptime(end_date_str, '%B %d, %Y').date()
-                                    break
-                            except ValueError:
-                                continue  # Try next pattern if this one fails
-                
-                # For very large files, we'll use chunking to read the data
-                if is_large_file:
-                    # Get row count without loading the whole file
-                    xlsx = pd.ExcelFile(temp_path, engine='openpyxl')
-                    sheet_name = xlsx.sheet_names[0]  # Use the first sheet
-                    nrows = xlsx.book[sheet_name].max_row - 4  # Subtract header and metadata rows
-                    logger.info(f"Large Excel file detected, estimated rows: {nrows}")
-                    
-                    # Function to process a chunk of the Excel file
-                    def process_excel_chunk(chunk_start, chunk_size):
-                        # Use skiprows to skip metadata and header, plus the previous chunks
-                        skip_rows = list(range(0, 4)) + list(range(4 + chunk_start, 4 + nrows))
-                        chunk_df = pd.read_excel(
-                            temp_path,
-                            skiprows=skip_rows,
-                            nrows=chunk_size,
-                            engine='openpyxl',
-                            dtype=str  # Use string for all columns initially
-                        )
-                        return chunk_df
-                    
-                    # We'll process the file in chunks and accumulate the DataFrames
-                    EXCEL_CHUNK_SIZE = 1000
-                    dfs = []
-                    for chunk_start in range(0, nrows, EXCEL_CHUNK_SIZE):
-                        chunk_df = process_excel_chunk(chunk_start, min(EXCEL_CHUNK_SIZE, nrows - chunk_start))
-                        dfs.append(chunk_df)
-                    
-                    # Combine all chunks
-                    df = pd.concat(dfs, ignore_index=True)
-                    logger.info(f"Excel file processed in chunks, total rows: {len(df)}")
-                    
-                else:
-                    # For smaller files, read normally
-                    df = pd.read_excel(
-                        temp_path, 
-                        header=3,  # Header is in row 4 (0-indexed)
-                        engine='openpyxl',
-                        dtype=str  # Use string for all columns initially
-                    )
-                    logger.info(f"Excel file parsed, rows: {len(df)}")
-                
-                # Clean up memory
-                del metadata_df
-                
-            except Exception as e:
-                logger.error(f"Error parsing Excel file: {str(e)}")
-                response = jsonify({
-                    "success": False,
-                    "message": f"Error parsing Excel file: {str(e)}",
-                    "rows_processed": 0,
-                    "rows_inserted": 0,
-                    "errors": [str(e)]
-                })
-                return response, 400, response_headers
-                
-        elif file_ext in ['.csv', '.txt']:
-            # CSV or TXT file - use chunking for better memory management
-            try:
-                # First read just the metadata (first few lines)
-                with open(temp_path, 'r') as f:
-                    lines = [f.readline() for _ in range(4)]  # Read first 4 lines
-                
-                if len(lines) >= 3:
-                    # Extract view name and date range
-                    if ':' in lines[0]:
-                        view_name = lines[0].split(':', 1)[1].strip()
-                    
-                    if ':' in lines[1]:
-                        date_range_str = lines[1].split(':', 1)[1].strip()
-                        # Parse date range similarly to Excel
-                        date_patterns = [
-                            r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})',  # MM-DD-YYYY to MM-DD-YYYY
-                            r'(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD to YYYY-MM-DD
-                            r'(\w+ \d{1,2}, \d{4})\s+to\s+(\w+ \d{1,2}, \d{4})'  # Month DD, YYYY to Month DD, YYYY
-                        ]
-                        
-                        for pattern in date_patterns:
-                            match = re.search(pattern, date_range_str)
-                            if match:
-                                try:
-                                    # We use the end date for reporting
-                                    if pattern == r'(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})':
-                                        _, end_date_str = match.groups()
-                                        report_date = datetime.datetime.strptime(end_date_str, '%m-%d-%Y').date()
-                                        break
-                                    elif pattern == r'(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})':
-                                        _, end_date_str = match.groups()
-                                        report_date = datetime.datetime.strptime(end_date_str, '%Y-%m-%d').date()
-                                        break
-                                    elif pattern == r'(\w+ \d{1,2}, \d{4})\s+to\s+(\w+ \d{1,2}, \d{4})':
-                                        _, end_date_str = match.groups()
-                                        report_date = datetime.datetime.strptime(end_date_str, '%B %d, %Y').date()
-                                        break
-                                except ValueError:
-                                    continue  # Try next pattern if this one fails
-                
-                # Determine the delimiter
-                delimiter = '\t' if file_ext == '.txt' else ','
-                
-                # For large files, use chunking
-                if is_large_file:
-                    # Use chunksize parameter to read the file in chunks
-                    chunks = pd.read_csv(
-                        temp_path,
-                        skiprows=4,  # Skip metadata and header
-                        sep=delimiter,
-                        chunksize=10000,  # Read 10,000 rows at a time
-                        dtype=str,  # Use string for all columns initially
-                        low_memory=False
-                    )
-                    
-                    # Combine all chunks
-                    df = pd.concat(chunks, ignore_index=True)
-                    logger.info(f"CSV file processed in chunks, total rows: {len(df)}")
-                    
-                else:
-                    # For smaller files, read normally
-                    df = pd.read_csv(
-                        temp_path,
-                        skiprows=4,  # Skip metadata and header
-                        sep=delimiter,
-                        dtype=str,  # Use string for all columns initially
-                        low_memory=False
-                    )
-                    logger.info(f"{file_ext} file parsed, rows: {len(df)}")
-                
-            except Exception as e:
-                logger.error(f"Error parsing text file: {str(e)}")
-                response = jsonify({
-                    "success": False,
-                    "message": f"Error parsing text file: {str(e)}",
-                    "rows_processed": 0,
-                    "rows_inserted": 0,
-                    "errors": [str(e)]
-                })
-                return response, 400, response_headers
-        
-        # We can remove the temp file now as we have loaded the data
-        try:
-            os.remove(temp_path)
-        except Exception as e:
-            logger.warning(f"Could not remove temp file: {str(e)}")
-        
-        # Standardize column names for easier processing
-        df.columns = df.columns.str.strip()
-        
-        # Prepare to process the dataframe
-        with get_db_connection() as db:
-            # Delete existing positions for this report date to avoid duplicates
-            db.execute(text(
-                "DELETE FROM financial_positions WHERE date = :report_date"
-            ), {"report_date": report_date})
-            db.commit()
+            # Run the processing script in the background
+            cmd = [
+                "python", 
+                "process_data_dump.py", 
+                file_path
+            ]
             
-            # Create a progress response immediately to prevent timeouts
-            early_response = {
+            # Start the process detached from this request
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            
+            # Return immediate response to client
+            return jsonify({
                 "success": True,
-                "message": f"Processing {len(df)} rows, please wait...",
-                "total_rows": len(df),
-                "report_date": report_date.isoformat(),
-                "in_progress": True
-            }
+                "message": f"Processing file in background. Check status at /api/upload/status?file={secure_filename(file.filename)}",
+                "file_size": file_size,
+                "status": "background",
+                "status_url": f"/api/upload/status?file={secure_filename(file.filename)}"
+            }), 202, response_headers
             
-            # Process the dataframe in batches for better memory management
-            total_rows = len(df)
-            # Increase batch size for better efficiency
-            BATCH_SIZE = 2000
-            rows_processed = 0
-            rows_inserted = 0
-            errors = []
+        else:
+            # For smaller files, process directly
+            logger.info("Processing smaller file directly")
+            # We'll still use the external script for consistency
+            import subprocess
             
-            # Function to process a batch of records
-            def process_batch(batch_df, batch_index):
-                nonlocal rows_processed, rows_inserted
-                local_processed = 0
-                local_inserted = 0
-                local_errors = []
-                local_positions = []
-                
-                for _, row in batch_df.iterrows():
-                    try:
-                        local_processed += 1
-                        
-                        # Map column names properly - handle both formats
-                        position = row.get('Position', row.get('position', ''))
-                        top_level_client = row.get('Top Level Client', row.get('top_level_client', ''))
-                        holding_account = row.get('Holding Account', row.get('holding_account', ''))
-                        holding_account_number = row.get('Holding Account Number', row.get('holding_account_number', ''))
-                        portfolio = row.get('Portfolio', row.get('portfolio', ''))
-                        cusip = row.get('CUSIP', row.get('cusip', ''))
-                        ticker_symbol = row.get('Ticker Symbol', row.get('ticker_symbol', ''))
-                        asset_class = row.get('Asset Class', row.get('asset_class', ''))
-                        second_level = row.get('New Second Level', row.get('second_level', ''))
-                        third_level = row.get('New Third Level', row.get('third_level', ''))
-                        adv_classification = row.get('ADV Classification', row.get('adv_classification', ''))
-                        liquid_vs_illiquid = row.get('Liquid vs. Illiquid Asset', row.get('liquid_vs_illiquid', ''))
-                        adjusted_value = row.get('Adjusted Value (USD)', row.get('adjusted_value', 0))
-                        
-                        # Handle required fields
-                        if not position or not top_level_client or not holding_account:
-                            raise ValueError("Missing required fields: position, top_level_client, or holding_account")
-                        
-                        # Clean and encrypt the adjusted value
-                        adjusted_value_clean = clean_numeric_value(adjusted_value)
-                        encrypted_value = encryption_service.encrypt(adjusted_value_clean)
-                        
-                        # Create financial position object
-                        position_obj = FinancialPosition(
-                            position=position,
-                            top_level_client=top_level_client,
-                            holding_account=holding_account,
-                            holding_account_number=str(holding_account_number) if holding_account_number else "-",
-                            portfolio=str(portfolio) if portfolio else "-",
-                            cusip=str(cusip) if cusip else "",
-                            ticker_symbol=str(ticker_symbol) if ticker_symbol else "",
-                            asset_class=str(asset_class) if asset_class else "Other",
-                            second_level=str(second_level) if second_level else "",
-                            third_level=str(third_level) if third_level else "",
-                            adv_classification=str(adv_classification) if adv_classification else "",
-                            liquid_vs_illiquid=str(liquid_vs_illiquid) if liquid_vs_illiquid else "Liquid",
-                            adjusted_value=encrypted_value,
-                            date=report_date
-                        )
-                        
-                        local_positions.append(position_obj)
-                        local_inserted += 1
-                        
-                    except Exception as e:
-                        error_msg = f"Error processing row {batch_index + local_processed}: {str(e)}"
-                        local_errors.append(error_msg)
-                        logger.error(error_msg)
-                
-                return local_positions, local_processed, local_inserted, local_errors
+            # Run the processing script and wait for completion
+            result = subprocess.run(
+                ["python", "process_data_dump.py", file_path],
+                capture_output=True,
+                text=True
+            )
             
-            # Process batches
-            for i in range(0, total_rows, BATCH_SIZE):
-                batch_df = df.iloc[i:i+BATCH_SIZE]
+            if result.returncode == 0:
+                # Check if the completion file exists
+                status_file = os.path.join(os.path.dirname(file_path), "processing_complete.txt")
                 
-                # Process this batch
-                positions, batch_processed, batch_inserted, batch_errors = process_batch(batch_df, i)
-                
-                # Update counters
-                rows_processed += batch_processed
-                rows_inserted += batch_inserted
-                errors.extend(batch_errors)
-                
-                # Only commit if we have positions to insert
-                if positions:
-                    try:
-                        with get_db_connection() as batch_db:
-                            # Use individual inserts to avoid encoding issues with bulk insert
-                            for position in positions:
-                                try:
-                                    batch_db.add(position)
-                                except Exception as e:
-                                    error_msg = f"Error adding position: {str(e)}"
-                                    errors.append(error_msg)
-                                    logger.error(error_msg)
-                                    continue
-                            
-                            batch_db.commit()
-                    except Exception as e:
-                        error_msg = f"Error in batch commit: {str(e)}"
-                        errors.append(error_msg)
-                        logger.error(error_msg)
-                
-                logger.info(f"Batch processed: {i}-{i+len(batch_df)} of {total_rows}, inserted: {batch_inserted}")
+                if os.path.exists(status_file):
+                    with open(status_file, "r") as f:
+                        status_info = f.read()
+                    
+                    # Parse the completion data
+                    rows_processed = 0
+                    rows_inserted = 0
+                    for line in status_info.split("\n"):
+                        if "Rows processed:" in line:
+                            rows_processed = int(line.split(":", 1)[1].strip())
+                        elif "Rows inserted:" in line:
+                            rows_inserted = int(line.split(":", 1)[1].strip())
+                    
+                    # Return success response
+                    return jsonify({
+                        "success": True,
+                        "message": f"Successfully processed {rows_inserted} positions",
+                        "rows_processed": rows_processed,
+                        "rows_inserted": rows_inserted,
+                        "processing_time_seconds": round(time.time() - start_time, 3),
+                        "log_output": result.stdout[:1000]  # First 1000 chars of log
+                    }), 200, response_headers
+                else:
+                    # Process completed but no status file
+                    return jsonify({
+                        "success": True,
+                        "message": "Processing completed but status information is not available",
+                        "log_output": result.stdout[:1000]  # First 1000 chars of log
+                    }), 200, response_headers
+            else:
+                # Processing failed
+                return jsonify({
+                    "success": False,
+                    "message": "Error processing file",
+                    "error_details": result.stderr,
+                    "log_output": result.stdout[:1000]  # First 1000 chars of log
+                }), 500, response_headers
             
-            # Generate financial summary data asynchronously to avoid timeout
-            try:
-                # Generate summary in the background to avoid timeouts
-                from threading import Thread
-                summary_thread = Thread(target=generate_financial_summary, args=(db, report_date))
-                summary_thread.daemon = True  # Set as daemon so it doesn't block process exit
-                summary_thread.start()
-                
-                logger.info("Started financial summary generation in background thread")
-            except Exception as e:
-                logger.error(f"Error starting financial summary generation: {str(e)}")
-                errors.append(f"Error starting financial summary generation: {str(e)}")
-            
-            # Calculate processing time
-            end_time = time.time()
-            processing_time = end_time - start_time
-            
-            response = jsonify({
-                "success": True,
-                "message": f"Successfully processed {rows_inserted} positions for {report_date}",
-                "rows_processed": rows_processed,
-                "rows_inserted": rows_inserted,
-                "processing_time_seconds": round(processing_time, 3),
-                "report_date": report_date.isoformat(),
-                "errors": errors[:10]  # Limit number of errors returned
-            })
-            return response, 200, response_headers
-    
     except Exception as e:
         logger.error(f"Error processing data dump file: {str(e)}")
         logger.error(traceback.format_exc())
@@ -676,6 +393,57 @@ def upload_data_dump():
             "errors": [str(e)]
         })
         return response, 500, response_headers
+
+# Endpoint to check the status of a background upload job
+@app.route("/api/upload/status", methods=["GET"])
+def check_upload_status():
+    file_name = request.args.get('file')
+    if not file_name:
+        return jsonify({
+            "success": False,
+            "message": "Missing file parameter"
+        }), 400
+    
+    # Look in all temp directories for the status file
+    import glob
+    temp_dir_pattern = "/tmp/data_dump_*"
+    temp_dirs = glob.glob(temp_dir_pattern)
+    
+    for temp_dir in temp_dirs:
+        status_file = os.path.join(temp_dir, "processing_complete.txt")
+        
+        if os.path.exists(status_file):
+            with open(status_file, "r") as f:
+                status_info = f.read()
+            
+            # Parse the completion data
+            rows_processed = 0
+            rows_inserted = 0
+            errors = 0
+            
+            for line in status_info.split("\n"):
+                if "Rows processed:" in line:
+                    rows_processed = int(line.split(":", 1)[1].strip())
+                elif "Rows inserted:" in line:
+                    rows_inserted = int(line.split(":", 1)[1].strip())
+                elif "Errors:" in line:
+                    errors = int(line.split(":", 1)[1].strip())
+            
+            return jsonify({
+                "success": True,
+                "status": "completed",
+                "message": f"Processing completed. {rows_inserted} rows inserted.",
+                "rows_processed": rows_processed,
+                "rows_inserted": rows_inserted,
+                "errors": errors
+            })
+    
+    # File still processing
+    return jsonify({
+        "success": True,
+        "status": "processing",
+        "message": "File is still being processed. Check back later."
+    })
 
 @app.route("/api/upload/ownership", methods=["POST"])
 def upload_ownership_tree():
