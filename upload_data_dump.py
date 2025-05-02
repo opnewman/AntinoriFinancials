@@ -6,9 +6,9 @@ This avoids the web server timeout issues by running as a separate process
 import os
 import sys
 import pandas as pd
-import datetime
 import argparse
 import time
+import datetime
 import logging
 import re
 import traceback
@@ -355,6 +355,9 @@ def main():
         logger.error(f"File not found: {args.file_path}")
         sys.exit(1)
     
+    # Get the directory where the file is located for status files
+    file_dir = os.path.dirname(args.file_path)
+    
     start_time = time.time()
     result = process_excel_file(args.file_path)
     end_time = time.time()
@@ -365,9 +368,38 @@ def main():
         logger.info(f"Total rows: {result['total_rows']}")
         logger.info(f"Processed rows: {result['processed_rows']}")
         logger.info(f"Report date: {result['report_date']}")
+        
+        # Write completion status file
+        completion_file = os.path.join(file_dir, "data_dump_complete.txt")
+        try:
+            with open(completion_file, "w") as f:
+                timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                f.write(f"Processing completed at: {timestamp}\n")
+                f.write(f"File: {os.path.basename(args.file_path)}\n")
+                f.write(f"Processing time: {processing_time:.2f} seconds\n")
+                f.write(f"Rows processed: {result['total_rows']}\n")
+                f.write(f"Rows inserted: {result['processed_rows']}\n")
+                f.write(f"Report date: {result['report_date']}\n")
+            logger.info(f"Completion status file created: {completion_file}")
+        except Exception as e:
+            logger.error(f"Error creating completion file: {str(e)}")
+        
         sys.exit(0)
     else:
         logger.error(f"Processing failed: {result['error']}")
+        
+        # Write error status file
+        error_file = os.path.join(file_dir, "data_dump_error.txt")
+        try:
+            with open(error_file, "w") as f:
+                timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                f.write(f"Processing failed at: {timestamp}\n")
+                f.write(f"File: {os.path.basename(args.file_path)}\n")
+                f.write(f"Error: {result['error']}\n")
+            logger.info(f"Error status file created: {error_file}")
+        except Exception as e:
+            logger.error(f"Error creating error file: {str(e)}")
+            
         sys.exit(1)
 
 if __name__ == "__main__":
