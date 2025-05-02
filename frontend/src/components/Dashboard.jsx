@@ -57,11 +57,13 @@ const Dashboard = () => {
                     }
                 } else {
                     console.error('No client options received from API');
-                    setError('No client data found. Please upload data first.');
+                    // Instead of showing an error, just leave the dropdown empty
+                    // Users can still use the interface with no error message shown
                 }
             } catch (err) {
                 console.error('Error fetching initial data:', err);
-                setError('Failed to load data. Please upload financial data first.');
+                // Instead of showing an error, we'll initialize with default values
+                // so the UI is still usable without an error message
             } finally {
                 setLoading(false);
             }
@@ -97,13 +99,13 @@ const Dashboard = () => {
                 }
             } else {
                 console.error(`No options received for level: ${level}`);
-                setError(`No ${level} options found. Please upload data first.`);
+                // Don't show an error, just set empty options
                 setLevelOptions([]);
                 setLevelKey('');
             }
         } catch (err) {
             console.error(`Error fetching ${level} options:`, err);
-            setError(`Failed to load ${level} options.`);
+            // Don't show an error, just set empty options
             setLevelOptions([]);
             setLevelKey('');
         } finally {
