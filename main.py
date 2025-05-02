@@ -1003,9 +1003,9 @@ def get_ownership_tree():
             # Hierarchy: Client -> Group -> Holding Account
             
             # Step 1: Get all entities organized by their grouping_attribute_name (Client, Group, Holding Account)
-            logger.info("Building ownership tree strictly based on grouping_attribute_name structure")
+            logger.info("Building ownership tree strictly based on grouping_attribute_name and portfolio relationships")
             
-            # Get all clients (entities marked as "Client")
+            # First, get all clients (entities marked as "Client")
             client_entities = db.query(
                 OwnershipItem.client,
                 OwnershipItem.portfolio,
@@ -1017,15 +1017,23 @@ def get_ownership_tree():
             
             # Create a set of client names and mapping to portfolios
             client_names = set()
-            client_portfolio_map = {}
-            portfolio_to_client = {}
+            client_portfolio_map = {}  # Maps client name to their portfolio
+            client_entity_map = {}     # Maps client name to their entity_id
             
             for client_entity in client_entities:
                 if client_entity.client:
                     client_names.add(client_entity.client)
                     if client_entity.portfolio:
                         client_portfolio_map[client_entity.client] = client_entity.portfolio
-                        portfolio_to_client[client_entity.portfolio] = client_entity.client
+                    if client_entity.entity_id:
+                        client_entity_map[client_entity.client] = client_entity.entity_id
+            
+            # CRITICAL MAPPING: Map portfolio names back to client names
+            # This is used to link groups and accounts to their parent clients
+            portfolio_to_client = {}
+            for client, portfolio in client_portfolio_map.items():
+                if portfolio:
+                    portfolio_to_client[portfolio] = client
             
             # Get all groups (entities marked as "Group")
             group_entities = db.query(
@@ -1038,19 +1046,18 @@ def get_ownership_tree():
             ).distinct().all()
             
             # Create maps for group relationships
-            group_name_to_id = {}
-            group_to_portfolio = {}
-            group_to_client_map = {}  # Which client each group belongs to (via portfolio)
+            group_name_to_id = {}      # Maps group name to its ID
+            group_to_portfolio = {}    # Maps group name to its portfolio
+            portfolio_to_groups = defaultdict(list)  # Maps portfolio to all its groups
             
             for group in group_entities:
                 if group.client and group.group_id:
                     group_name_to_id[group.client] = group.group_id
                     
-                if group.portfolio:
+                if group.client and group.portfolio:
                     group_to_portfolio[group.client] = group.portfolio
-                    # Link the group to its parent client via portfolio match
-                    if group.portfolio in portfolio_to_client:
-                        group_to_client_map[group.client] = portfolio_to_client[group.portfolio]
+                    # Store all groups for each portfolio
+                    portfolio_to_groups[group.portfolio].append(group.client)
             
             # Get all holding accounts (entities marked as "Holding Account")
             account_entities = db.query(
@@ -1064,8 +1071,8 @@ def get_ownership_tree():
             ).distinct().all()
             
             # Create maps for account relationships
-            account_to_portfolio = {}
-            portfolio_to_accounts = defaultdict(list)
+            account_to_portfolio = {}  # Maps account name to its portfolio
+            portfolio_to_accounts = defaultdict(list)  # Maps portfolio to all its accounts
             
             for account in account_entities:
                 if account.client and account.portfolio:
@@ -1078,79 +1085,74 @@ def get_ownership_tree():
                         "value": 1  # Fixed value for visualization
                     })
             
-            # Step 2: Build the tree following the hierarchy
+            # Step 2: Build the tree following the correct hierarchy based on portfolio relationships
             # Only include clients in our filtered set
             for client_name in clients:
                 # Skip if not marked as a Client when we have Client markers
                 if client_name not in client_names and client_count_check > 0:
                     continue
                 
+                # Create the client node
                 client_node = {
                     "name": client_name,
                     "children": []
                 }
                 
-                # Find this client's portfolio (needed to connect groups and accounts)
+                # The client's portfolio is the key to finding its groups and accounts
                 client_portfolio = client_portfolio_map.get(client_name)
+                
+                # If client has no portfolio assigned, it won't have any groups or accounts
                 if not client_portfolio:
-                    # If no portfolio, client may be present but with no assets
                     logger.debug(f"Client {client_name} has no portfolio assigned")
+                    # Still add the client to the tree as an empty node
+                    tree["children"].append(client_node)
+                    continue
                 
-                # Step 3: Find all groups that belong to this client (via portfolio match)
-                client_groups = []
-                for group_name, portfolio in group_to_portfolio.items():
-                    if portfolio == client_portfolio:
-                        client_groups.append(group_name)
+                # Get all groups linked to this client's portfolio
+                client_groups = portfolio_to_groups.get(client_portfolio, [])
                 
-                # Step 4: Add each group with its accounts
+                # Add groups to the client node
+                group_nodes_added = False
                 for group_name in client_groups:
+                    # Create the group node
                     group_node = {
                         "name": group_name,
                         "children": []
                     }
                     
-                    # Find accounts that belong to this group's portfolio
-                    # Accounts are always linked by portfolio, not by group_id
+                    # Get accounts linked to this group via the group's portfolio
                     group_portfolio = group_to_portfolio.get(group_name)
-                    
                     if group_portfolio:
-                        # Add all accounts that belong to this group's portfolio
                         group_accounts = portfolio_to_accounts.get(group_portfolio, [])
                         
-                        # If the group shares portfolio with the client, only add accounts
-                        # that aren't directly connected to the client
-                        if group_portfolio == client_portfolio:
-                            # These accounts are linked through the group, not directly to client
-                            for account in group_accounts:
-                                group_node["children"].append(account)
+                        # Add accounts to the group node
+                        for account in group_accounts:
+                            group_node["children"].append(account)
                     
-                    # Only add the group if it has accounts
-                    if group_node["children"]:
+                    # Only add groups that have accounts or a valid ID
+                    if group_node["children"] or group_name in group_name_to_id:
                         client_node["children"].append(group_node)
-                    elif group_name in group_name_to_id:
-                        # Include empty groups if they have a valid ID
-                        # This ensures we show the complete structure
-                        client_node["children"].append(group_node)
+                        group_nodes_added = True
                 
-                # Step 5: Add direct accounts (those that belong to the client's portfolio but not to any group)
-                if client_portfolio:
-                    direct_accounts = portfolio_to_accounts.get(client_portfolio, [])
+                # Add direct accounts (only those directly linked to this client's portfolio)
+                direct_accounts = portfolio_to_accounts.get(client_portfolio, [])
+                
+                if direct_accounts:
+                    direct_accounts_node = {
+                        "name": "Direct Accounts",
+                        "children": []
+                    }
                     
-                    if direct_accounts:
-                        direct_accounts_node = {
-                            "name": "Direct Accounts",
-                            "children": []
-                        }
-                        
-                        for account in direct_accounts:
-                            direct_accounts_node["children"].append(account)
-                        
-                        # Only add the direct accounts node if it has accounts
-                        if direct_accounts_node["children"]:
-                            client_node["children"].append(direct_accounts_node)
+                    for account in direct_accounts:
+                        direct_accounts_node["children"].append(account)
+                    
+                    # Only add the direct accounts node if it has accounts
+                    if direct_accounts_node["children"]:
+                        client_node["children"].append(direct_accounts_node)
+                        group_nodes_added = True
                 
-                # Step 6: Add the client to the tree if it has children or is a verified client
-                if client_node["children"]:
+                # Add client to tree if it has any children or is a verified client
+                if group_nodes_added:
                     tree["children"].append(client_node)
                 elif client_name in potential_true_clients and client_name not in likely_accounts:
                     # Include empty clients if they're verified as true clients
