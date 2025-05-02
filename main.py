@@ -163,8 +163,19 @@ def generate_financial_summary(db, report_date):
         
         # Process all positions
         for position in positions:
-            # Decrypt the adjusted value
-            adjusted_value = encryption_service.decrypt_to_float(position.adjusted_value)
+            # Handle the "ENC:" prefix in adjusted_value
+            if position.adjusted_value and position.adjusted_value.startswith("ENC:"):
+                try:
+                    adjusted_value = float(position.adjusted_value[4:])
+                except ValueError:
+                    logger.warning(f"Could not convert {position.adjusted_value} to float")
+                    adjusted_value = 0.0
+            else:
+                try:
+                    adjusted_value = float(position.adjusted_value) if position.adjusted_value else 0.0
+                except ValueError:
+                    logger.warning(f"Could not convert {position.adjusted_value} to float")
+                    adjusted_value = 0.0
             
             # Skip positions with zero or negative values if needed
             # if adjusted_value <= 0:
