@@ -1,6 +1,7 @@
-const Chart = ({ type, data, options, height }) => {
+// Rename our component to ChartComponent to avoid collision with Chart.js global object
+const ChartComponent = ({ type, data, options, height }) => {
     const chartRef = React.useRef(null);
-    const [chartInstance, setChartInstance] = React.useState(null);
+    const chartInstanceRef = React.useRef(null);
     
     // Default chart options
     const defaultOptions = {
@@ -35,34 +36,36 @@ const Chart = ({ type, data, options, height }) => {
     // Merge default options with provided options
     const chartOptions = {
         ...defaultOptions,
-        ...options
+        ...(options || {})
     };
     
     // Create or update chart on data or type change
     React.useEffect(() => {
-        if (chartRef && chartRef.current && data) {
-            if (chartInstance) {
-                chartInstance.destroy();
-            }
-            
-            const ctx = chartRef.current.getContext('2d');
-            // Use window.Chart to avoid name collision with our Chart component
-            const newChartInstance = new window.Chart(ctx, {
-                type: type || 'bar',
-                data: data,
-                options: chartOptions
-            });
-            
-            setChartInstance(newChartInstance);
-            
-            // Clean up on unmount
-            return () => {
-                if (newChartInstance) {
-                    newChartInstance.destroy();
-                }
-            };
+        if (!chartRef.current || !data) return;
+        
+        // Clean up any existing chart
+        if (chartInstanceRef.current) {
+            chartInstanceRef.current.destroy();
         }
-    }, [data, type, options]);
+        
+        // Create new chart instance
+        const ctx = chartRef.current.getContext('2d');
+        const ChartJS = window.Chart; // Use the global Chart object
+        
+        chartInstanceRef.current = new ChartJS(ctx, {
+            type: type || 'bar',
+            data: data,
+            options: chartOptions
+        });
+        
+        // Clean up on unmount
+        return () => {
+            if (chartInstanceRef.current) {
+                chartInstanceRef.current.destroy();
+                chartInstanceRef.current = null;
+            }
+        };
+    }, [data, type, chartOptions]);
     
     // Handle empty data
     if (!data || !data.datasets || data.datasets.length === 0) {
@@ -88,20 +91,22 @@ const Chart = ({ type, data, options, height }) => {
     );
 };
 
-// Specialized chart components
+// For backward compatibility
+const Chart = ChartComponent;
 
+// Specialized chart components
 const PieChart = ({ data, options, height }) => {
-    return <Chart type="pie" data={data} options={options} height={height} />;
+    return <ChartComponent type="pie" data={data} options={options} height={height} />;
 };
 
 const DoughnutChart = ({ data, options, height }) => {
-    return <Chart type="doughnut" data={data} options={options} height={height} />;
+    return <ChartComponent type="doughnut" data={data} options={options} height={height} />;
 };
 
 const BarChart = ({ data, options, height }) => {
-    return <Chart type="bar" data={data} options={options} height={height} />;
+    return <ChartComponent type="bar" data={data} options={options} height={height} />;
 };
 
 const LineChart = ({ data, options, height }) => {
-    return <Chart type="line" data={data} options={options} height={height} />;
+    return <ChartComponent type="line" data={data} options={options} height={height} />;
 };
