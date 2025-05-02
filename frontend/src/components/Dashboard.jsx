@@ -16,34 +16,47 @@ const Dashboard = () => {
     React.useEffect(() => {
         const fetchInitialData = async () => {
             try {
+                console.log('Fetching client options...');
                 // Load entity options using the real data from database
                 const entityOptions = await api.getEntityOptions('client');
+                console.log('Received entity options:', entityOptions);
                 
-                if (entityOptions.length > 0) {
+                if (entityOptions && entityOptions.length > 0) {
                     const formattedOptions = entityOptions.map(entity => ({
                         value: entity,
                         label: entity
                     }));
                     
                     setLevelOptions(formattedOptions);
+                    console.log('Set formatted options:', formattedOptions);
                     
                     // Set default to "All Clients" if it exists, otherwise first client
                     const allClientsOption = formattedOptions.find(opt => opt.value === 'All Clients');
                     if (allClientsOption) {
                         setLevelKey(allClientsOption.value);
+                        console.log('Set level key to All Clients');
                     } else if (formattedOptions.length > 0) {
                         setLevelKey(formattedOptions[0].value);
+                        console.log('Set level key to first option:', formattedOptions[0].value);
                     }
+                    
+                    // Generate initial report once we have the level key
+                    setTimeout(() => {
+                        generateReport();
+                    }, 500);
                     
                     // Still load ownership tree for structure visualization
                     try {
+                        console.log('Fetching ownership tree...');
                         const treeData = await api.getOwnershipTree();
                         setOwnershipTree(treeData);
+                        console.log('Set ownership tree data');
                     } catch (err) {
                         console.error('Error fetching ownership tree:', err);
                         // Non-critical error, continue without ownership tree
                     }
                 } else {
+                    console.error('No client options received from API');
                     setError('No client data found. Please upload data first.');
                 }
             } catch (err) {
@@ -61,20 +74,31 @@ const Dashboard = () => {
     const updateLevelOptions = async (level) => {
         setLoading(true);
         try {
+            console.log(`Fetching options for level: ${level}`);
             // Get entity options from the API based on the selected level
             const entityOptions = await api.getEntityOptions(level);
+            console.log(`Received ${entityOptions.length} options for level ${level}`);
             
-            const formattedOptions = entityOptions.map(entity => ({
-                value: entity,
-                label: entity
-            }));
-            
-            setLevelOptions(formattedOptions);
-            
-            // Set default value to first option if available
-            if (formattedOptions.length > 0) {
-                setLevelKey(formattedOptions[0].value);
+            if (entityOptions && entityOptions.length > 0) {
+                const formattedOptions = entityOptions.map(entity => ({
+                    value: entity,
+                    label: entity
+                }));
+                
+                setLevelOptions(formattedOptions);
+                console.log('Set level options:', formattedOptions.slice(0, 5));
+                
+                // Set default value to first option if available
+                if (formattedOptions.length > 0) {
+                    setLevelKey(formattedOptions[0].value);
+                    console.log('Set level key to:', formattedOptions[0].value);
+                } else {
+                    setLevelKey('');
+                }
             } else {
+                console.error(`No options received for level: ${level}`);
+                setError(`No ${level} options found. Please upload data first.`);
+                setLevelOptions([]);
                 setLevelKey('');
             }
         } catch (err) {
