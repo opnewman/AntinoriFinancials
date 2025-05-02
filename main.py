@@ -1185,6 +1185,14 @@ def get_entity_options():
         with get_db_connection() as db:
             # Get the latest date from the database
             latest_date = get_latest_data_date(db)
+            logger.info(f"Getting entity options for type={entity_type} with date={latest_date}")
+            
+            # Check if we have data for this date
+            count_check = db.execute(text("""
+            SELECT COUNT(*) FROM financial_positions WHERE date = :date
+            """), {"date": latest_date}).fetchone()[0]
+            
+            logger.info(f"Found {count_check} records for date {latest_date}")
             
             if entity_type == 'client':
                 query = text("""
@@ -1199,6 +1207,8 @@ def get_entity_options():
                 # Add "All Clients" option for global view
                 entities.insert(0, "All Clients")
                 
+                logger.info(f"Found {len(entities)} client options")
+                
             elif entity_type == 'portfolio':
                 query = text("""
                 SELECT DISTINCT portfolio
@@ -1208,6 +1218,8 @@ def get_entity_options():
                 """)
                 results = db.execute(query, {"date": latest_date}).fetchall()
                 entities = [row[0] for row in results if row[0]]
+                
+                logger.info(f"Found {len(entities)} portfolio options")
                 
             elif entity_type == 'account':
                 query = text("""
@@ -1219,9 +1231,15 @@ def get_entity_options():
                 results = db.execute(query, {"date": latest_date}).fetchall()
                 entities = [row[0] for row in results if row[0]]
                 
+                logger.info(f"Found {len(entities)} account options")
+                
             else:
                 # Default fallback
                 entities = []
+            
+            # Debug: Log a few entities
+            sample_entities = entities[:5] if len(entities) > 5 else entities
+            logger.info(f"Sample entities: {sample_entities}")
             
             return jsonify({
                 "success": True,
