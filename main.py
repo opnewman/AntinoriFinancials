@@ -617,10 +617,23 @@ def upload_data_dump():
                 
                 # Only commit if we have positions to insert
                 if positions:
-                    with get_db_connection() as batch_db:
-                        # Bulk insert the batch
-                        batch_db.bulk_save_objects(positions)
-                        batch_db.commit()
+                    try:
+                        with get_db_connection() as batch_db:
+                            # Use individual inserts to avoid encoding issues with bulk insert
+                            for position in positions:
+                                try:
+                                    batch_db.add(position)
+                                except Exception as e:
+                                    error_msg = f"Error adding position: {str(e)}"
+                                    errors.append(error_msg)
+                                    logger.error(error_msg)
+                                    continue
+                            
+                            batch_db.commit()
+                    except Exception as e:
+                        error_msg = f"Error in batch commit: {str(e)}"
+                        errors.append(error_msg)
+                        logger.error(error_msg)
                 
                 logger.info(f"Batch processed: {i}-{i+len(batch_df)} of {total_rows}, inserted: {batch_inserted}")
             
