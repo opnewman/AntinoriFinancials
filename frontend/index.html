@@ -325,74 +325,217 @@
     <!-- Initialize Charts -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Asset Allocation Chart
-            const allocationCtx = document.getElementById('allocationChart').getContext('2d');
-            new Chart(allocationCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: ['Equities', 'Fixed Income', 'Alternatives', 'Cash'],
-                    datasets: [{
-                        data: [45.5, 30.0, 15.5, 9.0],
-                        backgroundColor: ['#4C72B0', '#55A868', '#C44E52', '#8172B3'],
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'right',
-                            labels: {
-                                font: {
-                                    family: 'Inter, sans-serif'
+            // Dashboard Variables
+            const today = new Date().toISOString().substring(0, 10); // Format: YYYY-MM-DD
+            const defaultLevel = 'client';
+            const defaultLevelKey = 'All Clients'; // Default to All Clients
+            
+            let allocationChart, liquidityChart, performanceChart;
+            
+            // Create charts with loading state
+            initializeCharts();
+            
+            // Fetch real data from API endpoints
+            loadDashboardData();
+            
+            // Initialize charts with loading state
+            function initializeCharts() {
+                // Asset Allocation Chart - loading state
+                const allocationCtx = document.getElementById('allocationChart').getContext('2d');
+                allocationChart = new Chart(allocationCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Loading...'],
+                        datasets: [{
+                            data: [100],
+                            backgroundColor: ['#e5e7eb'],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    font: {
+                                        family: 'Inter, sans-serif'
+                                    }
                                 }
                             }
-                        }
+                        },
+                        cutout: '60%'
+                    }
+                });
+                
+                // Liquidity Chart - loading state
+                const liquidityCtx = document.getElementById('liquidityChart').getContext('2d');
+                liquidityChart = new Chart(liquidityCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: ['Loading...'],
+                        datasets: [{
+                            data: [100],
+                            backgroundColor: ['#e5e7eb'],
+                            borderWidth: 1
+                        }]
                     },
-                    cutout: '60%'
-                }
-            });
-            
-            // Liquidity Chart
-            const liquidityCtx = document.getElementById('liquidityChart').getContext('2d');
-            new Chart(liquidityCtx, {
-                type: 'pie',
-                data: {
-                    labels: ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'],
-                    datasets: [{
-                        data: [60.0, 15.0, 10.0, 10.0, 5.0],
-                        backgroundColor: ['#4C72B0', '#55A868', '#C44E52', '#8172B3', '#CCB974'],
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'right',
-                            labels: {
-                                font: {
-                                    family: 'Inter, sans-serif'
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    font: {
+                                        family: 'Inter, sans-serif'
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            });
+                });
+            }
             
-            // Performance Chart
+            // Load dashboard data from API
+            function loadDashboardData() {
+                // Show loading indicator
+                document.querySelectorAll('.loading-indicator').forEach(el => {
+                    el.style.display = 'flex';
+                });
+                
+                // Fetch asset allocation data
+                fetch(`/api/charts/allocation?date=${today}&level=${defaultLevel}&level_key=${encodeURIComponent(defaultLevelKey)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data && data.labels && data.datasets) {
+                            updateAllocationChart(data);
+                        } else {
+                            console.error('Invalid allocation data format:', data);
+                            // Fallback to sample data if API fails
+                            updateAllocationChart({
+                                labels: ['Equities', 'Fixed Income', 'Alternatives', 'Cash'],
+                                datasets: [{
+                                    data: [45.5, 30.0, 15.5, 9.0],
+                                    backgroundColor: ['#4C72B0', '#55A868', '#C44E52', '#8172B3'],
+                                    borderWidth: 1
+                                }]
+                            });
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching allocation data:', error);
+                        // Fallback to sample data if API fails
+                        updateAllocationChart({
+                            labels: ['Equities', 'Fixed Income', 'Alternatives', 'Cash'],
+                            datasets: [{
+                                data: [45.5, 30.0, 15.5, 9.0],
+                                backgroundColor: ['#4C72B0', '#55A868', '#C44E52', '#8172B3'],
+                                borderWidth: 1
+                            }]
+                        });
+                    });
+                
+                // Fetch liquidity data
+                fetch(`/api/charts/liquidity?date=${today}&level=${defaultLevel}&level_key=${encodeURIComponent(defaultLevelKey)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data && data.labels && data.datasets) {
+                            updateLiquidityChart(data);
+                        } else {
+                            console.error('Invalid liquidity data format:', data);
+                            // Fallback to sample data if API fails
+                            updateLiquidityChart({
+                                labels: ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'],
+                                datasets: [{
+                                    data: [60.0, 15.0, 10.0, 10.0, 5.0],
+                                    backgroundColor: ['#4C72B0', '#55A868', '#C44E52', '#8172B3', '#CCB974'],
+                                    borderWidth: 1
+                                }]
+                            });
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching liquidity data:', error);
+                        // Fallback to sample data if API fails
+                        updateLiquidityChart({
+                            labels: ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'],
+                            datasets: [{
+                                data: [60.0, 15.0, 10.0, 10.0, 5.0],
+                                backgroundColor: ['#4C72B0', '#55A868', '#C44E52', '#8172B3', '#CCB974'],
+                                borderWidth: 1
+                            }]
+                        });
+                    });
+                
+                // Fetch performance data
+                fetch(`/api/charts/performance?date=${today}&level=${defaultLevel}&level_key=${encodeURIComponent(defaultLevelKey)}&period=YTD`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data && data.labels && data.datasets) {
+                            updatePerformanceChart(data);
+                        } else {
+                            console.error('Invalid performance data format:', data);
+                            // Fallback to sample data if API fails
+                            updatePerformanceChart({
+                                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                                datasets: [{
+                                    label: 'Performance (%)',
+                                    data: [1.2, 0.8, -0.5, 1.5, 2.0, 1.0, 1.8, 0.7, -1.0, 2.5, 1.0, 1.0],
+                                    borderColor: '#4C72B0',
+                                    backgroundColor: 'rgba(76, 114, 176, 0.1)',
+                                    fill: true,
+                                    tension: 0.4
+                                }]
+                            });
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching performance data:', error);
+                        // Fallback to sample data if API fails
+                        updatePerformanceChart({
+                            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                            datasets: [{
+                                label: 'Performance (%)',
+                                data: [1.2, 0.8, -0.5, 1.5, 2.0, 1.0, 1.8, 0.7, -1.0, 2.5, 1.0, 1.0],
+                                borderColor: '#4C72B0',
+                                backgroundColor: 'rgba(76, 114, 176, 0.1)',
+                                fill: true,
+                                tension: 0.4
+                            }]
+                        });
+                    });
+                
+                // Update last data refresh time
+                document.getElementById('lastRefreshed').textContent = new Date().toLocaleString();
+            }
+            
+            // Update allocation chart with data
+            function updateAllocationChart(data) {
+                allocationChart.data.labels = data.labels;
+                allocationChart.data.datasets = data.datasets;
+                allocationChart.update();
+            }
+            
+            // Update liquidity chart with data
+            function updateLiquidityChart(data) {
+                liquidityChart.data.labels = data.labels;
+                liquidityChart.data.datasets = data.datasets;
+                liquidityChart.update();
+            }
+            
+            // Initialize Performance Chart
             const performanceCtx = document.getElementById('performanceChart').getContext('2d');
-            new Chart(performanceCtx, {
+            performanceChart = new Chart(performanceCtx, {
                 type: 'line',
                 data: {
-                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                    labels: ['Loading...'],
                     datasets: [{
                         label: 'Performance (%)',
-                        data: [1.2, 0.8, -0.5, 1.5, 2.0, 1.0, 1.8, 0.7, -1.0, 2.5, 1.0, 1.0],
-                        borderColor: '#4C72B0',
-                        backgroundColor: 'rgba(76, 114, 176, 0.1)',
+                        data: [0],
+                        borderColor: '#e5e7eb',
+                        backgroundColor: 'rgba(229, 231, 235, 0.1)',
                         fill: true,
                         tension: 0.4
                     }]
@@ -420,6 +563,52 @@
                     }
                 }
             });
+            
+            // Add performance chart loading
+            function updatePerformanceChart(data) {
+                performanceChart.data.labels = data.labels;
+                performanceChart.data.datasets = data.datasets;
+                performanceChart.update();
+            }
+            
+            // Also fetch performance data in loadDashboardData function
+            // Add this inside the loadDashboardData function before the closing curly brace
+            fetch(`/api/charts/performance?date=${today}&level=${defaultLevel}&level_key=${encodeURIComponent(defaultLevelKey)}&period=YTD`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.labels && data.datasets) {
+                        updatePerformanceChart(data);
+                    } else {
+                        console.error('Invalid performance data format:', data);
+                        // Fallback to sample data if API fails
+                        updatePerformanceChart({
+                            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                            datasets: [{
+                                label: 'Performance (%)',
+                                data: [1.2, 0.8, -0.5, 1.5, 2.0, 1.0, 1.8, 0.7, -1.0, 2.5, 1.0, 1.0],
+                                borderColor: '#4C72B0',
+                                backgroundColor: 'rgba(76, 114, 176, 0.1)',
+                                fill: true,
+                                tension: 0.4
+                            }]
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching performance data:', error);
+                    // Fallback to sample data if API fails
+                    updatePerformanceChart({
+                        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                        datasets: [{
+                            label: 'Performance (%)',
+                            data: [1.2, 0.8, -0.5, 1.5, 2.0, 1.0, 1.8, 0.7, -1.0, 2.5, 1.0, 1.0],
+                            borderColor: '#4C72B0',
+                            backgroundColor: 'rgba(76, 114, 176, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    });
+                });
         });
     </script>
 </body>

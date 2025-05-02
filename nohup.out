@@ -800,3 +800,201 @@ TypeError: read_excel() got an unexpected keyword argument 'chunksize'
 2025-05-02 18:12:47,995 - INFO - Total rows: 89901
 2025-05-02 18:12:47,996 - INFO - Processed rows: 89901
 2025-05-02 18:12:47,996 - INFO - Report date: 2025-05-01
+/home/runner/workspace/upload_data_dump.py:39: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  Base = declarative_base()
+2025-05-02 18:19:47,232 - INFO - Processing Excel file: /tmp/data_dump_o5u6g756/All_clients_DATA_DUMP_05-01-2025.xlsx
+/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/openpyxl/styles/stylesheet.py:237: UserWarning: Workbook contains no default style, apply openpyxl's default
+  warn("Workbook contains no default style, apply openpyxl's default")
+2025-05-02 18:19:51,878 - INFO - Processing data for date: 2025-05-01
+/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/openpyxl/styles/stylesheet.py:237: UserWarning: Workbook contains no default style, apply openpyxl's default
+  warn("Workbook contains no default style, apply openpyxl's default")
+2025-05-02 18:20:16,651 - INFO - Found 89901 rows to process
+2025-05-02 18:20:16,652 - INFO - Processing chunk 1 with 1000 rows
+2025-05-02 18:20:17,965 - INFO - Inserted 1000 rows in chunk 1
+2025-05-02 18:20:17,966 - INFO - Processing chunk 1001 with 1000 rows
+2025-05-02 18:20:19,069 - INFO - Inserted 1000 rows in chunk 1001
+2025-05-02 18:20:19,070 - INFO - Processing chunk 2001 with 1000 rows
+2025-05-02 18:20:20,165 - INFO - Inserted 1000 rows in chunk 2001
+2025-05-02 18:20:20,168 - INFO - Processing chunk 3001 with 1000 rows
+2025-05-02 18:20:21,223 - INFO - Inserted 1000 rows in chunk 3001
+2025-05-02 18:20:21,226 - INFO - Processing chunk 4001 with 1000 rows
+2025-05-02 18:20:22,308 - INFO - Inserted 1000 rows in chunk 4001
+2025-05-02 18:20:22,308 - INFO - Processing chunk 5001 with 1000 rows
+2025-05-02 18:20:23,600 - INFO - Inserted 1000 rows in chunk 5001
+2025-05-02 18:20:23,603 - INFO - Processing chunk 6001 with 1000 rows
+2025-05-02 18:20:24,565 - INFO - Inserted 1000 rows in chunk 6001
+2025-05-02 18:20:24,565 - INFO - Processing chunk 7001 with 1000 rows
+2025-05-02 18:20:25,701 - INFO - Inserted 1000 rows in chunk 7001
+2025-05-02 18:20:25,701 - INFO - Processing chunk 8001 with 1000 rows
+2025-05-02 18:20:26,272 - INFO - Inserted 1000 rows in chunk 8001
+2025-05-02 18:20:26,272 - INFO - Processing chunk 9001 with 1000 rows
+2025-05-02 18:20:27,571 - INFO - Inserted 1000 rows in chunk 9001
+2025-05-02 18:20:27,572 - INFO - Processing chunk 10001 with 1000 rows
+2025-05-02 18:20:28,252 - INFO - Inserted 1000 rows in chunk 10001
+2025-05-02 18:20:28,254 - INFO - Processing chunk 11001 with 1000 rows
+2025-05-02 18:20:28,986 - INFO - Inserted 1000 rows in chunk 11001
+2025-05-02 18:20:28,987 - INFO - Processing chunk 12001 with 1000 rows
+2025-05-02 18:20:30,377 - INFO - Inserted 1000 rows in chunk 12001
+2025-05-02 18:20:30,378 - INFO - Processing chunk 13001 with 1000 rows
+2025-05-02 18:20:30,952 - INFO - Inserted 1000 rows in chunk 13001
+2025-05-02 18:20:30,956 - INFO - Processing chunk 14001 with 1000 rows
+2025-05-02 18:20:31,497 - INFO - Inserted 1000 rows in chunk 14001
+2025-05-02 18:20:31,499 - INFO - Processing chunk 15001 with 1000 rows
+2025-05-02 18:20:32,914 - INFO - Inserted 1000 rows in chunk 15001
+2025-05-02 18:20:32,914 - INFO - Processing chunk 16001 with 1000 rows
+2025-05-02 18:20:33,753 - INFO - Inserted 1000 rows in chunk 16001
+2025-05-02 18:20:33,755 - INFO - Processing chunk 17001 with 1000 rows
+2025-05-02 18:20:34,492 - INFO - Inserted 1000 rows in chunk 17001
+2025-05-02 18:20:34,495 - INFO - Processing chunk 18001 with 1000 rows
+2025-05-02 18:20:35,244 - INFO - Inserted 1000 rows in chunk 18001
+2025-05-02 18:20:35,244 - INFO - Processing chunk 19001 with 1000 rows
+2025-05-02 18:20:36,762 - INFO - Inserted 1000 rows in chunk 19001
+2025-05-02 18:20:36,763 - INFO - Processing chunk 20001 with 1000 rows
+2025-05-02 18:20:37,312 - INFO - Inserted 1000 rows in chunk 20001
+2025-05-02 18:20:37,312 - INFO - Processing chunk 21001 with 1000 rows
+2025-05-02 18:20:37,851 - INFO - Inserted 1000 rows in chunk 21001
+2025-05-02 18:20:37,851 - INFO - Processing chunk 22001 with 1000 rows
+2025-05-02 18:20:38,384 - INFO - Inserted 1000 rows in chunk 22001
+2025-05-02 18:20:38,386 - INFO - Processing chunk 23001 with 1000 rows
+2025-05-02 18:20:38,918 - INFO - Inserted 1000 rows in chunk 23001
+2025-05-02 18:20:38,920 - INFO - Processing chunk 24001 with 1000 rows
+2025-05-02 18:20:40,325 - INFO - Inserted 1000 rows in chunk 24001
+2025-05-02 18:20:40,325 - INFO - Processing chunk 25001 with 1000 rows
+2025-05-02 18:20:40,848 - INFO - Inserted 1000 rows in chunk 25001
+2025-05-02 18:20:40,849 - INFO - Processing chunk 26001 with 1000 rows
+2025-05-02 18:20:41,359 - INFO - Inserted 1000 rows in chunk 26001
+2025-05-02 18:20:41,361 - INFO - Processing chunk 27001 with 1000 rows
+2025-05-02 18:20:41,875 - INFO - Inserted 1000 rows in chunk 27001
+2025-05-02 18:20:41,876 - INFO - Processing chunk 28001 with 1000 rows
+2025-05-02 18:20:42,364 - INFO - Inserted 1000 rows in chunk 28001
+2025-05-02 18:20:42,365 - INFO - Processing chunk 29001 with 1000 rows
+2025-05-02 18:20:42,918 - INFO - Inserted 1000 rows in chunk 29001
+2025-05-02 18:20:42,918 - INFO - Processing chunk 30001 with 1000 rows
+2025-05-02 18:20:43,455 - INFO - Inserted 1000 rows in chunk 30001
+2025-05-02 18:20:43,457 - INFO - Processing chunk 31001 with 1000 rows
+2025-05-02 18:20:45,221 - INFO - Inserted 1000 rows in chunk 31001
+2025-05-02 18:20:45,221 - INFO - Processing chunk 32001 with 1000 rows
+2025-05-02 18:20:45,752 - INFO - Inserted 1000 rows in chunk 32001
+2025-05-02 18:20:45,753 - INFO - Processing chunk 33001 with 1000 rows
+2025-05-02 18:20:46,274 - INFO - Inserted 1000 rows in chunk 33001
+2025-05-02 18:20:46,275 - INFO - Processing chunk 34001 with 1000 rows
+2025-05-02 18:20:46,792 - INFO - Inserted 1000 rows in chunk 34001
+2025-05-02 18:20:46,793 - INFO - Processing chunk 35001 with 1000 rows
+2025-05-02 18:20:47,364 - INFO - Inserted 1000 rows in chunk 35001
+2025-05-02 18:20:47,364 - INFO - Processing chunk 36001 with 1000 rows
+2025-05-02 18:20:48,054 - INFO - Inserted 1000 rows in chunk 36001
+2025-05-02 18:20:48,055 - INFO - Processing chunk 37001 with 1000 rows
+2025-05-02 18:20:48,678 - INFO - Inserted 1000 rows in chunk 37001
+2025-05-02 18:20:48,678 - INFO - Processing chunk 38001 with 1000 rows
+2025-05-02 18:20:49,249 - INFO - Inserted 1000 rows in chunk 38001
+2025-05-02 18:20:49,249 - INFO - Processing chunk 39001 with 1000 rows
+2025-05-02 18:20:51,271 - INFO - Inserted 1000 rows in chunk 39001
+2025-05-02 18:20:51,274 - INFO - Processing chunk 40001 with 1000 rows
+2025-05-02 18:20:51,775 - INFO - Inserted 1000 rows in chunk 40001
+2025-05-02 18:20:51,776 - INFO - Processing chunk 41001 with 1000 rows
+2025-05-02 18:20:52,281 - INFO - Inserted 1000 rows in chunk 41001
+2025-05-02 18:20:52,282 - INFO - Processing chunk 42001 with 1000 rows
+2025-05-02 18:20:52,791 - INFO - Inserted 1000 rows in chunk 42001
+2025-05-02 18:20:52,791 - INFO - Processing chunk 43001 with 1000 rows
+2025-05-02 18:20:53,327 - INFO - Inserted 1000 rows in chunk 43001
+2025-05-02 18:20:53,328 - INFO - Processing chunk 44001 with 1000 rows
+2025-05-02 18:20:53,852 - INFO - Inserted 1000 rows in chunk 44001
+2025-05-02 18:20:53,853 - INFO - Processing chunk 45001 with 1000 rows
+2025-05-02 18:20:54,356 - INFO - Inserted 1000 rows in chunk 45001
+2025-05-02 18:20:54,357 - INFO - Processing chunk 46001 with 1000 rows
+2025-05-02 18:20:54,895 - INFO - Inserted 1000 rows in chunk 46001
+2025-05-02 18:20:54,897 - INFO - Processing chunk 47001 with 1000 rows
+2025-05-02 18:20:55,468 - INFO - Inserted 1000 rows in chunk 47001
+2025-05-02 18:20:55,468 - INFO - Processing chunk 48001 with 1000 rows
+2025-05-02 18:20:55,979 - INFO - Inserted 1000 rows in chunk 48001
+2025-05-02 18:20:55,980 - INFO - Processing chunk 49001 with 1000 rows
+2025-05-02 18:20:58,171 - INFO - Inserted 1000 rows in chunk 49001
+2025-05-02 18:20:58,172 - INFO - Processing chunk 50001 with 1000 rows
+2025-05-02 18:20:58,793 - INFO - Inserted 1000 rows in chunk 50001
+2025-05-02 18:20:58,794 - INFO - Processing chunk 51001 with 1000 rows
+2025-05-02 18:20:59,402 - INFO - Inserted 1000 rows in chunk 51001
+2025-05-02 18:20:59,406 - INFO - Processing chunk 52001 with 1000 rows
+2025-05-02 18:20:59,968 - INFO - Inserted 1000 rows in chunk 52001
+2025-05-02 18:20:59,971 - INFO - Processing chunk 53001 with 1000 rows
+2025-05-02 18:21:00,535 - INFO - Inserted 1000 rows in chunk 53001
+2025-05-02 18:21:00,536 - INFO - Processing chunk 54001 with 1000 rows
+2025-05-02 18:21:01,045 - INFO - Inserted 1000 rows in chunk 54001
+2025-05-02 18:21:01,045 - INFO - Processing chunk 55001 with 1000 rows
+2025-05-02 18:21:01,554 - INFO - Inserted 1000 rows in chunk 55001
+2025-05-02 18:21:01,554 - INFO - Processing chunk 56001 with 1000 rows
+2025-05-02 18:21:02,078 - INFO - Inserted 1000 rows in chunk 56001
+2025-05-02 18:21:02,079 - INFO - Processing chunk 57001 with 1000 rows
+2025-05-02 18:21:02,620 - INFO - Inserted 1000 rows in chunk 57001
+2025-05-02 18:21:02,621 - INFO - Processing chunk 58001 with 1000 rows
+2025-05-02 18:21:03,133 - INFO - Inserted 1000 rows in chunk 58001
+2025-05-02 18:21:03,134 - INFO - Processing chunk 59001 with 1000 rows
+2025-05-02 18:21:03,700 - INFO - Inserted 1000 rows in chunk 59001
+2025-05-02 18:21:03,701 - INFO - Processing chunk 60001 with 1000 rows
+2025-05-02 18:21:04,228 - INFO - Inserted 1000 rows in chunk 60001
+2025-05-02 18:21:04,228 - INFO - Processing chunk 61001 with 1000 rows
+2025-05-02 18:21:04,893 - INFO - Inserted 1000 rows in chunk 61001
+2025-05-02 18:21:04,893 - INFO - Processing chunk 62001 with 1000 rows
+2025-05-02 18:21:07,621 - INFO - Inserted 1000 rows in chunk 62001
+2025-05-02 18:21:07,625 - INFO - Processing chunk 63001 with 1000 rows
+2025-05-02 18:21:08,386 - INFO - Inserted 1000 rows in chunk 63001
+2025-05-02 18:21:08,393 - INFO - Processing chunk 64001 with 1000 rows
+2025-05-02 18:21:09,221 - INFO - Inserted 1000 rows in chunk 64001
+2025-05-02 18:21:09,222 - INFO - Processing chunk 65001 with 1000 rows
+2025-05-02 18:21:09,963 - INFO - Inserted 1000 rows in chunk 65001
+2025-05-02 18:21:09,964 - INFO - Processing chunk 66001 with 1000 rows
+2025-05-02 18:21:10,531 - INFO - Inserted 1000 rows in chunk 66001
+2025-05-02 18:21:10,532 - INFO - Processing chunk 67001 with 1000 rows
+2025-05-02 18:21:11,105 - INFO - Inserted 1000 rows in chunk 67001
+2025-05-02 18:21:11,106 - INFO - Processing chunk 68001 with 1000 rows
+2025-05-02 18:21:11,634 - INFO - Inserted 1000 rows in chunk 68001
+2025-05-02 18:21:11,635 - INFO - Processing chunk 69001 with 1000 rows
+2025-05-02 18:21:12,164 - INFO - Inserted 1000 rows in chunk 69001
+2025-05-02 18:21:12,165 - INFO - Processing chunk 70001 with 1000 rows
+2025-05-02 18:21:12,699 - INFO - Inserted 1000 rows in chunk 70001
+2025-05-02 18:21:12,700 - INFO - Processing chunk 71001 with 1000 rows
+2025-05-02 18:21:13,272 - INFO - Inserted 1000 rows in chunk 71001
+2025-05-02 18:21:13,273 - INFO - Processing chunk 72001 with 1000 rows
+2025-05-02 18:21:13,951 - INFO - Inserted 1000 rows in chunk 72001
+2025-05-02 18:21:13,957 - INFO - Processing chunk 73001 with 1000 rows
+2025-05-02 18:21:14,813 - INFO - Inserted 1000 rows in chunk 73001
+2025-05-02 18:21:14,818 - INFO - Processing chunk 74001 with 1000 rows
+2025-05-02 18:21:15,596 - INFO - Inserted 1000 rows in chunk 74001
+2025-05-02 18:21:15,598 - INFO - Processing chunk 75001 with 1000 rows
+2025-05-02 18:21:16,394 - INFO - Inserted 1000 rows in chunk 75001
+2025-05-02 18:21:16,397 - INFO - Processing chunk 76001 with 1000 rows
+2025-05-02 18:21:17,241 - INFO - Inserted 1000 rows in chunk 76001
+2025-05-02 18:21:17,243 - INFO - Processing chunk 77001 with 1000 rows
+2025-05-02 18:21:18,008 - INFO - Inserted 1000 rows in chunk 77001
+2025-05-02 18:21:18,009 - INFO - Processing chunk 78001 with 1000 rows
+2025-05-02 18:21:21,009 - INFO - Inserted 1000 rows in chunk 78001
+2025-05-02 18:21:21,011 - INFO - Processing chunk 79001 with 1000 rows
+2025-05-02 18:21:21,562 - INFO - Inserted 1000 rows in chunk 79001
+2025-05-02 18:21:21,562 - INFO - Processing chunk 80001 with 1000 rows
+2025-05-02 18:21:22,128 - INFO - Inserted 1000 rows in chunk 80001
+2025-05-02 18:21:22,129 - INFO - Processing chunk 81001 with 1000 rows
+2025-05-02 18:21:22,636 - INFO - Inserted 1000 rows in chunk 81001
+2025-05-02 18:21:22,636 - INFO - Processing chunk 82001 with 1000 rows
+2025-05-02 18:21:23,253 - INFO - Inserted 1000 rows in chunk 82001
+2025-05-02 18:21:23,254 - INFO - Processing chunk 83001 with 1000 rows
+2025-05-02 18:21:23,957 - INFO - Inserted 1000 rows in chunk 83001
+2025-05-02 18:21:23,967 - INFO - Processing chunk 84001 with 1000 rows
+2025-05-02 18:21:24,746 - INFO - Inserted 1000 rows in chunk 84001
+2025-05-02 18:21:24,750 - INFO - Processing chunk 85001 with 1000 rows
+2025-05-02 18:21:25,500 - INFO - Inserted 1000 rows in chunk 85001
+2025-05-02 18:21:25,510 - INFO - Processing chunk 86001 with 1000 rows
+2025-05-02 18:21:26,125 - INFO - Inserted 1000 rows in chunk 86001
+2025-05-02 18:21:26,127 - INFO - Processing chunk 87001 with 1000 rows
+2025-05-02 18:21:26,665 - INFO - Inserted 1000 rows in chunk 87001
+2025-05-02 18:21:26,666 - INFO - Processing chunk 88001 with 1000 rows
+2025-05-02 18:21:27,241 - INFO - Inserted 1000 rows in chunk 88001
+2025-05-02 18:21:27,241 - INFO - Processing chunk 89001 with 901 rows
+2025-05-02 18:21:27,776 - INFO - Inserted 901 rows in chunk 89001
+2025-05-02 18:21:27,776 - INFO - Successfully processed 89901 rows out of 89901 total rows
+2025-05-02 18:21:27,776 - INFO - Generating financial summary
+2025-05-02 18:21:27,906 - INFO - Financial summary generated
+2025-05-02 18:21:27,907 - INFO - Processing completed, status file written to /tmp/data_dump_o5u6g756/data_dump_complete.txt
+2025-05-02 18:21:27,914 - INFO - Processing successful! Took 100.68 seconds
+2025-05-02 18:21:27,914 - INFO - Total rows: 89901
+2025-05-02 18:21:27,914 - INFO - Processed rows: 89901
+2025-05-02 18:21:27,914 - INFO - Report date: 2025-05-01
+2025-05-02 18:21:27,914 - INFO - Completion status file created: /tmp/data_dump_o5u6g756/data_dump_complete.txt
