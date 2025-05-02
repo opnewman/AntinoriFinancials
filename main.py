@@ -648,20 +648,31 @@ def get_ownership_tree():
             # Create a namedtuple to match the format of our client query results
             ClientRow = namedtuple('ClientRow', ['client'])
             
-            # If we have "Client" entries, use them
+            # If we have "Client" entries, use them - this is the primary method since
+            # the grouping_attribute_name directly identifies clients
             if client_count_check > 0:
                 logger.info(f"Found {client_count_check} entries with grouping_attribute_name = 'Client'")
                 client_rows = db.query(
-                    OwnershipItem.client
+                    OwnershipItem.client,
+                    OwnershipItem.portfolio
                 ).filter(
                     OwnershipItem.metadata_id == latest_metadata.id,
                     OwnershipItem.grouping_attribute_name == "Client"
                 ).distinct().all()
                 
-                # Also add these to our potential_true_clients set
+                # Build a map of client names to portfolio names (which may also be client names)
+                client_portfolio_map = {}
+                
+                # Add these to our potential_true_clients set
                 for row in client_rows:
                     if row.client:
                         potential_true_clients.add(row.client)
+                        # Store the portfolio associated with this client if available
+                        if row.portfolio:
+                            client_portfolio_map[row.client] = row.portfolio
+                
+                # Convert to our client row format
+                client_rows = [ClientRow(client=client) for client in potential_true_clients]
             # If no "Client" entries, we need an advanced approach to identify true clients
             else:
                 logger.info("No 'Client' grouping attribute found, using advanced identification logic")
