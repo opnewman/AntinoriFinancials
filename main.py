@@ -254,44 +254,84 @@ def upload_data_dump():
     
     The actual column headers are in row 4.
     """
+    # Set the response content type to ensure proper JSON response
+    response_headers = {"Content-Type": "application/json"}
+    
+    # Early validation for required fields
     if 'file' not in request.files:
-        return jsonify({"success": False, "message": "No file part in the request"}), 400
+        response = jsonify({
+            "success": False, 
+            "message": "No file part in the request"
+        })
+        return response, 400, response_headers
     
     file = request.files['file']
     if file.filename == '':
-        return jsonify({"success": False, "message": "No file selected"}), 400
+        response = jsonify({
+            "success": False, 
+            "message": "No file selected"
+        })
+        return response, 400, response_headers
     
     # Check file extension
     file_ext = os.path.splitext(file.filename)[1].lower()
     if file_ext not in ['.xlsx', '.xls', '.csv', '.txt']:
-        return jsonify({
+        response = jsonify({
             "success": False, 
             "message": "Only Excel files (.xlsx, .xls), CSV or TXT files are supported"
-        }), 400
+        })
+        return response, 400, response_headers
     
     try:
         import pandas as pd
         from io import BytesIO, StringIO
+        from concurrent.futures import ThreadPoolExecutor
         
         # Start timing the process
         start_time = time.time()
         logger.info(f"Data dump upload started for file: {file.filename}")
         
-        # Read the file content
-        file_content = file.read()
-        logger.info(f"File size: {len(file_content)} bytes")
+        # First, just save the file temporarily to avoid holding it in memory
+        temp_path = f"/tmp/{secure_filename(file.filename)}"
+        file.save(temp_path)
+        file_size = os.path.getsize(temp_path)
+        logger.info(f"File saved temporarily, size: {file_size} bytes")
         
-        # Process the file based on its type
+        # Initialize variables
         view_name = "DATA DUMP"
         report_date = datetime.date.today()
         
-        if file_ext in ['.xlsx', '.xls']:
-            # Excel file - use BytesIO with optimized settings
-            excel_data = BytesIO(file_content)
+        # For very large files, we'll use different approaches
+        is_large_file = file_size > 50 * 1024 * 1024  # 50MB threshold
+        
+        # Function to clean numeric values
+        def clean_numeric_value(value):
+            """Clean and convert a value to float"""
+            if pd.isna(value) or value is None:
+                return 0.0
+                
+            if isinstance(value, (int, float)):
+                return float(value)
+                
+            # Remove non-numeric characters except decimal point and minus sign
+            clean_value = str(value).replace('$', '').replace(',', '').strip()
             
-            # Extract metadata from first 3 rows only
+            # Handle empty strings
+            if not clean_value:
+                return 0.0
+                
             try:
-                metadata_df = pd.read_excel(excel_data, nrows=3, header=None, engine='openpyxl')
+                return float(clean_value)
+            except ValueError:
+                # For values that can't be converted to float
+                return 0.0
+        
+        # Process Excel file
+        if file_ext in ['.xlsx', '.xls']:
+            # Extract metadata first (small read)
+            try:
+                # Only read the first few rows for metadata
+                metadata_df = pd.read_excel(temp_path, nrows=3, header=None, engine='openpyxl')
                 
                 # Extract view name and date range
                 if len(metadata_df) > 0 and len(metadata_df.columns) > 1 and not pd.isna(metadata_df.iloc[0, 1]):
@@ -328,51 +368,69 @@ def upload_data_dump():
                             except ValueError:
                                 continue  # Try next pattern if this one fails
                 
-                # Reset file pointer for data rows
-                excel_data.seek(0)
+                # For very large files, we'll use chunking to read the data
+                if is_large_file:
+                    # Get row count without loading the whole file
+                    xlsx = pd.ExcelFile(temp_path, engine='openpyxl')
+                    sheet_name = xlsx.sheet_names[0]  # Use the first sheet
+                    nrows = xlsx.book[sheet_name].max_row - 4  # Subtract header and metadata rows
+                    logger.info(f"Large Excel file detected, estimated rows: {nrows}")
+                    
+                    # Function to process a chunk of the Excel file
+                    def process_excel_chunk(chunk_start, chunk_size):
+                        # Use skiprows to skip metadata and header, plus the previous chunks
+                        skip_rows = list(range(0, 4)) + list(range(4 + chunk_start, 4 + nrows))
+                        chunk_df = pd.read_excel(
+                            temp_path,
+                            skiprows=skip_rows,
+                            nrows=chunk_size,
+                            engine='openpyxl',
+                            dtype=str  # Use string for all columns initially
+                        )
+                        return chunk_df
+                    
+                    # We'll process the file in chunks and accumulate the DataFrames
+                    EXCEL_CHUNK_SIZE = 1000
+                    dfs = []
+                    for chunk_start in range(0, nrows, EXCEL_CHUNK_SIZE):
+                        chunk_df = process_excel_chunk(chunk_start, min(EXCEL_CHUNK_SIZE, nrows - chunk_start))
+                        dfs.append(chunk_df)
+                    
+                    # Combine all chunks
+                    df = pd.concat(dfs, ignore_index=True)
+                    logger.info(f"Excel file processed in chunks, total rows: {len(df)}")
+                    
+                else:
+                    # For smaller files, read normally
+                    df = pd.read_excel(
+                        temp_path, 
+                        header=3,  # Header is in row 4 (0-indexed)
+                        engine='openpyxl',
+                        dtype=str  # Use string for all columns initially
+                    )
+                    logger.info(f"Excel file parsed, rows: {len(df)}")
                 
-                # Read data with optimized settings
-                df = pd.read_excel(
-                    excel_data, 
-                    header=3,  # Header is in row 4 (0-indexed)
-                    engine='openpyxl',
-                    dtype={
-                        'Position': str,
-                        'Top Level Client': str,
-                        'Holding Account': str,
-                        'Holding Account Number': str,
-                        'Portfolio': str,
-                        'CUSIP': str,
-                        'Ticker Symbol': str,
-                        'Asset Class': str,
-                        'New Second Level': str,
-                        'New Third Level': str,
-                        'ADV Classification': str,
-                        'Liquid vs. Illiquid Asset': str,
-                        'Adjusted Value (USD)': str
-                    }
-                )
+                # Clean up memory
+                del metadata_df
                 
-                logger.info(f"Excel file parsed, rows: {len(df)}")
-            
             except Exception as e:
                 logger.error(f"Error parsing Excel file: {str(e)}")
-                return jsonify({
+                response = jsonify({
                     "success": False,
                     "message": f"Error parsing Excel file: {str(e)}",
                     "rows_processed": 0,
                     "rows_inserted": 0,
                     "errors": [str(e)]
-                }), 400
+                })
+                return response, 400, response_headers
                 
         elif file_ext in ['.csv', '.txt']:
-            # CSV or TXT file - use StringIO with optimized approach
+            # CSV or TXT file - use chunking for better memory management
             try:
-                # Decode file content
-                text_content = file_content.decode('utf-8')
+                # First read just the metadata (first few lines)
+                with open(temp_path, 'r') as f:
+                    lines = [f.readline() for _ in range(4)]  # Read first 4 lines
                 
-                # Split by lines to get metadata
-                lines = text_content.splitlines()
                 if len(lines) >= 3:
                     # Extract view name and date range
                     if ':' in lines[0]:
@@ -407,66 +465,55 @@ def upload_data_dump():
                                 except ValueError:
                                     continue  # Try next pattern if this one fails
                 
-                # Create a new buffer with just the data rows (skip metadata and header)
-                data_buffer = StringIO('\n'.join(lines[4:]))  # Skip first 4 lines
-                
                 # Determine the delimiter
                 delimiter = '\t' if file_ext == '.txt' else ','
                 
-                # Read the data with optimized settings
-                df = pd.read_csv(
-                    data_buffer,
-                    sep=delimiter,
-                    dtype={
-                        'Position': str,
-                        'Top Level Client': str,
-                        'Holding Account': str,
-                        'Holding Account Number': str,
-                        'Portfolio': str,
-                        'CUSIP': str,
-                        'Ticker Symbol': str,
-                        'Asset Class': str,
-                        'New Second Level': str,
-                        'New Third Level': str,
-                        'ADV Classification': str,
-                        'Liquid vs. Illiquid Asset': str,
-                        'Adjusted Value (USD)': str
-                    }
-                )
-                
-                logger.info(f"{file_ext} file parsed, rows: {len(df)}")
+                # For large files, use chunking
+                if is_large_file:
+                    # Use chunksize parameter to read the file in chunks
+                    chunks = pd.read_csv(
+                        temp_path,
+                        skiprows=4,  # Skip metadata and header
+                        sep=delimiter,
+                        chunksize=10000,  # Read 10,000 rows at a time
+                        dtype=str,  # Use string for all columns initially
+                        low_memory=False
+                    )
+                    
+                    # Combine all chunks
+                    df = pd.concat(chunks, ignore_index=True)
+                    logger.info(f"CSV file processed in chunks, total rows: {len(df)}")
+                    
+                else:
+                    # For smaller files, read normally
+                    df = pd.read_csv(
+                        temp_path,
+                        skiprows=4,  # Skip metadata and header
+                        sep=delimiter,
+                        dtype=str,  # Use string for all columns initially
+                        low_memory=False
+                    )
+                    logger.info(f"{file_ext} file parsed, rows: {len(df)}")
                 
             except Exception as e:
                 logger.error(f"Error parsing text file: {str(e)}")
-                return jsonify({
+                response = jsonify({
                     "success": False,
                     "message": f"Error parsing text file: {str(e)}",
                     "rows_processed": 0,
                     "rows_inserted": 0,
                     "errors": [str(e)]
-                }), 400
+                })
+                return response, 400, response_headers
         
-        # Function to clean numeric values
-        def clean_numeric_value(value):
-            """Clean and convert a value to float"""
-            if pd.isna(value) or value is None:
-                return 0.0
-                
-            if isinstance(value, (int, float)):
-                return float(value)
-                
-            # Remove non-numeric characters except decimal point and minus sign
-            clean_value = str(value).replace('$', '').replace(',', '').strip()
-            
-            # Handle empty strings
-            if not clean_value:
-                return 0.0
-                
-            try:
-                return float(clean_value)
-            except ValueError:
-                # For values that can't be converted to float
-                return 0.0
+        # We can remove the temp file now as we have loaded the data
+        try:
+            os.remove(temp_path)
+        except Exception as e:
+            logger.warning(f"Could not remove temp file: {str(e)}")
+        
+        # Standardize column names for easier processing
+        df.columns = df.columns.str.strip()
         
         # Prepare to process the dataframe
         with get_db_connection() as db:
@@ -474,21 +521,36 @@ def upload_data_dump():
             db.execute(text(
                 "DELETE FROM financial_positions WHERE date = :report_date"
             ), {"report_date": report_date})
+            db.commit()
+            
+            # Create a progress response immediately to prevent timeouts
+            early_response = {
+                "success": True,
+                "message": f"Processing {len(df)} rows, please wait...",
+                "total_rows": len(df),
+                "report_date": report_date.isoformat(),
+                "in_progress": True
+            }
             
             # Process the dataframe in batches for better memory management
             total_rows = len(df)
-            BATCH_SIZE = 500
+            # Increase batch size for better efficiency
+            BATCH_SIZE = 2000
             rows_processed = 0
             rows_inserted = 0
             errors = []
             
-            for i in range(0, total_rows, BATCH_SIZE):
-                batch_df = df.iloc[i:i+BATCH_SIZE]
-                positions = []
+            # Function to process a batch of records
+            def process_batch(batch_df, batch_index):
+                nonlocal rows_processed, rows_inserted
+                local_processed = 0
+                local_inserted = 0
+                local_errors = []
+                local_positions = []
                 
                 for _, row in batch_df.iterrows():
                     try:
-                        rows_processed += 1
+                        local_processed += 1
                         
                         # Map column names properly - handle both formats
                         position = row.get('Position', row.get('position', ''))
@@ -531,31 +593,55 @@ def upload_data_dump():
                             date=report_date
                         )
                         
-                        positions.append(position_obj)
-                        rows_inserted += 1
+                        local_positions.append(position_obj)
+                        local_inserted += 1
                         
                     except Exception as e:
-                        error_msg = f"Error processing row {rows_processed}: {str(e)}"
-                        errors.append(error_msg)
+                        error_msg = f"Error processing row {batch_index + local_processed}: {str(e)}"
+                        local_errors.append(error_msg)
                         logger.error(error_msg)
                 
-                # Bulk insert the batch
-                db.bulk_save_objects(positions)
-                db.commit()
-                logger.info(f"Batch processed: {i}-{i+len(batch_df)} of {total_rows}")
+                return local_positions, local_processed, local_inserted, local_errors
             
-            # Generate financial summary data
+            # Process batches
+            for i in range(0, total_rows, BATCH_SIZE):
+                batch_df = df.iloc[i:i+BATCH_SIZE]
+                
+                # Process this batch
+                positions, batch_processed, batch_inserted, batch_errors = process_batch(batch_df, i)
+                
+                # Update counters
+                rows_processed += batch_processed
+                rows_inserted += batch_inserted
+                errors.extend(batch_errors)
+                
+                # Only commit if we have positions to insert
+                if positions:
+                    with get_db_connection() as batch_db:
+                        # Bulk insert the batch
+                        batch_db.bulk_save_objects(positions)
+                        batch_db.commit()
+                
+                logger.info(f"Batch processed: {i}-{i+len(batch_df)} of {total_rows}, inserted: {batch_inserted}")
+            
+            # Generate financial summary data asynchronously to avoid timeout
             try:
-                generate_financial_summary(db, report_date)
+                # Generate summary in the background to avoid timeouts
+                from threading import Thread
+                summary_thread = Thread(target=generate_financial_summary, args=(db, report_date))
+                summary_thread.daemon = True  # Set as daemon so it doesn't block process exit
+                summary_thread.start()
+                
+                logger.info("Started financial summary generation in background thread")
             except Exception as e:
-                logger.error(f"Error generating financial summary: {str(e)}")
-                errors.append(f"Error generating financial summary: {str(e)}")
+                logger.error(f"Error starting financial summary generation: {str(e)}")
+                errors.append(f"Error starting financial summary generation: {str(e)}")
             
             # Calculate processing time
             end_time = time.time()
             processing_time = end_time - start_time
             
-            return jsonify({
+            response = jsonify({
                 "success": True,
                 "message": f"Successfully processed {rows_inserted} positions for {report_date}",
                 "rows_processed": rows_processed,
@@ -564,17 +650,19 @@ def upload_data_dump():
                 "report_date": report_date.isoformat(),
                 "errors": errors[:10]  # Limit number of errors returned
             })
+            return response, 200, response_headers
     
     except Exception as e:
         logger.error(f"Error processing data dump file: {str(e)}")
         logger.error(traceback.format_exc())
-        return jsonify({
+        response = jsonify({
             "success": False,
             "message": f"Error processing file: {str(e)}",
             "rows_processed": 0,
             "rows_inserted": 0,
             "errors": [str(e)]
-        }), 500
+        })
+        return response, 500, response_headers
 
 @app.route("/api/upload/ownership", methods=["POST"])
 def upload_ownership_tree():

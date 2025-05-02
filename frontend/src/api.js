@@ -28,15 +28,58 @@ const api = {
      */
     uploadFile: async (endpoint, formData) => {
         try {
+            const controller = new AbortController();
+            // Set a 60 second timeout for large file uploads
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+            
             const response = await axios.post(`${API_BASE_URL}${endpoint}`, formData, {
                 headers: {
-                    'Content-Type': 'multipart/form-data'
+                    'Content-Type': 'multipart/form-data',
+                    'Accept': 'application/json'  // Force JSON response
+                },
+                signal: controller.signal,
+                // Show progress for large files
+                onUploadProgress: (progressEvent) => {
+                    const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                    console.log(`Upload progress: ${percentCompleted}%`);
+                    // You could also update UI with this progress
                 }
             });
+            
+            clearTimeout(timeoutId);
             return response.data;
         } catch (error) {
             console.error('Upload error:', error);
-            throw error;
+            // Handle abort errors specifically
+            if (error.name === 'AbortError' || axios.isCancel(error)) {
+                return { 
+                    success: false, 
+                    message: 'Upload timed out. The server is taking too long to process your file.' 
+                };
+            }
+            
+            // If we got an error response from server
+            if (error.response) {
+                // The server responded with a status code outside of 2xx range
+                console.error('Error response data:', error.response.data);
+                return { 
+                    success: false, 
+                    message: error.response.data.message || 'Server error during upload',
+                    errors: error.response.data.errors || []
+                };
+            } else if (error.request) {
+                // The request was made but no response was received
+                return { 
+                    success: false, 
+                    message: 'No response received from server. Please try again.' 
+                };
+            } else {
+                // Something happened in setting up the request
+                return { 
+                    success: false, 
+                    message: error.message || 'An unexpected error occurred' 
+                };
+            }
         }
     },
     
