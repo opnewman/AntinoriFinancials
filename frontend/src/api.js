@@ -118,23 +118,25 @@ const api = {
         try {
             const response = await axios.get(`${API_BASE_URL}/api/ownership-tree`);
             
-            // Ensure we're returning an array even if the server doesn't
-            if (!response.data) {
-                console.warn('Ownership tree data is empty or undefined');
-                return [];
+            // Check for success flag in API response
+            if (response.data && response.data.success === true) {
+                // API returns { success: true, data: { tree structure... } }
+                return response.data.data;
             }
             
-            // If data is not an array, wrap it in one
-            if (!Array.isArray(response.data)) {
-                console.warn('Ownership tree data is not an array, converting to array');
-                return [response.data];
+            // If response.data is directly the data without a success wrapper
+            if (response.data && !response.data.success) {
+                // Direct return of data
+                console.log('Ownership tree data received', response.data);
+                return response.data;
             }
             
-            return response.data;
+            console.warn('Ownership tree data is empty or malformed', response.data);
+            return [];
         } catch (error) {
             console.error('Ownership tree error:', error);
             // Return empty array instead of throwing
-            return [];
+            throw new Error('Failed to load ownership tree: ' + (error.message || 'Unknown error'));
         }
     },
     
