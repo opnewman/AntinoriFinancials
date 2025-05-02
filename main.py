@@ -1227,7 +1227,7 @@ def get_allocation_chart_data():
                     query = text("""
                     SELECT asset_class, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                     FROM financial_positions 
-                    WHERE report_date = :date
+                    WHERE date = :date
                     GROUP BY asset_class
                     """)
                     result = db.execute(query, {"date": date})
@@ -1236,7 +1236,7 @@ def get_allocation_chart_data():
                     query = text("""
                     SELECT asset_class, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                     FROM financial_positions 
-                    WHERE report_date = :date AND top_level_client = :client
+                    WHERE date = :date AND top_level_client = :client
                     GROUP BY asset_class
                     """)
                     result = db.execute(query, {"date": date, "client": level_key})
@@ -1245,7 +1245,7 @@ def get_allocation_chart_data():
                 query = text("""
                 SELECT asset_class, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                 FROM financial_positions 
-                WHERE report_date = :date AND group_name = :group
+                WHERE date = :date AND group_name = :group
                 GROUP BY asset_class
                 """)
                 result = db.execute(query, {"date": date, "group": level_key})
@@ -1254,7 +1254,7 @@ def get_allocation_chart_data():
                 query = text("""
                 SELECT asset_class, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                 FROM financial_positions 
-                WHERE report_date = :date AND portfolio = :portfolio
+                WHERE date = :date AND portfolio = :portfolio
                 GROUP BY asset_class
                 """)
                 result = db.execute(query, {"date": date, "portfolio": level_key})
@@ -1263,7 +1263,7 @@ def get_allocation_chart_data():
                 query = text("""
                 SELECT asset_class, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                 FROM financial_positions 
-                WHERE report_date = :date AND holding_account = :account
+                WHERE date = :date AND holding_account = :account
                 GROUP BY asset_class
                 """)
                 result = db.execute(query, {"date": date, "account": level_key})
@@ -1272,7 +1272,7 @@ def get_allocation_chart_data():
                 query = text("""
                 SELECT asset_class, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                 FROM financial_positions 
-                WHERE report_date = :date
+                WHERE date = :date
                 GROUP BY asset_class
                 """)
                 result = db.execute(query, {"date": date})
@@ -1350,7 +1350,7 @@ def get_liquidity_chart_data():
                     query = text("""
                     SELECT liquid_vs_illiquid, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                     FROM financial_positions 
-                    WHERE report_date = :date
+                    WHERE date = :date
                     GROUP BY liquid_vs_illiquid
                     """)
                     result = db.execute(query, {"date": date})
@@ -1359,7 +1359,7 @@ def get_liquidity_chart_data():
                     query = text("""
                     SELECT liquid_vs_illiquid, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                     FROM financial_positions 
-                    WHERE report_date = :date AND top_level_client = :client
+                    WHERE date = :date AND top_level_client = :client
                     GROUP BY liquid_vs_illiquid
                     """)
                     result = db.execute(query, {"date": date, "client": level_key})
@@ -1368,7 +1368,7 @@ def get_liquidity_chart_data():
                 query = text("""
                 SELECT liquid_vs_illiquid, SUM(CAST(adjusted_value AS DECIMAL)) as total_value 
                 FROM financial_positions 
-                WHERE report_date = :date AND group_name = :group
+                WHERE date = :date AND group_name = :group
                 GROUP BY liquid_vs_illiquid
                 """)
                 result = db.execute(query, {"date": date, "group": level_key})
