@@ -316,14 +316,57 @@ const SimpleOwnershipTreePage = () => {
                 </div>
                 
                 {/* Tree visualization */}
-                <div className="flex-grow overflow-hidden bg-gray-50 relative">
+                <div className="flex-grow overflow-hidden relative">
                     {treeData ? (
-                        <div className="absolute inset-0 m-4 bg-white rounded-lg shadow-md p-4">
+                        <div className="absolute inset-0 bg-white rounded-lg shadow-md">
                             <OwnershipTree 
                                 data={selectedClient ? 
                                     treeData.children?.find(c => c.name === selectedClient) || treeData : 
                                     treeData} 
                             />
+                            
+                            {/* Zoom controls */}
+                            <div className="absolute top-4 right-4 bg-white rounded-md shadow-md z-10">
+                                <button 
+                                    className="px-3 py-2 border-r border-gray-200 text-gray-600 hover:bg-gray-50" 
+                                    title="Zoom In"
+                                    onClick={() => {
+                                        const container = document.querySelector('.ownership-tree-visualization');
+                                        if (container) {
+                                            container.style.transform = 'scale(1.2)';
+                                            container.style.transformOrigin = 'center center';
+                                        }
+                                    }}
+                                >
+                                    <i className="fas fa-search-plus"></i>
+                                </button>
+                                <button 
+                                    className="px-3 py-2 text-gray-600 hover:bg-gray-50" 
+                                    title="Zoom Out"
+                                    onClick={() => {
+                                        const container = document.querySelector('.ownership-tree-visualization');
+                                        if (container) {
+                                            container.style.transform = 'scale(0.8)';
+                                            container.style.transformOrigin = 'center center';
+                                        }
+                                    }}
+                                >
+                                    <i className="fas fa-search-minus"></i>
+                                </button>
+                                <button 
+                                    className="px-3 py-2 border-l border-gray-200 text-gray-600 hover:bg-gray-50" 
+                                    title="Reset Zoom"
+                                    onClick={() => {
+                                        const container = document.querySelector('.ownership-tree-visualization');
+                                        if (container) {
+                                            container.style.transform = 'scale(1)';
+                                            container.style.transformOrigin = 'center center';
+                                        }
+                                    }}
+                                >
+                                    <i className="fas fa-sync-alt"></i>
+                                </button>
+                            </div>
                         </div>
                     ) : (
                         <div className="flex justify-center items-center h-full">
