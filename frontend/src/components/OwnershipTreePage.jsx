@@ -1,6 +1,5 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import api from '../api';
+// Access React and ReactRouterDOM from globals
+const { Link, useHistory } = ReactRouterDOM;
 
 class OwnershipTreePage extends React.Component {
     constructor(props) {
