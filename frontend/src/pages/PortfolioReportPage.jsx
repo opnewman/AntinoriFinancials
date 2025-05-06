@@ -173,8 +173,9 @@ window.PortfolioReportPage = () => {
             setExportLoading(prev => ({ ...prev, pdf: true }));
             
             // Use jsPDF library
-            const jsPDF = window.jspdf.jsPDF;
-            const autoTable = window.jspdf.autoTable;
+            const { jsPDF } = window.jspdf;
+            // Access autotable plugin as a method on the jsPDF instance
+            // This is the proper way to access the plugin since it's added to the jsPDF prototype
             
             // Create new PDF document
             const doc = new jsPDF();
@@ -191,7 +192,7 @@ window.PortfolioReportPage = () => {
                 { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 14, 44);
             
             // Asset Allocation Table
-            autoTable(doc, {
+            doc.autoTable({
                 startY: 50,
                 head: [['Asset Allocation', 'Value (%)']],
                 body: [
@@ -212,7 +213,7 @@ window.PortfolioReportPage = () => {
                 return [formattedKey, `${value.toFixed(2)}%`];
             });
             
-            autoTable(doc, {
+            doc.autoTable({
                 startY: doc.lastAutoTable.finalY + 10,
                 head: [['Equity Breakdown', 'Value (%)']],
                 body: equityData,
@@ -222,7 +223,7 @@ window.PortfolioReportPage = () => {
             });
             
             // Liquidity Table
-            autoTable(doc, {
+            doc.autoTable({
                 startY: doc.lastAutoTable.finalY + 10,
                 head: [['Liquidity', 'Value (%)']],
                 body: [
@@ -235,7 +236,7 @@ window.PortfolioReportPage = () => {
             });
             
             // Performance Table
-            autoTable(doc, {
+            doc.autoTable({
                 startY: doc.lastAutoTable.finalY + 10,
                 head: [['Performance', 'Value (%)']],
                 body: [
