@@ -37,9 +37,10 @@ class Dashboard extends React.Component {
             if (!this._isMounted) return;
             
             if (entityOptions && entityOptions.length > 0) {
+                // entityOptions is an array of objects with key and display properties
                 const formattedOptions = entityOptions.map(entity => ({
-                    value: entity,
-                    label: entity
+                    value: entity.key,
+                    label: entity.display
                 }));
                 
                 this.setState({ levelOptions: formattedOptions });
@@ -73,9 +74,10 @@ class Dashboard extends React.Component {
             // Only update state if component is still mounted
             if (!this._isMounted) return;
             
+            // options is an array of objects with key and display properties
             const formattedOptions = options.map(opt => ({
-                value: opt,
-                label: opt
+                value: opt.key,
+                label: opt.display
             }));
             
             this.setState({ 
