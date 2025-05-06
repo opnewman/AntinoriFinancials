@@ -1286,9 +1286,12 @@ def get_entity_options():
             sample_entities = entities[:5] if len(entities) > 5 else entities
             logger.info(f"Sample entities: {sample_entities}")
             
+            # Format entities as options with key and display properties
+            formatted_options = [{"key": entity, "display": entity} for entity in entities]
+            
             return jsonify({
                 "success": True,
-                "data": entities
+                "options": formatted_options
             })
             
     except Exception as e:

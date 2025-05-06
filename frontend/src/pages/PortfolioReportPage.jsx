@@ -18,7 +18,8 @@ window.PortfolioReportPage = () => {
                 const response = await axios.get(`/api/entity-options?type=${selectedLevel}`);
                 console.log('Entity options response:', response);
                 
-                if (response.data && response.data.options) {
+                if (response.data && response.data.success === true && response.data.options) {
+                    console.log('Successfully loaded options:', response.data.options);
                     setLevelOptions(response.data.options);
                     
                     // Set default selection if options are available and nothing is selected
@@ -26,7 +27,7 @@ window.PortfolioReportPage = () => {
                         setSelectedLevelKey(response.data.options[0].key);
                     }
                 } else {
-                    console.error('Invalid response format for entity options');
+                    console.error('Invalid response format for entity options:', response.data);
                     setError('Failed to load entity options');
                 }
             } catch (err) {
