@@ -1,5 +1,5 @@
 // Professional portfolio report component to match exactly the Excel template format
-const PortfolioReport = ({ reportData, loading }) => {
+window.PortfolioReport = ({ reportData, loading }) => {
     const formatDate = (dateStr) => {
         if (!dateStr) return '';
         const date = new Date(dateStr);
@@ -950,4 +950,4 @@ const PortfolioReport = ({ reportData, loading }) => {
     );
 };
 
-export default PortfolioReport;
+// No export needed with window assignment
