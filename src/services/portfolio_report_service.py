@@ -346,9 +346,15 @@ class PortfolioReportService:
         uncorrelated_alt_pct = (uncorrelated_alt_value / total_value) * 100 if total_value > 0 else 0
         
         # Uncorrelated alternatives subcategories
-        subcategories = ["Crypto", "CTAs", "Periodic Short Term Alt Fund", "Periodic Long Term Alt Fund"]
+        subcategories = ["Crypto", "CTAs"]
+        proficio_categories = {
+            "proficio_short_term_alt_fund": "Proficio Short Term Alts",
+            "proficio_long_term_alt_fund": "Proficio Long Term Alts"
+        }
         
         subcategory_data = {}
+        
+        # Process standard categories
         for subcategory in subcategories:
             subcategory_positions = uncorrelated_alt_positions[
                 uncorrelated_alt_positions['third_level'].str.lower() == subcategory.lower()
@@ -359,6 +365,21 @@ class PortfolioReportService:
             
             subcategory_key = subcategory.lower().replace(" ", "_")
             subcategory_data[subcategory_key] = subcategory_pct
+        
+        # Process Proficio funds by using substring matching
+        for key, term in proficio_categories.items():
+            # Find positions containing the term as substring in the position name
+            if not uncorrelated_alt_positions.empty:
+                proficio_positions = uncorrelated_alt_positions[
+                    uncorrelated_alt_positions['position'].str.contains(term, case=False, na=False)
+                ]
+                
+                proficio_value = proficio_positions['adjusted_value'].sum() if not proficio_positions.empty else 0
+                proficio_pct = (proficio_value / total_value) * 100 if total_value > 0 else 0
+            else:
+                proficio_pct = 0
+                
+            subcategory_data[key] = proficio_pct
         
         return {
             "total_pct": uncorrelated_alt_pct,

@@ -1,0 +1,25 @@
+Okay here are my answers. let me know if youy need anything else... then breakdown the best course of action:
+
+1.	Asset Class Hierarchy Details: 
+o	For Fixed Income durations (Low, Market, Long), you mentioned these will be populated later with risk stats. Does the data dump currently provide any indication of duration (e.g., in third_level or another column), or will this be entirely derived from the security risk stats data? If it’s not in the data dump, we’ll leave these as placeholders (0%) for now.
+No it does not too my knowledge… this will be entirely derived from the risk stats so we want to include the rows, but they can be left blank for now… it will not effect any of the other numbers because they are just a break down of the second level percentages. 
+o	For Uncorrelated Alternatives, you mentioned checking the position name for "Proficio Short Term Alts" and "Proficio Long Term Alts". Is the match case-sensitive, and should we look for an exact match or a substring (e.g., position.contains("Proficio Short Term Alts"))?
+It should be a substring so it does NOT have to be an exact match… some will be different in fact, so as long it it has that in the security name then it should be included. 
+2.	Custom Collections: 
+o	When generating a report for a custom collection (e.g., 10 accounts or 4 groups), should the report treat the collection as a single entity (e.g., sum the adjusted values and compute percentages as if it’s one portfolio), or should it break down the report by each selected entity within the collection (e.g., separate sections for each of the 10 accounts)?
+yes, one single entity… it should be including all of the accounts that are in that. (if you chose a group, it would be every account in each of those groups and then add them all up to get to total value, then you break it down just as you would with the portfolio)…..  it should be one entity as a whole. 
+o	In the frontend, how will the user specify the custom collection? Will it be a list of IDs (e.g., {"accounts": ["123", "456"]}) passed as a query parameter, or do you envision a different input method?
+Whatever is most efficient… I want the front end to be as user friendly as possible… so if they did a custom selection it would be selecting a group of accounts by the name most likely – through the ownership tree, we have the links to the account numbers so u can do it that way if it is easier – but it will be a selection of specific ones and then we can compiule them all together. Your example in there looks good.
+3.	Formatting and Precision: 
+o	The screenshot shows percentages with one decimal place (e.g., "62.5%"). Should we round all percentages to one decimal place, or do you prefer more precision (e.g., two decimal places)?
+the percentages in the screenshot has two decimal places. Since we want it to be identical, we want it to be 2. 
+o	For the Adjusted Value row, should the dollar amount be formatted with commas (e.g., $1,234,567.89), and should it include a currency symbol?
+Yes – I like that, but we do not need to have the cents… we can just do to the nearest dollar. But currency symbol is good, I like that. 
+4.	Performance Metrics: 
+o	The screenshot includes MTD instead of DoD. Our current implementation has DoD, WTD, QTD, and YTD. Should we replace DoD with MTD to match the screenshot, or keep both?
+The screenshot shows 1D which is DoD, MTD, QTD, and YTD… we should have these since that is what is in the screenshot and we want a perfect match 
+5.	Frontend Downloads: 
+o	For the PDF download, do you have specific styling requirements (e.g., fonts, colors, borders) beyond matching the Excel layout? The screenshot uses green headers, red for Fixed Income, etc.—should we replicate these colors?
+We want this to be exactly the same as the screenshot… however, I may adjust the coloring a little but that can be later on… for now we should assume the equity color is a clean, pastel like blue (neat and professional), the fixed income should be a pastel like red, the hard currency should be a pastel like yellow, the uncorrelated altenratives should be a pastel like green, and the cash and cash equivalents should be a light, pastel like gray… I know this is slightly different from the screenshot but this is the one area where its okay. 
+o	For the Excel download, do you want the same styling (e.g., green headers, red for Fixed Income) applied, or just the raw data with the same structure?
+Yes, that would be absolutely phenomenal. If it is too much – we can add it later.

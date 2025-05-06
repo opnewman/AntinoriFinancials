@@ -3,7 +3,7 @@ import os
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-import datetime
+from datetime import datetime, date
 from sqlalchemy import text, func
 import time
 from collections import defaultdict, Counter
@@ -1333,10 +1333,12 @@ def generate_portfolio_report():
     if date_str != '2025-05-01':
         date_str = '2025-05-01'
     
-    # Parse the date string into a date object
+    # Convert the date string into a date object
     try:
-        report_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-    except ValueError:
+        # Split the date string into year, month, day
+        year, month, day = map(int, date_str.split('-'))
+        report_date = date(year, month, day)
+    except (ValueError, AttributeError):
         return jsonify({
             "success": False,
             "error": f"Invalid date format: {date_str}. Please use YYYY-MM-DD format."
