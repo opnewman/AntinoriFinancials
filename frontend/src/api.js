@@ -7,7 +7,8 @@
 // Use relative URL to avoid CORS issues in different environments
 const API_BASE_URL = '';
 
-// Define api as a window global to avoid "exports is not defined" error
+// IMPORTANT: Define api as a global variable
+// This avoids the "exports is not defined" error that occurs when Babel tries to process ESM exports
 window.api = {
     /**
      * Check API health

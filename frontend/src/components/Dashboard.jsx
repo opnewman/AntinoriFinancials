@@ -30,7 +30,8 @@ class Dashboard extends React.Component {
     fetchEntityOptions = async () => {
         try {
             console.log('Fetching client options...');
-            const entityOptions = await api.getEntityOptions('client');
+            // Use window.api instead of api to access the global API object 
+            const entityOptions = await window.api.getEntityOptions('client');
             console.log('Received entity options:', entityOptions);
             
             // Make sure component is still mounted before updating state
@@ -68,7 +69,7 @@ class Dashboard extends React.Component {
     updateLevelOptions = async (newLevel) => {
         try {
             console.log(`Fetching options for level: ${newLevel}`);
-            const options = await api.getEntityOptions(newLevel);
+            const options = await window.api.getEntityOptions(newLevel);
             console.log(`Received ${options.length} options for level ${newLevel}`);
             
             // Only update state if component is still mounted
@@ -120,10 +121,11 @@ class Dashboard extends React.Component {
         });
         
         // Create all API request promises but handle them individually
-        const portfolioReportPromise = api.getPortfolioReport(reportDate, reportLevel, levelKey);
-        const allocationChartPromise = api.getAllocationChartData(reportDate, reportLevel, levelKey);
-        const liquidityChartPromise = api.getLiquidityChartData(reportDate, reportLevel, levelKey);
-        const performanceChartPromise = api.getPerformanceChartData(reportDate, reportLevel, levelKey, 'YTD');
+        // Use window.api to access the global API object
+        const portfolioReportPromise = window.api.getPortfolioReport(reportDate, reportLevel, levelKey);
+        const allocationChartPromise = window.api.getAllocationChartData(reportDate, reportLevel, levelKey);
+        const liquidityChartPromise = window.api.getLiquidityChartData(reportDate, reportLevel, levelKey);
+        const performanceChartPromise = window.api.getPerformanceChartData(reportDate, reportLevel, levelKey, 'YTD');
         
         try {
             // Get portfolio report

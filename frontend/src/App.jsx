@@ -12,7 +12,7 @@ const App = () => {
         const checkApiHealth = async () => {
             try {
                 setLoading(true);
-                const response = await api.checkHealth();
+                const response = await window.api.checkHealth();
                 setIsApiAvailable(response.status === "healthy");
             } catch (error) {
                 console.error("API Health check failed:", error);
