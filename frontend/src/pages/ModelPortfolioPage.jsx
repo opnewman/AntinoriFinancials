@@ -25,13 +25,9 @@ window.ModelPortfolioPage = () => {
             setLoading(true);
             setError(null);
             
-            const response = await axios.get('/api/model-portfolios');
-            
-            if (response.data.success) {
-                setModelPortfolios(response.data.portfolios || []);
-            } else {
-                setError('Failed to load model portfolios');
-            }
+            // Use window.api instead of direct axios call
+            const portfolios = await window.api.getModelPortfolios();
+            setModelPortfolios(portfolios || []);
         } catch (err) {
             console.error('Error fetching model portfolios:', err);
             setError('Failed to load model portfolios');
@@ -43,11 +39,10 @@ window.ModelPortfolioPage = () => {
     // Fetch portfolio options for comparison
     const fetchPortfolioOptions = async () => {
         try {
-            const response = await axios.get('/api/entity-options?type=portfolio');
-            
-            if (response.data && response.data.success === true && response.data.options) {
-                setPortfolioOptions(response.data.options);
-            }
+            // Use window.api instead of direct axios call
+            const options = await window.api.getEntityOptions('portfolio');
+            console.log('Portfolio options:', options);
+            setPortfolioOptions(options || []);
         } catch (err) {
             console.error('Error fetching portfolio options:', err);
         }
@@ -59,10 +54,11 @@ window.ModelPortfolioPage = () => {
             setLoading(true);
             setError(null);
             
-            const response = await axios.get(`/api/model-portfolios/${modelId}`);
+            // Use window.api instead of direct axios call
+            const portfolio = await window.api.getModelPortfolioDetail(modelId);
             
-            if (response.data.success) {
-                setSelectedModel(response.data.portfolio);
+            if (portfolio) {
+                setSelectedModel(portfolio);
                 setShowModelDetails(true);
                 setCompareMode(false);
             } else {
@@ -87,16 +83,15 @@ window.ModelPortfolioPage = () => {
             setComparisonLoading(true);
             setError(null);
             
-            const response = await axios.get('/api/compare-portfolio', {
-                params: {
-                    portfolio_id: selectedPortfolio,
-                    model_id: selectedModel.id,
-                    date: '2025-05-01' // Use a date that we know has data
-                }
-            });
+            // Use window.api instead of direct axios call
+            const comparison = await window.api.compareWithModel(
+                selectedPortfolio,
+                selectedModel.id,
+                '2025-05-01' // Use a date that we know has data
+            );
             
-            if (response.data.success) {
-                setComparisonResult(response.data.comparison);
+            if (comparison) {
+                setComparisonResult(comparison);
                 setCompareMode(true);
             } else {
                 setError('Failed to compare portfolio with model');

@@ -16,20 +16,16 @@ window.PortfolioReportPage = () => {
     React.useEffect(() => {
         const fetchOptions = async () => {
             try {
-                const response = await axios.get(`/api/entity-options?type=${selectedLevel}`);
-                console.log('Entity options response:', response);
+                console.log('Fetching options for level:', selectedLevel);
+                // Use window.api instead of direct axios call
+                const options = await window.api.getEntityOptions(selectedLevel);
                 
-                if (response.data && response.data.success === true && response.data.options) {
-                    console.log('Successfully loaded options:', response.data.options);
-                    setLevelOptions(response.data.options);
-                    
-                    // Set default selection if options are available and nothing is selected
-                    if (response.data.options.length > 0 && !selectedLevelKey) {
-                        setSelectedLevelKey(response.data.options[0].key);
-                    }
-                } else {
-                    console.error('Invalid response format for entity options:', response.data);
-                    setError('Failed to load entity options');
+                console.log('Successfully loaded options:', options);
+                setLevelOptions(options);
+                
+                // Set default selection if options are available and nothing is selected
+                if (options.length > 0 && !selectedLevelKey) {
+                    setSelectedLevelKey(options[0].key);
                 }
             } catch (err) {
                 console.error('Entity options error:', err);
@@ -48,18 +44,17 @@ window.PortfolioReportPage = () => {
         setError(null);
         
         try {
-            const response = await axios.get('/api/portfolio-report', {
-                params: {
-                    level: selectedLevel,
-                    level_key: selectedLevelKey,
-                    date: reportDate
-                }
-            });
+            // Use window.api instead of direct axios call
+            const report = await window.api.getPortfolioReport(
+                reportDate,
+                selectedLevel,
+                selectedLevelKey
+            );
             
-            console.log('Portfolio report response:', response);
+            console.log('Portfolio report data:', report);
             
-            if (response.data) {
-                setReportData(response.data);
+            if (report) {
+                setReportData(report);
             } else {
                 setError('No data received from server');
             }
