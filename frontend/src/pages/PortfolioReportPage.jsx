@@ -1,4 +1,7 @@
 // Professional Portfolio Report Page
+// No import needed here since we're using script tags in index.html
+// and all components are declared globally in the browser environment
+
 const PortfolioReportPage = () => {
     const [loading, setLoading] = React.useState(false);
     const [reportData, setReportData] = React.useState(null);

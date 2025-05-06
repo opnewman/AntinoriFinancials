@@ -1,5 +1,8 @@
 const { BrowserRouter, Switch, Route, Redirect } = ReactRouterDOM;
 
+// No imports needed as components are loaded via script tags in index.html
+// and globally available in the browser environment
+
 const App = () => {
     const [loading, setLoading] = React.useState(true);
     const [isApiAvailable, setIsApiAvailable] = React.useState(true);
@@ -99,15 +102,7 @@ const App = () => {
                             <SimpleOwnershipTreePage />
                         </Route>
                         <Route path="/reports">
-                            <div className="container mx-auto p-4">
-                                <h1 className="text-2xl font-bold mb-6">Portfolio Reports</h1>
-                                {/* Portfolio report viewer component */}
-                                <div className="bg-white rounded-lg shadow-md p-6">
-                                    <p className="text-gray-500">
-                                        Select a report from the dashboard to view details.
-                                    </p>
-                                </div>
-                            </div>
+                            <PortfolioReportPage />
                         </Route>
                         <Redirect to="/" />
                     </Switch>
