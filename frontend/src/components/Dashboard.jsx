@@ -238,6 +238,17 @@ class Dashboard extends React.Component {
         const { reportData } = this.state;
         if (!reportData || !reportData.performance) return [];
         
+        // Handle case where performance is an object rather than an array
+        if (!Array.isArray(reportData.performance)) {
+            // Convert the object to an array of objects
+            return Object.entries(reportData.performance).map(([period, value]) => ({
+                name: period,
+                value: value,
+                percentage: value // Use the same value for percentage since that's what we have
+            }));
+        }
+        
+        // If it's already an array, use the original format
         return reportData.performance.map(perf => ({
             name: perf.period,
             value: perf.value,
@@ -381,11 +392,12 @@ class Dashboard extends React.Component {
                                     </div>
                                 </div>
                                 
-                                {reportData.performance.map((perf) => (
-                                    <div key={perf.period} className="bg-gray-50 p-4 rounded-lg">
-                                        <div className="text-sm text-gray-500 mb-1">{perf.period} Performance</div>
+                                {/* Use the formatPerformance helper method to handle both array and object formats */}
+                                {this.formatPerformance().map((perf) => (
+                                    <div key={perf.name} className="bg-gray-50 p-4 rounded-lg">
+                                        <div className="text-sm text-gray-500 mb-1">{perf.name} Performance</div>
                                         <div className={`text-2xl font-bold ${perf.percentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                            {perf.percentage >= 0 ? '+' : ''}{perf.percentage.toFixed(2)}%
+                                            {perf.percentage >= 0 ? '+' : ''}{typeof perf.percentage === 'number' ? perf.percentage.toFixed(2) : perf.percentage}%
                                         </div>
                                     </div>
                                 ))}
