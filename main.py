@@ -1324,14 +1324,16 @@ def generate_portfolio_report():
         A detailed portfolio report matching the Excel template format
     """
     level = request.args.get('level', 'portfolio')
-    level_key = request.args.get('level_key', 'Portfolio 1')
+    level_key = request.args.get('level_key')
     
-    # Always use 2025-05-01 as the date which we know has data
+    if not level_key:
+        return jsonify({
+            "success": False,
+            "error": "Portfolio selection is required. Please select a portfolio."
+        }), 400
+    
+    # Use 2025-05-01 as the date since we know it has data
     date_str = request.args.get('date', '2025-05-01')
-    
-    # If date is not 2025-05-01, override it to ensure we use data that exists
-    if date_str != '2025-05-01':
-        date_str = '2025-05-01'
     
     # Convert the date string into a date object
     try:
@@ -1352,7 +1354,7 @@ def generate_portfolio_report():
         report_service = PortfolioReportService()
         report_data = report_service.generate_report(report_date, level, level_key)
         
-        # Return the report data
+        # Return only data for the specified portfolio
         return jsonify(report_data)
         
     except Exception as e:
