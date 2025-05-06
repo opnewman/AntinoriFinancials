@@ -104,7 +104,161 @@ window.PortfolioReportPage = () => {
             // Create workbook
             const wb = XLSX.utils.book_new();
             
-            // Create summary worksheet
+            // ------------------------------------------------------
+            // CONSOLIDATED VIEW - ALL SUBCATEGORY DETAILS ON ONE TAB
+            // ------------------------------------------------------
+            const consolidatedData = [
+                ['ANTINORI FINANCIAL PORTFOLIO REPORT - CONSOLIDATED VIEW'],
+                [''],
+                [`Portfolio: ${reportData.portfolio || ''}`],
+                [`Report Date: ${reportData.report_date || ''}`],
+                [`Total Value: $${reportData.total_adjusted_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
+                [''],
+                ['ASSET ALLOCATION BREAKDOWN'],
+                [''],
+                ['Category', 'Value (%)', 'Amount ($)']
+            ];
+            
+            // Add main asset classes first
+            consolidatedData.push(
+                ['EQUITY', 
+                    `${reportData.equities.total_pct.toFixed(2)}%`, 
+                    `$${(reportData.equities.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                ]
+            );
+            
+            // Add equity subcategories
+            Object.entries(reportData.equities.subcategories).forEach(([key, value]) => {
+                if (value > 0) {
+                    const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    const dollarValue = (value * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    consolidatedData.push([`  - ${formattedKey}`, `${value.toFixed(2)}%`, `$${dollarValue}`]);
+                }
+            });
+            
+            // Add Fixed Income main category
+            consolidatedData.push(
+                [''],
+                ['FIXED INCOME', 
+                    `${reportData.fixed_income.total_pct.toFixed(2)}%`, 
+                    `$${(reportData.fixed_income.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                ]
+            );
+            
+            // Add fixed income subcategories
+            Object.entries(reportData.fixed_income.subcategories).forEach(([key, value]) => {
+                if (typeof value === 'object') {
+                    if (value.total_pct > 0) {
+                        const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        const dollarValue = (value.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        consolidatedData.push([`  - ${formattedKey}`, `${value.total_pct.toFixed(2)}%`, `$${dollarValue}`]);
+                        
+                        // Add duration breakdowns if they exist
+                        if ('long_duration' in value && value.long_duration > 0) {
+                            const ldValue = (value.long_duration * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                            consolidatedData.push([`    • Long Duration`, `${value.long_duration.toFixed(2)}%`, `$${ldValue}`]);
+                        }
+                        if ('market_duration' in value && value.market_duration > 0) {
+                            const mdValue = (value.market_duration * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                            consolidatedData.push([`    • Market Duration`, `${value.market_duration.toFixed(2)}%`, `$${mdValue}`]);
+                        }
+                        if ('short_duration' in value && value.short_duration > 0) {
+                            const sdValue = (value.short_duration * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                            consolidatedData.push([`    • Short Duration`, `${value.short_duration.toFixed(2)}%`, `$${sdValue}`]);
+                        }
+                    }
+                } else if (value > 0) {
+                    const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    const dollarValue = (value * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    consolidatedData.push([`  - ${formattedKey}`, `${value.toFixed(2)}%`, `$${dollarValue}`]);
+                }
+            });
+            
+            // Add Hard Currency category
+            consolidatedData.push(
+                [''],
+                ['HARD CURRENCY', 
+                    `${reportData.hard_currency.total_pct.toFixed(2)}%`, 
+                    `$${(reportData.hard_currency.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                ]
+            );
+            
+            // Add hard currency subcategories
+            Object.entries(reportData.hard_currency.subcategories).forEach(([key, value]) => {
+                if (value > 0) {
+                    const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    const dollarValue = (value * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    consolidatedData.push([`  - ${formattedKey}`, `${value.toFixed(2)}%`, `$${dollarValue}`]);
+                }
+            });
+            
+            // Add Uncorrelated Alternatives category
+            consolidatedData.push(
+                [''],
+                ['UNCORRELATED ALTERNATIVES', 
+                    `${reportData.uncorrelated_alternatives.total_pct.toFixed(2)}%`, 
+                    `$${(reportData.uncorrelated_alternatives.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                ]
+            );
+            
+            // Add uncorrelated alternatives subcategories
+            Object.entries(reportData.uncorrelated_alternatives.subcategories).forEach(([key, value]) => {
+                if (value > 0) {
+                    const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    const dollarValue = (value * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    consolidatedData.push([`  - ${formattedKey}`, `${value.toFixed(2)}%`, `$${dollarValue}`]);
+                }
+            });
+            
+            // Add Cash category
+            consolidatedData.push(
+                [''],
+                ['CASH & CASH EQUIVALENTS', 
+                    `${reportData.cash.total_pct.toFixed(2)}%`, 
+                    `$${(reportData.cash.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                ]
+            );
+            
+            // Add liquidity and performance sections
+            consolidatedData.push(
+                [''],
+                ['LIQUIDITY'],
+                [''],
+                ['Category', 'Value (%)', 'Amount ($)'],
+                ['Liquid Assets', 
+                    `${reportData.liquidity.liquid_assets.toFixed(2)}%`, 
+                    `$${(reportData.liquidity.liquid_assets * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                ],
+                ['Illiquid Assets', 
+                    `${reportData.liquidity.illiquid_assets.toFixed(2)}%`, 
+                    `$${(reportData.liquidity.illiquid_assets * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                ],
+                [''],
+                ['PERFORMANCE'],
+                [''],
+                ['Period', 'Value (%)'],
+                ['1 Day', `${reportData.performance['1D'].toFixed(2)}%`],
+                ['Month-to-Date (MTD)', `${reportData.performance.MTD.toFixed(2)}%`],
+                ['Quarter-to-Date (QTD)', `${reportData.performance.QTD.toFixed(2)}%`],
+                ['Year-to-Date (YTD)', `${reportData.performance.YTD.toFixed(2)}%`]
+            );
+            
+            // Create consolidated worksheet
+            const consolidatedWs = XLSX.utils.aoa_to_sheet(consolidatedData);
+            
+            // Set column widths for consolidated sheet
+            const consolidatedCols = [];
+            consolidatedCols[0] = { wch: 40 }; // Category/title column wider to accommodate indentation
+            consolidatedCols[1] = { wch: 15 }; // Value (%) column
+            consolidatedCols[2] = { wch: 20 }; // Amount ($) column
+            consolidatedWs['!cols'] = consolidatedCols;
+            
+            // Add consolidated worksheet to workbook (as first sheet)
+            XLSX.utils.book_append_sheet(wb, consolidatedWs, "All Details");
+            
+            // ------------------------------------------------------
+            // SUMMARY WORKSHEET
+            // ------------------------------------------------------
             const summaryData = [
                 ['ANTINORI FINANCIAL PORTFOLIO REPORT'],
                 [''],
@@ -431,6 +585,86 @@ window.PortfolioReportPage = () => {
                 headStyles: { fillColor: [100, 149, 237] }, // Light blue
                 styles: { fontSize: 10 }
             });
+            
+            // Fixed Income Breakdown with dollar amounts
+            const fiData = [];
+            
+            // Process fixed income subcategories
+            Object.entries(reportData.fixed_income.subcategories).forEach(([key, value]) => {
+                if (typeof value === 'object') {
+                    // Handle nested subcategories (like government_bonds with durations)
+                    const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    const totalPct = value.total_pct || 0;
+                    const dollarValue = (totalPct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    fiData.push([formattedKey, `${totalPct.toFixed(2)}%`, `$${dollarValue}`]);
+                    
+                    // Add duration breakdowns if they exist
+                    if ('long_duration' in value && value.long_duration > 0) {
+                        const ldValue = (value.long_duration * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        fiData.push(['  - Long Duration', `${value.long_duration.toFixed(2)}%`, `$${ldValue}`]);
+                    }
+                    if ('market_duration' in value && value.market_duration > 0) {
+                        const mdValue = (value.market_duration * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        fiData.push(['  - Market Duration', `${value.market_duration.toFixed(2)}%`, `$${mdValue}`]);
+                    }
+                    if ('short_duration' in value && value.short_duration > 0) {
+                        const sdValue = (value.short_duration * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        fiData.push(['  - Short Duration', `${value.short_duration.toFixed(2)}%`, `$${sdValue}`]);
+                    }
+                } else {
+                    // Handle flat subcategories
+                    const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    const dollarValue = (value * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    fiData.push([formattedKey, `${value.toFixed(2)}%`, `$${dollarValue}`]);
+                }
+            });
+            
+            if (fiData.length > 0) {
+                doc.autoTable({
+                    startY: doc.lastAutoTable.finalY + 10,
+                    head: [['Fixed Income Breakdown', 'Value (%)', 'Amount ($)']],
+                    body: fiData,
+                    theme: 'striped',
+                    headStyles: { fillColor: [255, 102, 102] }, // Light red
+                    styles: { fontSize: 10 }
+                });
+            }
+            
+            // Hard Currency Breakdown with dollar amounts
+            const hcData = Object.entries(reportData.hard_currency.subcategories).filter(([_key, value]) => value > 0).map(([key, value]) => {
+                const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                const dollarValue = (value * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return [formattedKey, `${value.toFixed(2)}%`, `$${dollarValue}`];
+            });
+            
+            if (hcData.length > 0) {
+                doc.autoTable({
+                    startY: doc.lastAutoTable.finalY + 10,
+                    head: [['Hard Currency Breakdown', 'Value (%)', 'Amount ($)']],
+                    body: hcData,
+                    theme: 'striped',
+                    headStyles: { fillColor: [255, 217, 102] }, // Light yellow
+                    styles: { fontSize: 10 }
+                });
+            }
+            
+            // Uncorrelated Alternatives Breakdown with dollar amounts
+            const uaData = Object.entries(reportData.uncorrelated_alternatives.subcategories).filter(([_key, value]) => value > 0).map(([key, value]) => {
+                const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                const dollarValue = (value * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return [formattedKey, `${value.toFixed(2)}%`, `$${dollarValue}`];
+            });
+            
+            if (uaData.length > 0) {
+                doc.autoTable({
+                    startY: doc.lastAutoTable.finalY + 10,
+                    head: [['Uncorrelated Alternatives Breakdown', 'Value (%)', 'Amount ($)']],
+                    body: uaData,
+                    theme: 'striped',
+                    headStyles: { fillColor: [255, 153, 51] }, // Light orange
+                    styles: { fontSize: 10 }
+                });
+            }
             
             // Liquidity Table with dollar amounts
             doc.autoTable({
