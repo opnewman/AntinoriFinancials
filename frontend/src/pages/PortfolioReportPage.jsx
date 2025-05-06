@@ -101,58 +101,241 @@ window.PortfolioReportPage = () => {
             // Use XLSX library to create an Excel file
             const XLSX = window.XLSX;
             
-            // Create workbook and add worksheets
+            // Create workbook
             const wb = XLSX.utils.book_new();
             
-            // Format all data into a proper structure for Excel
-            const data = [
-                ['Portfolio Report'],
+            // Create summary worksheet
+            const summaryData = [
+                ['ANTINORI FINANCIAL PORTFOLIO REPORT'],
+                [''],
                 [`Portfolio: ${reportData.portfolio || ''}`],
-                [`Date: ${reportData.report_date || ''}`],
+                [`Report Date: ${reportData.report_date || ''}`],
                 [`Total Value: $${reportData.total_adjusted_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
                 [''],
-                ['Asset Allocation'],
-                ['Category', 'Value (%)'],
-                ['Equity', `${reportData.equities.total_pct.toFixed(2)}%`],
-                ['Fixed Income', `${reportData.fixed_income.total_pct.toFixed(2)}%`],
-                ['Hard Currency', `${reportData.hard_currency.total_pct.toFixed(2)}%`],
-                ['Uncorrelated Alternatives', `${reportData.uncorrelated_alternatives.total_pct.toFixed(2)}%`],
-                ['Cash & Cash Equivalent', `${reportData.cash.total_pct.toFixed(2)}%`],
+                ['ASSET ALLOCATION SUMMARY'],
+                ['']
+            ];
+            
+            // Define the allocation data for the summary
+            const allocationData = [
+                ['Category', 'Value (%)', 'Amount ($)'],
+                ['Equity', 
+                    `${reportData.equities.total_pct.toFixed(2)}%`, 
+                    `$${(reportData.equities.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                ],
+                ['Fixed Income', 
+                    `${reportData.fixed_income.total_pct.toFixed(2)}%`, 
+                    `$${(reportData.fixed_income.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                ],
+                ['Hard Currency', 
+                    `${reportData.hard_currency.total_pct.toFixed(2)}%`, 
+                    `$${(reportData.hard_currency.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                ],
+                ['Uncorrelated Alternatives', 
+                    `${reportData.uncorrelated_alternatives.total_pct.toFixed(2)}%`, 
+                    `$${(reportData.uncorrelated_alternatives.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                ],
+                ['Cash & Cash Equivalent', 
+                    `${reportData.cash.total_pct.toFixed(2)}%`, 
+                    `$${(reportData.cash.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                ]
+            ];
+            
+            // Add allocation data to summary
+            summaryData.push(...allocationData);
+            
+            // Add liquidity section
+            summaryData.push(
                 [''],
-                ['Liquidity'],
-                ['Category', 'Value (%)'],
-                ['Liquid Assets', `${reportData.liquidity.liquid_assets.toFixed(2)}%`],
-                ['Illiquid Assets', `${reportData.liquidity.illiquid_assets.toFixed(2)}%`],
+                ['LIQUIDITY'],
                 [''],
-                ['Performance'],
+                ['Category', 'Value (%)', 'Amount ($)'],
+                ['Liquid Assets', 
+                    `${reportData.liquidity.liquid_assets.toFixed(2)}%`, 
+                    `$${(reportData.liquidity.liquid_assets * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                ],
+                ['Illiquid Assets', 
+                    `${reportData.liquidity.illiquid_assets.toFixed(2)}%`, 
+                    `$${(reportData.liquidity.illiquid_assets * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                ]
+            );
+            
+            // Add performance section
+            summaryData.push(
+                [''],
+                ['PERFORMANCE'],
+                [''],
                 ['Period', 'Value (%)'],
                 ['1D', `${reportData.performance['1D'].toFixed(2)}%`],
                 ['MTD', `${reportData.performance.MTD.toFixed(2)}%`],
                 ['QTD', `${reportData.performance.QTD.toFixed(2)}%`],
                 ['YTD', `${reportData.performance.YTD.toFixed(2)}%`]
+            );
+            
+            // Create summary worksheet
+            const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+            
+            // Set column widths for summary sheet
+            const summaryCols = [];
+            summaryCols[0] = { wch: 30 }; // Category/title column
+            summaryCols[1] = { wch: 15 }; // Value (%) column
+            summaryCols[2] = { wch: 20 }; // Amount ($) column
+            summaryWs['!cols'] = summaryCols;
+            
+            // Add summary worksheet to workbook
+            XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
+            
+            // Create detailed breakdown sheets for each asset class
+            
+            // Equity Breakdown worksheet
+            const equityData = [
+                ['EQUITY BREAKDOWN'],
+                [''],
+                ['Total Equity Allocation', `${reportData.equities.total_pct.toFixed(2)}%`, `$${(reportData.equities.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
+                [''],
+                ['Subcategory', 'Value (%)', 'Amount ($)']
             ];
             
-            // Add all subcategories from each asset class
-            // For equity subcategories
-            data.push([''], ['Equity Breakdown'], ['Subcategory', 'Value (%)']);
+            // Add equity subcategories
             Object.entries(reportData.equities.subcategories).forEach(([key, value]) => {
                 const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                data.push([formattedKey, `${value.toFixed(2)}%`]);
+                const dollarValue = (value * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                equityData.push([formattedKey, `${value.toFixed(2)}%`, `$${dollarValue}`]);
             });
             
-            // Create worksheet and add to workbook
-            const ws = XLSX.utils.aoa_to_sheet(data);
-            XLSX.utils.book_append_sheet(wb, ws, "Portfolio Report");
+            // Create and add equity worksheet
+            const equityWs = XLSX.utils.aoa_to_sheet(equityData);
+            equityWs['!cols'] = [
+                { wch: 30 }, // Subcategory column
+                { wch: 15 }, // Value (%) column
+                { wch: 20 }  // Amount ($) column
+            ];
+            XLSX.utils.book_append_sheet(wb, equityWs, "Equity");
             
-            // Style cells (limited in XLSX)
-            // By setting column widths
-            const cols = ws['!cols'] || [];
-            cols[0] = { wch: 30 }; // Set column width for column A
-            cols[1] = { wch: 15 }; // Set column width for column B
-            ws['!cols'] = cols;
+            // Fixed Income Breakdown worksheet
+            const fiData = [
+                ['FIXED INCOME BREAKDOWN'],
+                [''],
+                ['Total Fixed Income Allocation', `${reportData.fixed_income.total_pct.toFixed(2)}%`, `$${(reportData.fixed_income.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
+                ['']
+            ];
             
-            // Generate Excel file and download
-            XLSX.writeFile(wb, `${reportData.portfolio || 'Portfolio'}_Report_${reportData.report_date.replace(/\//g, '-')}.xlsx`);
+            // Add fixed income duration info if available
+            if (reportData.fixed_income.duration !== null) {
+                fiData.push(['Portfolio Duration:', reportData.fixed_income.duration.toFixed(2)]);
+                fiData.push(['']);
+            }
+            
+            // Add fixed income subcategory headers
+            fiData.push(['Subcategory', 'Value (%)', 'Amount ($)']);
+            
+            // Add fixed income subcategories
+            Object.entries(reportData.fixed_income.subcategories).forEach(([key, value]) => {
+                if (typeof value === 'object') {
+                    // Handle nested subcategories (like government_bonds with durations)
+                    const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    fiData.push([formattedKey, `${value.total_pct.toFixed(2)}%`, `$${(value.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`]);
+                    
+                    // Add duration breakdowns if they exist
+                    if ('long_duration' in value) {
+                        fiData.push(['  - Long Duration', `${value.long_duration.toFixed(2)}%`, `$${(value.long_duration * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`]);
+                    }
+                    if ('market_duration' in value) {
+                        fiData.push(['  - Market Duration', `${value.market_duration.toFixed(2)}%`, `$${(value.market_duration * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`]);
+                    }
+                    if ('short_duration' in value) {
+                        fiData.push(['  - Short Duration', `${value.short_duration.toFixed(2)}%`, `$${(value.short_duration * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`]);
+                    }
+                } else {
+                    // Handle flat subcategories
+                    const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    fiData.push([formattedKey, `${value.toFixed(2)}%`, `$${(value * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`]);
+                }
+            });
+            
+            // Create and add fixed income worksheet
+            const fiWs = XLSX.utils.aoa_to_sheet(fiData);
+            fiWs['!cols'] = [
+                { wch: 30 }, // Subcategory column
+                { wch: 15 }, // Value (%) column
+                { wch: 20 }  // Amount ($) column
+            ];
+            XLSX.utils.book_append_sheet(wb, fiWs, "Fixed Income");
+            
+            // Hard Currency Breakdown worksheet
+            const hcData = [
+                ['HARD CURRENCY BREAKDOWN'],
+                [''],
+                ['Total Hard Currency Allocation', `${reportData.hard_currency.total_pct.toFixed(2)}%`, `$${(reportData.hard_currency.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
+                [''],
+                ['Subcategory', 'Value (%)', 'Amount ($)']
+            ];
+            
+            // Add hard currency subcategories
+            Object.entries(reportData.hard_currency.subcategories).forEach(([key, value]) => {
+                const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                const dollarValue = (value * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                hcData.push([formattedKey, `${value.toFixed(2)}%`, `$${dollarValue}`]);
+            });
+            
+            // Create and add hard currency worksheet
+            const hcWs = XLSX.utils.aoa_to_sheet(hcData);
+            hcWs['!cols'] = [
+                { wch: 30 }, // Subcategory column
+                { wch: 15 }, // Value (%) column
+                { wch: 20 }  // Amount ($) column
+            ];
+            XLSX.utils.book_append_sheet(wb, hcWs, "Hard Currency");
+            
+            // Uncorrelated Alternatives Breakdown worksheet
+            const uaData = [
+                ['UNCORRELATED ALTERNATIVES BREAKDOWN'],
+                [''],
+                ['Total Uncorrelated Alternatives Allocation', `${reportData.uncorrelated_alternatives.total_pct.toFixed(2)}%`, `$${(reportData.uncorrelated_alternatives.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
+                [''],
+                ['Subcategory', 'Value (%)', 'Amount ($)']
+            ];
+            
+            // Add uncorrelated alternatives subcategories
+            Object.entries(reportData.uncorrelated_alternatives.subcategories).forEach(([key, value]) => {
+                const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                const dollarValue = (value * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                uaData.push([formattedKey, `${value.toFixed(2)}%`, `$${dollarValue}`]);
+            });
+            
+            // Create and add uncorrelated alternatives worksheet
+            const uaWs = XLSX.utils.aoa_to_sheet(uaData);
+            uaWs['!cols'] = [
+                { wch: 30 }, // Subcategory column
+                { wch: 15 }, // Value (%) column
+                { wch: 20 }  // Amount ($) column
+            ];
+            XLSX.utils.book_append_sheet(wb, uaWs, "Uncorrelated Alternatives");
+            
+            // Add a Performance worksheet
+            const perfData = [
+                ['PERFORMANCE REPORT'],
+                [''],
+                ['Portfolio', reportData.portfolio || ''],
+                ['Report Date', reportData.report_date || ''],
+                [''],
+                ['Period', 'Return (%)'],
+                ['1 Day', `${reportData.performance['1D'].toFixed(2)}%`],
+                ['Month-to-Date (MTD)', `${reportData.performance.MTD.toFixed(2)}%`],
+                ['Quarter-to-Date (QTD)', `${reportData.performance.QTD.toFixed(2)}%`],
+                ['Year-to-Date (YTD)', `${reportData.performance.YTD.toFixed(2)}%`]
+            ];
+            
+            // Create and add performance worksheet
+            const perfWs = XLSX.utils.aoa_to_sheet(perfData);
+            perfWs['!cols'] = [
+                { wch: 30 }, // Period column
+                { wch: 15 }   // Return (%) column
+            ];
+            XLSX.utils.book_append_sheet(wb, perfWs, "Performance");
+            
+            // Generate Excel file with a professional name
+            XLSX.writeFile(wb, `ANTINORI_Portfolio_Report_${reportData.portfolio || 'Portfolio'}_${reportData.report_date.replace(/\//g, '-')}.xlsx`);
             
         } catch (error) {
             console.error('Excel export error:', error);
@@ -180,78 +363,119 @@ window.PortfolioReportPage = () => {
             // Create new PDF document
             const doc = new jsPDF();
             
-            // Add title
+            // Add title with branding
+            doc.setFontSize(20);
+            doc.setTextColor(20, 83, 45); // Dark green to match brand
+            doc.text('ANTINORI FINANCIAL', 14, 20);
+            
             doc.setFontSize(18);
-            doc.text('Portfolio Report', 14, 22);
+            doc.setTextColor(15, 23, 42); // Dark slate blue for subtitles
+            doc.text('PORTFOLIO REPORT', 14, 28);
             
             // Add metadata
             doc.setFontSize(12);
-            doc.text(`Portfolio: ${reportData.portfolio || ''}`, 14, 32);
-            doc.text(`Date: ${reportData.report_date || ''}`, 14, 38);
+            doc.setTextColor(60, 60, 60); // Dark gray for normal text
+            doc.text(`Portfolio: ${reportData.portfolio || ''}`, 14, 38);
+            doc.text(`Report Date: ${reportData.report_date || ''}`, 14, 44);
             doc.text(`Total Value: $${reportData.total_adjusted_value.toLocaleString('en-US', 
-                { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 14, 44);
+                { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 14, 50);
             
-            // Asset Allocation Table
+            // Asset Allocation Table with dollar amounts
             doc.autoTable({
-                startY: 50,
-                head: [['Asset Allocation', 'Value (%)']],
+                startY: 56,
+                head: [['Asset Allocation', 'Value (%)', 'Amount ($)']],
                 body: [
-                    ['Equity', `${reportData.equities.total_pct.toFixed(2)}%`],
-                    ['Fixed Income', `${reportData.fixed_income.total_pct.toFixed(2)}%`],
-                    ['Hard Currency', `${reportData.hard_currency.total_pct.toFixed(2)}%`],
-                    ['Uncorrelated Alternatives', `${reportData.uncorrelated_alternatives.total_pct.toFixed(2)}%`],
-                    ['Cash & Cash Equivalent', `${reportData.cash.total_pct.toFixed(2)}%`]
+                    [
+                        'Equity', 
+                        `${reportData.equities.total_pct.toFixed(2)}%`,
+                        `$${(reportData.equities.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    ],
+                    [
+                        'Fixed Income', 
+                        `${reportData.fixed_income.total_pct.toFixed(2)}%`,
+                        `$${(reportData.fixed_income.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    ],
+                    [
+                        'Hard Currency', 
+                        `${reportData.hard_currency.total_pct.toFixed(2)}%`,
+                        `$${(reportData.hard_currency.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    ],
+                    [
+                        'Uncorrelated Alternatives', 
+                        `${reportData.uncorrelated_alternatives.total_pct.toFixed(2)}%`,
+                        `$${(reportData.uncorrelated_alternatives.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    ],
+                    [
+                        'Cash & Cash Equivalent', 
+                        `${reportData.cash.total_pct.toFixed(2)}%`,
+                        `$${(reportData.cash.total_pct * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    ]
                 ],
                 theme: 'striped',
                 headStyles: { fillColor: [20, 83, 45] }, // Dark green
                 styles: { fontSize: 10 }
             });
             
-            // Equity Breakdown
+            // Equity Breakdown with dollar amounts
             const equityData = Object.entries(reportData.equities.subcategories).map(([key, value]) => {
                 const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                return [formattedKey, `${value.toFixed(2)}%`];
+                const dollarValue = (value * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return [formattedKey, `${value.toFixed(2)}%`, `$${dollarValue}`];
             });
             
             doc.autoTable({
                 startY: doc.lastAutoTable.finalY + 10,
-                head: [['Equity Breakdown', 'Value (%)']],
+                head: [['Equity Breakdown', 'Value (%)', 'Amount ($)']],
                 body: equityData,
                 theme: 'striped',
                 headStyles: { fillColor: [100, 149, 237] }, // Light blue
                 styles: { fontSize: 10 }
             });
             
-            // Liquidity Table
+            // Liquidity Table with dollar amounts
             doc.autoTable({
                 startY: doc.lastAutoTable.finalY + 10,
-                head: [['Liquidity', 'Value (%)']],
+                head: [['Liquidity', 'Value (%)', 'Amount ($)']],
                 body: [
-                    ['Liquid Assets', `${reportData.liquidity.liquid_assets.toFixed(2)}%`],
-                    ['Illiquid Assets', `${reportData.liquidity.illiquid_assets.toFixed(2)}%`]
+                    [
+                        'Liquid Assets', 
+                        `${reportData.liquidity.liquid_assets.toFixed(2)}%`,
+                        `$${(reportData.liquidity.liquid_assets * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    ],
+                    [
+                        'Illiquid Assets', 
+                        `${reportData.liquidity.illiquid_assets.toFixed(2)}%`,
+                        `$${(reportData.liquidity.illiquid_assets * reportData.total_adjusted_value / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    ]
                 ],
                 theme: 'striped',
                 headStyles: { fillColor: [169, 169, 169] }, // Light gray
                 styles: { fontSize: 10 }
             });
             
-            // Performance Table
+            // Performance Table - keep this as percentage only
             doc.autoTable({
                 startY: doc.lastAutoTable.finalY + 10,
                 head: [['Performance', 'Value (%)']],
                 body: [
-                    ['1D', `${reportData.performance['1D'].toFixed(2)}%`],
-                    ['MTD', `${reportData.performance.MTD.toFixed(2)}%`],
-                    ['QTD', `${reportData.performance.QTD.toFixed(2)}%`],
-                    ['YTD', `${reportData.performance.YTD.toFixed(2)}%`]
+                    ['1 Day', `${reportData.performance['1D'].toFixed(2)}%`],
+                    ['Month to Date (MTD)', `${reportData.performance.MTD.toFixed(2)}%`],
+                    ['Quarter to Date (QTD)', `${reportData.performance.QTD.toFixed(2)}%`],
+                    ['Year to Date (YTD)', `${reportData.performance.YTD.toFixed(2)}%`]
                 ],
                 theme: 'striped',
                 headStyles: { fillColor: [147, 112, 219] }, // Light purple
                 styles: { fontSize: 10 }
             });
             
-            // Save the PDF
-            doc.save(`${reportData.portfolio || 'Portfolio'}_Report_${reportData.report_date.replace(/\//g, '-')}.pdf`);
+            // Footer with timestamp
+            const timestamp = new Date().toLocaleString('en-US');
+            doc.setFontSize(8);
+            doc.setTextColor(100, 100, 100); // Light gray
+            doc.text(`Report generated on ${timestamp} | ANTINORI Financial Portfolio Management System`, 14, doc.internal.pageSize.height - 10);
+            
+            // Save the PDF with professional naming
+            doc.save(`ANTINORI_Portfolio_Report_${reportData.portfolio || 'Portfolio'}_${reportData.report_date.replace(/\//g, '-')}.pdf`);
             
         } catch (error) {
             console.error('PDF export error:', error);
