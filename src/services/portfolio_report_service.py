@@ -399,7 +399,7 @@ class PortfolioReportService:
         """
         # Filter for cash positions
         cash_positions = positions[
-            positions['asset_class'].str.lower().str.contains('cash')
+            positions['asset_class'].str.lower() == 'cash & cash equivalent'
         ]
         
         # Calculate total cash value

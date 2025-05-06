@@ -7,7 +7,8 @@
 // Use relative URL to avoid CORS issues in different environments
 const API_BASE_URL = '';
 
-const api = {
+// Define api as a window global to avoid "exports is not defined" error
+window.api = {
     /**
      * Check API health
      */
