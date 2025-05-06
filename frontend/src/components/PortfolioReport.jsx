@@ -93,7 +93,7 @@ window.PortfolioReport = ({ reportData, loading }) => {
             <table className="min-w-full text-sm border-collapse">
                 <tbody>
                     <tr>
-                        <td className="bg-green-200 px-4 py-2 text-left font-medium">Equity</td>
+                        <td className="bg-blue-200 px-4 py-2 text-left font-medium">Equity</td>
                         <td className="border px-4 py-2 text-right">{formatPercent(equities.total_pct)}</td>
                     </tr>
                     <tr>
@@ -277,7 +277,7 @@ window.PortfolioReport = ({ reportData, loading }) => {
             <table className="min-w-full text-sm border-collapse">
                 <tbody>
                     <tr>
-                        <td className="bg-blue-200 px-4 py-2 text-left font-medium">Uncorrelated Alternatives</td>
+                        <td className="bg-orange-200 px-4 py-2 text-left font-medium">Uncorrelated Alternatives</td>
                         <td className="border px-4 py-2 text-right">{formatPercent(uncorrelated_alternatives.total_pct)}</td>
                     </tr>
                     <tr>
@@ -305,7 +305,7 @@ window.PortfolioReport = ({ reportData, loading }) => {
             <table className="min-w-full text-sm border-collapse">
                 <tbody>
                     <tr>
-                        <td className="bg-blue-800 text-white px-4 py-2 text-left font-medium">Cash & Cash Equivalent</td>
+                        <td className="bg-green-200 px-4 py-2 text-left font-medium">Cash & Cash Equivalent</td>
                         <td className="border px-4 py-2 text-right">{formatPercent(cash.total_pct)}</td>
                     </tr>
                 </tbody>

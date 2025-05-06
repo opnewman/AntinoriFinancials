@@ -10,6 +10,7 @@ window.PortfolioReportPage = () => {
     const [selectedLevelKey, setSelectedLevelKey] = React.useState('');
     const [levelOptions, setLevelOptions] = React.useState([]);
     const [reportDate, setReportDate] = React.useState('2025-05-01');
+    const [exportLoading, setExportLoading] = React.useState({ excel: false, pdf: false });
     
     // Fetch entity options when level changes
     React.useEffect(() => {
@@ -93,9 +94,175 @@ window.PortfolioReportPage = () => {
     };
     
     // Export report as Excel
-    const exportToExcel = () => {
-        alert('Excel export functionality would be implemented here');
-        // In a real implementation, this would call a backend endpoint that generates an Excel file
+    const exportToExcel = async () => {
+        if (!reportData) {
+            alert('Please generate a report first');
+            return;
+        }
+        
+        try {
+            setExportLoading(prev => ({ ...prev, excel: true }));
+            
+            // Use XLSX library to create an Excel file
+            const XLSX = window.XLSX;
+            
+            // Create workbook and add worksheets
+            const wb = XLSX.utils.book_new();
+            
+            // Format all data into a proper structure for Excel
+            const data = [
+                ['Portfolio Report'],
+                [`Portfolio: ${reportData.portfolio || ''}`],
+                [`Date: ${reportData.report_date || ''}`],
+                [`Total Value: $${reportData.total_adjusted_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
+                [''],
+                ['Asset Allocation'],
+                ['Category', 'Value (%)'],
+                ['Equity', `${reportData.equities.total_pct.toFixed(2)}%`],
+                ['Fixed Income', `${reportData.fixed_income.total_pct.toFixed(2)}%`],
+                ['Hard Currency', `${reportData.hard_currency.total_pct.toFixed(2)}%`],
+                ['Uncorrelated Alternatives', `${reportData.uncorrelated_alternatives.total_pct.toFixed(2)}%`],
+                ['Cash & Cash Equivalent', `${reportData.cash.total_pct.toFixed(2)}%`],
+                [''],
+                ['Liquidity'],
+                ['Category', 'Value (%)'],
+                ['Liquid Assets', `${reportData.liquidity.liquid_assets.toFixed(2)}%`],
+                ['Illiquid Assets', `${reportData.liquidity.illiquid_assets.toFixed(2)}%`],
+                [''],
+                ['Performance'],
+                ['Period', 'Value (%)'],
+                ['1D', `${reportData.performance['1D'].toFixed(2)}%`],
+                ['MTD', `${reportData.performance.MTD.toFixed(2)}%`],
+                ['QTD', `${reportData.performance.QTD.toFixed(2)}%`],
+                ['YTD', `${reportData.performance.YTD.toFixed(2)}%`]
+            ];
+            
+            // Add all subcategories from each asset class
+            // For equity subcategories
+            data.push([''], ['Equity Breakdown'], ['Subcategory', 'Value (%)']);
+            Object.entries(reportData.equities.subcategories).forEach(([key, value]) => {
+                const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                data.push([formattedKey, `${value.toFixed(2)}%`]);
+            });
+            
+            // Create worksheet and add to workbook
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            XLSX.utils.book_append_sheet(wb, ws, "Portfolio Report");
+            
+            // Style cells (limited in XLSX)
+            // By setting column widths
+            const cols = ws['!cols'] || [];
+            cols[0] = { wch: 30 }; // Set column width for column A
+            cols[1] = { wch: 15 }; // Set column width for column B
+            ws['!cols'] = cols;
+            
+            // Generate Excel file and download
+            XLSX.writeFile(wb, `${reportData.portfolio || 'Portfolio'}_Report_${reportData.report_date.replace(/\//g, '-')}.xlsx`);
+            
+        } catch (error) {
+            console.error('Excel export error:', error);
+            alert('Failed to export to Excel: ' + error.message);
+        } finally {
+            setExportLoading(prev => ({ ...prev, excel: false }));
+        }
+    };
+    
+    // Export report as PDF
+    const exportToPDF = async () => {
+        if (!reportData) {
+            alert('Please generate a report first');
+            return;
+        }
+        
+        try {
+            setExportLoading(prev => ({ ...prev, pdf: true }));
+            
+            // Use jsPDF library
+            const jsPDF = window.jspdf.jsPDF;
+            const autoTable = window.jspdf.autoTable;
+            
+            // Create new PDF document
+            const doc = new jsPDF();
+            
+            // Add title
+            doc.setFontSize(18);
+            doc.text('Portfolio Report', 14, 22);
+            
+            // Add metadata
+            doc.setFontSize(12);
+            doc.text(`Portfolio: ${reportData.portfolio || ''}`, 14, 32);
+            doc.text(`Date: ${reportData.report_date || ''}`, 14, 38);
+            doc.text(`Total Value: $${reportData.total_adjusted_value.toLocaleString('en-US', 
+                { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 14, 44);
+            
+            // Asset Allocation Table
+            autoTable(doc, {
+                startY: 50,
+                head: [['Asset Allocation', 'Value (%)']],
+                body: [
+                    ['Equity', `${reportData.equities.total_pct.toFixed(2)}%`],
+                    ['Fixed Income', `${reportData.fixed_income.total_pct.toFixed(2)}%`],
+                    ['Hard Currency', `${reportData.hard_currency.total_pct.toFixed(2)}%`],
+                    ['Uncorrelated Alternatives', `${reportData.uncorrelated_alternatives.total_pct.toFixed(2)}%`],
+                    ['Cash & Cash Equivalent', `${reportData.cash.total_pct.toFixed(2)}%`]
+                ],
+                theme: 'striped',
+                headStyles: { fillColor: [20, 83, 45] }, // Dark green
+                styles: { fontSize: 10 }
+            });
+            
+            // Equity Breakdown
+            const equityData = Object.entries(reportData.equities.subcategories).map(([key, value]) => {
+                const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                return [formattedKey, `${value.toFixed(2)}%`];
+            });
+            
+            autoTable(doc, {
+                startY: doc.lastAutoTable.finalY + 10,
+                head: [['Equity Breakdown', 'Value (%)']],
+                body: equityData,
+                theme: 'striped',
+                headStyles: { fillColor: [100, 149, 237] }, // Light blue
+                styles: { fontSize: 10 }
+            });
+            
+            // Liquidity Table
+            autoTable(doc, {
+                startY: doc.lastAutoTable.finalY + 10,
+                head: [['Liquidity', 'Value (%)']],
+                body: [
+                    ['Liquid Assets', `${reportData.liquidity.liquid_assets.toFixed(2)}%`],
+                    ['Illiquid Assets', `${reportData.liquidity.illiquid_assets.toFixed(2)}%`]
+                ],
+                theme: 'striped',
+                headStyles: { fillColor: [169, 169, 169] }, // Light gray
+                styles: { fontSize: 10 }
+            });
+            
+            // Performance Table
+            autoTable(doc, {
+                startY: doc.lastAutoTable.finalY + 10,
+                head: [['Performance', 'Value (%)']],
+                body: [
+                    ['1D', `${reportData.performance['1D'].toFixed(2)}%`],
+                    ['MTD', `${reportData.performance.MTD.toFixed(2)}%`],
+                    ['QTD', `${reportData.performance.QTD.toFixed(2)}%`],
+                    ['YTD', `${reportData.performance.YTD.toFixed(2)}%`]
+                ],
+                theme: 'striped',
+                headStyles: { fillColor: [147, 112, 219] }, // Light purple
+                styles: { fontSize: 10 }
+            });
+            
+            // Save the PDF
+            doc.save(`${reportData.portfolio || 'Portfolio'}_Report_${reportData.report_date.replace(/\//g, '-')}.pdf`);
+            
+        } catch (error) {
+            console.error('PDF export error:', error);
+            alert('Failed to export to PDF: ' + error.message);
+        } finally {
+            setExportLoading(prev => ({ ...prev, pdf: false }));
+        }
     };
     
     // Format date for display
@@ -117,13 +284,33 @@ window.PortfolioReportPage = () => {
                     <p className="text-gray-600">Generate and view detailed portfolio reports</p>
                 </div>
                 
-                <button
-                    className="px-4 py-2 bg-green-800 text-white rounded hover:bg-green-700 focus:outline-none flex items-center"
-                    onClick={exportToExcel}
-                >
-                    <i className="fas fa-file-excel mr-2"></i>
-                    Export to Excel
-                </button>
+                <div className="flex space-x-2">
+                    <button
+                        className="px-4 py-2 bg-green-800 text-white rounded hover:bg-green-700 focus:outline-none flex items-center"
+                        onClick={exportToExcel}
+                        disabled={exportLoading.excel || !reportData}
+                    >
+                        {exportLoading.excel ? (
+                            <i className="fas fa-circle-notch fa-spin mr-2"></i>
+                        ) : (
+                            <i className="fas fa-file-excel mr-2"></i>
+                        )}
+                        Export to Excel
+                    </button>
+                    
+                    <button
+                        className="px-4 py-2 bg-red-800 text-white rounded hover:bg-red-700 focus:outline-none flex items-center"
+                        onClick={exportToPDF}
+                        disabled={exportLoading.pdf || !reportData}
+                    >
+                        {exportLoading.pdf ? (
+                            <i className="fas fa-circle-notch fa-spin mr-2"></i>
+                        ) : (
+                            <i className="fas fa-file-pdf mr-2"></i>
+                        )}
+                        Export to PDF
+                    </button>
+                </div>
             </div>
             
             {/* Report options */}
