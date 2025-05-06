@@ -141,3 +141,85 @@ class RiskStatisticAlternatives(Base):
     ticker_symbol = Column(String, nullable=False, index=True)
     vol = Column(Float)
     beta_to_gold = Column(Float)
+
+class ModelPortfolio(Base):
+    """
+    Stores model portfolio information (like those in your screenshot)
+    """
+    __tablename__ = "model_portfolios"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    description = Column(String)
+    is_active = Column(Boolean, default=True)
+    creation_date = Column(Date, default=datetime.date.today, nullable=False)
+    update_date = Column(Date, default=datetime.date.today, onupdate=datetime.date.today, nullable=False)
+    
+    # Relationships
+    allocations = relationship("ModelPortfolioAllocation", back_populates="model_portfolio", cascade="all, delete-orphan")
+
+class ModelPortfolioAllocation(Base):
+    """
+    Stores allocation percentages for model portfolios
+    """
+    __tablename__ = "model_portfolio_allocations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    model_portfolio_id = Column(Integer, ForeignKey("model_portfolios.id"), nullable=False, index=True)
+    category = Column(String, nullable=False, index=True)  # e.g., "Equities", "Fixed Income", etc.
+    subcategory = Column(String, index=True)  # e.g., "US Equities", "EM Markets", etc.
+    allocation_percentage = Column(Float, nullable=False)
+    is_model_weight = Column(Boolean, default=True)  # Flag for model vs actual weight
+    
+    # Relationship back to model portfolio
+    model_portfolio = relationship("ModelPortfolio", back_populates="allocations")
+    
+    # Additional constraints
+    __table_args__ = (
+        # Composite index for faster filtering
+        Index('idx_model_category', 'model_portfolio_id', 'category', 'subcategory'),
+    )
+
+class FixedIncomeMetrics(Base):
+    """
+    Stores fixed income metrics for model portfolios (duration, yield, etc.)
+    """
+    __tablename__ = "fixed_income_metrics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    model_portfolio_id = Column(Integer, ForeignKey("model_portfolios.id"), nullable=False, index=True)
+    metric_name = Column(String, nullable=False, index=True)  # e.g., "Duration", "Yield", etc.
+    metric_subcategory = Column(String, index=True)  # e.g., "Municipal Bonds", "Long Duration", etc.
+    metric_value = Column(Float, nullable=False)
+    
+    # Relationship to model portfolio
+    model_portfolio = relationship("ModelPortfolio")
+
+class CurrencyAllocation(Base):
+    """
+    Stores hard currency allocations for model portfolios
+    """
+    __tablename__ = "currency_allocations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    model_portfolio_id = Column(Integer, ForeignKey("model_portfolios.id"), nullable=False, index=True)
+    currency_name = Column(String, nullable=False, index=True)  # e.g., "USD", "EUR", etc.
+    allocation_percentage = Column(Float, nullable=False)
+    
+    # Relationship to model portfolio
+    model_portfolio = relationship("ModelPortfolio")
+
+class PerformanceMetric(Base):
+    """
+    Stores performance metrics for model portfolios
+    """
+    __tablename__ = "performance_metrics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    model_portfolio_id = Column(Integer, ForeignKey("model_portfolios.id"), nullable=False, index=True)
+    period = Column(String, nullable=False, index=True)  # e.g., "1D", "MTD", "QTD", "YTD"
+    performance_percentage = Column(Float, nullable=False)
+    as_of_date = Column(Date, nullable=False, index=True)
+    
+    # Relationship to model portfolio
+    model_portfolio = relationship("ModelPortfolio")
