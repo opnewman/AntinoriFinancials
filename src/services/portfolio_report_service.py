@@ -294,7 +294,7 @@ class PortfolioReportService:
         """
         # Filter for alternative positions with "Precious Metals" as second level
         hard_currency_positions = positions[
-            (positions['asset_class'].str.lower() == 'alternative') & 
+            (positions['asset_class'].str.lower() == 'alternatives') & 
             (positions['second_level'].str.lower() == 'precious metals')
         ]
         
@@ -336,7 +336,7 @@ class PortfolioReportService:
         """
         # Filter for alternative positions that are NOT "Precious Metals"
         uncorrelated_alt_positions = positions[
-            (positions['asset_class'].str.lower() == 'alternative') & 
+            (positions['asset_class'].str.lower() == 'alternatives') & 
             ((positions['second_level'].str.lower() != 'precious metals') | 
              (positions['second_level'].isnull()))
         ]
@@ -369,9 +369,9 @@ class PortfolioReportService:
         # Process Proficio funds by using substring matching
         for key, term in proficio_categories.items():
             # Find positions containing the term as substring in the position name
-            if not uncorrelated_alt_positions.empty:
-                proficio_positions = uncorrelated_alt_positions[
-                    uncorrelated_alt_positions['position'].str.contains(term, case=False, na=False)
+            if not positions.empty:
+                proficio_positions = positions[
+                    positions['position'].str.contains(term, case=False, na=False)
                 ]
                 
                 proficio_value = proficio_positions['adjusted_value'].sum() if not proficio_positions.empty else 0

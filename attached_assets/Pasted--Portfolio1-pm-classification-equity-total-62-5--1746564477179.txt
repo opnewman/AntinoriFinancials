@@ -1,0 +1,85 @@
+{
+  "Portfolio1": {
+    "pm": "",
+    "classification": "",
+    "equity": {
+      "total": 62.5,
+      "vol": 0.0,
+      "beta": 0.0,
+      "beta_adjusted": 0.0,
+      "breakdown": {
+        "US Markets": 30.25,
+        "Global Markets": 20.10,
+        "Emerging Markets": 5.15,
+        "Commodities": 0.00,
+        "Real Estate": 0.00,
+        "Private Equity": 0.00,
+        "High Yield": 0.00,
+        "Venture Capital": 0.00,
+        "Low Beta Alpha": 0.00,
+        "Equity Derivatives": 0.00,
+        "Income Notes": 0.00
+      }
+    },
+    "fixed_income": {
+      "total": 20.75,
+      "duration": 0.0,
+      "breakdown": {
+        "Municipal Bonds": {
+          "total": 5.50,
+          "Low Duration": 0.0,
+          "Market Duration": 0.0,
+          "Long Duration": 0.0
+        },
+        "Government Bonds": {
+          "total": 10.25,
+          "Low Duration": 0.0,
+          "Market Duration": 0.0,
+          "Long Duration": 0.0
+        },
+        "Investment Grade": {
+          "total": 5.00,
+          "Low Duration": 0.0,
+          "Market Duration": 0.0,
+          "Long Duration": 0.0
+        },
+        "Fixed Income Derivatives": 0.00
+      }
+    },
+    "hard_currency": {
+      "total": 10.00,
+      "hc_beta": 0.0,
+      "beta_adjusted": 0.0,
+      "breakdown": {
+        "Gold": 5.00,
+        "Gold Miners": 2.50,
+        "Silver": 1.50,
+        "Silver Miners": 0.50,
+        "Industrial Metals": 0.00,
+        "Hard Currency Private Investment": 0.00,
+        "Precious Metals Derivatives": 0.00
+      }
+    },
+    "uncorrelated_alternatives": {
+      "total": 5.00,
+      "breakdown": {
+        "Crypto": 1.00,
+        "Proficio Short Term Alts": 1.50,
+        "Proficio Long Term Alts": 1.50,
+        "Other": 1.00
+      }
+    },
+    "cash_and_cash_equivalent": 1.75,
+    "liquidity": {
+      "liquid_assets": 60.00,
+      "illiquid_assets": 40.00
+    },
+    "performance": {
+      "1D": "N/A",
+      "MTD": "N/A",
+      "QTD": 10.50,
+      "YTD": 25.00
+    },
+    "adjusted_value": "$1,000,000"
+  }
+}
