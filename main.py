@@ -1300,143 +1300,62 @@ def get_entity_options():
 
 @app.route("/api/portfolio-report", methods=["GET"])
 def generate_portfolio_report():
+    """
+    Generate a comprehensive portfolio report that exactly matches the Excel template format.
+    
+    This endpoint processes financial position data to create a structured report showing:
+    - Equity allocations with breakdowns by subcategories
+    - Fixed Income allocations with duration-based subcategories
+    - Hard Currency allocations (precious metals)
+    - Uncorrelated Alternatives allocations
+    - Cash and Cash Equivalents
+    - Liquidity metrics
+    - Performance data
+    
+    Query Parameters:
+        level (str): The level for the report ('client', 'portfolio', 'account')
+        level_key (str): The identifier for the specified level
+        date (str): Report date in YYYY-MM-DD format
+    
+    Returns:
+        A detailed portfolio report matching the Excel template format
+    """
     level = request.args.get('level', 'portfolio')
     level_key = request.args.get('level_key', 'Portfolio 1')
     
     # Always use 2025-05-01 as the date which we know has data
-    date = request.args.get('date', '2025-05-01')
+    date_str = request.args.get('date', '2025-05-01')
     
     # If date is not 2025-05-01, override it to ensure we use data that exists
-    if date != '2025-05-01':
-        date = '2025-05-01'
-        
-    logger.info(f"Portfolio report: Using date {date} for level={level}, level_key={level_key}")
+    if date_str != '2025-05-01':
+        date_str = '2025-05-01'
     
-    with get_db_connection() as db:
+    # Parse the date string into a date object
+    try:
+        report_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({
+            "success": False,
+            "error": f"Invalid date format: {date_str}. Please use YYYY-MM-DD format."
+        }), 400
         
-        try:
-            # Calculate total adjusted value based on selection
-            if level == 'client':
-                if level_key == 'All Clients':
-                    # Handle the "ENC:" prefix in adjusted_value by using SUBSTRING
-                    query = text("""
-                    SELECT SUM(CAST(
-                        CASE 
-                            WHEN adjusted_value LIKE 'ENC:%' THEN SUBSTRING(adjusted_value, 5)
-                            ELSE adjusted_value 
-                        END AS DECIMAL
-                    )) as total_value
-                    FROM financial_positions
-                    WHERE date = :date
-                    """)
-                    result = db.execute(query, {"date": date}).fetchone()
-                else:
-                    # Handle the "ENC:" prefix in adjusted_value by using SUBSTRING
-                    query = text("""
-                    SELECT SUM(CAST(
-                        CASE 
-                            WHEN adjusted_value LIKE 'ENC:%' THEN SUBSTRING(adjusted_value, 5)
-                            ELSE adjusted_value 
-                        END AS DECIMAL
-                    )) as total_value
-                    FROM financial_positions
-                    WHERE date = :date AND top_level_client = :client
-                    """)
-                    result = db.execute(query, {"date": date, "client": level_key}).fetchone()
-            elif level == 'portfolio':
-                # Handle the "ENC:" prefix in adjusted_value by using SUBSTRING
-                query = text("""
-                SELECT SUM(CAST(
-                    CASE 
-                        WHEN adjusted_value LIKE 'ENC:%' THEN SUBSTRING(adjusted_value, 5)
-                        ELSE adjusted_value 
-                    END AS DECIMAL
-                )) as total_value
-                FROM financial_positions
-                WHERE date = :date AND portfolio = :portfolio
-                """)
-                result = db.execute(query, {"date": date, "portfolio": level_key}).fetchone()
-            elif level == 'account':
-                # Handle the "ENC:" prefix in adjusted_value by using SUBSTRING
-                query = text("""
-                SELECT SUM(CAST(
-                    CASE 
-                        WHEN adjusted_value LIKE 'ENC:%' THEN SUBSTRING(adjusted_value, 5)
-                        ELSE adjusted_value 
-                    END AS DECIMAL
-                )) as total_value
-                FROM financial_positions
-                WHERE date = :date AND holding_account = :account
-                """)
-                result = db.execute(query, {"date": date, "account": level_key}).fetchone()
-            else:
-                result = None
-                
-            total_value = float(result[0]) if result and result[0] else 5000000.00
-            
-            # Fallback to default data for now, but with the correct total value
-            return jsonify({
-                "report_date": date,
-                "level": level,
-                "level_key": level_key,
-                "total_adjusted_value": total_value,
-                "asset_allocation": {
-                    "Equities": 45.5,
-                    "Fixed Income": 30.0,
-                    "Alternatives": 15.5,
-                    "Cash": 9.0
-                },
-                "liquidity": {
-                    "Daily": 60.0,
-                    "Weekly": 15.0,
-                    "Monthly": 10.0,
-                    "Quarterly": 10.0,
-                    "Yearly": 5.0
-                },
-                "performance": [
-                    {"period": "1D", "value": round(total_value * 0.01, 2), "percentage": 1.0},
-                    {"period": "MTD", "value": round(total_value * 0.03, 2), "percentage": 3.0},
-                    {"period": "QTD", "value": round(total_value * 0.05, 2), "percentage": 5.0},
-                    {"period": "YTD", "value": round(total_value * 0.09, 2), "percentage": 9.0}
-                ],
-                "risk_metrics": [
-                    {"metric": "Volatility", "value": 12.5},
-                    {"metric": "Sharpe Ratio", "value": 1.8},
-                    {"metric": "Beta", "value": 0.85}
-                ]
-            })
-        except Exception as e:
-            logger.error(f"Error generating portfolio report: {str(e)}")
-            return jsonify({
-                "report_date": date,
-                "level": level,
-                "level_key": level_key,
-                "total_adjusted_value": 5000000.00,
-                "asset_allocation": {
-                    "Equities": 45.5,
-                    "Fixed Income": 30.0,
-                    "Alternatives": 15.5,
-                    "Cash": 9.0
-                },
-                "liquidity": {
-                    "Daily": 60.0,
-                    "Weekly": 15.0,
-                    "Monthly": 10.0,
-                    "Quarterly": 10.0,
-                    "Yearly": 5.0
-                },
-                "performance": [
-                    {"period": "1D", "value": 50000.00, "percentage": 1.0},
-                    {"period": "MTD", "value": 150000.00, "percentage": 3.0},
-                    {"period": "QTD", "value": 250000.00, "percentage": 5.0},
-                    {"period": "YTD", "value": 450000.00, "percentage": 9.0}
-                ],
-                "risk_metrics": [
-                    {"metric": "Volatility", "value": 12.5},
-                    {"metric": "Sharpe Ratio", "value": 1.8},
-                    {"metric": "Beta", "value": 0.85}
-                ]
-            })
+    logger.info(f"Portfolio report: Using date {report_date} for level={level}, level_key={level_key}")
+    
+    try:
+        # Use the portfolio report service to generate the report
+        from src.services.portfolio_report_service import PortfolioReportService
+        report_service = PortfolioReportService()
+        report_data = report_service.generate_report(report_date, level, level_key)
+        
+        # Return the report data
+        return jsonify(report_data)
+        
+    except Exception as e:
+        logger.error(f"Error generating portfolio report: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": f"Failed to generate portfolio report: {str(e)}"
+        }), 500
 
 def get_latest_data_date(db):
     """
