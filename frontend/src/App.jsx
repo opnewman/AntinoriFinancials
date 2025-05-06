@@ -104,6 +104,9 @@ const App = () => {
                         <Route path="/reports">
                             <PortfolioReportPage />
                         </Route>
+                        <Route path="/model-portfolios">
+                            <ModelPortfolioPage />
+                        </Route>
                         <Redirect to="/" />
                     </Switch>
                 </main>
