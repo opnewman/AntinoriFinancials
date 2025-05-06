@@ -306,7 +306,11 @@ window.api = {
                     params: { type }
                 }
             );
-            return response.data.data || [];
+            // Log the full response for debugging
+            console.log(`Entity options response for ${type}:`, response.data);
+            
+            // The API returns data in the "options" field, not "data"
+            return response.data.options || [];
         } catch (error) {
             console.error('Entity options error:', error);
             return [];
