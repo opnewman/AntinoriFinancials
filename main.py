@@ -2109,11 +2109,14 @@ def compare_portfolio_with_model():
             all_categories = set(list(actual_percentages.keys()) + list(model_percentages.keys()))
             
             for category in all_categories:
+                # Convert decimal values to float for safe operations
+                actual_total = float(actual_percentages.get(category, {"total": 0})["total"])
+                model_total = float(model_percentages.get(category, {"total": 0})["total"])
+                
                 comparison["categories"][category] = {
-                    "actual": actual_percentages.get(category, {"total": 0, "subcategories": {}})["total"],
-                    "model": model_percentages.get(category, {"total": 0, "subcategories": {}})["total"],
-                    "difference": actual_percentages.get(category, {"total": 0})["total"] - 
-                                 model_percentages.get(category, {"total": 0})["total"],
+                    "actual": actual_total,
+                    "model": model_total,
+                    "difference": actual_total - model_total,
                     "subcategories": {}
                 }
                 
@@ -2124,10 +2127,14 @@ def compare_portfolio_with_model():
                 all_subcategories = set(list(actual_subcats.keys()) + list(model_subcats.keys()))
                 
                 for subcat in all_subcategories:
+                    # Convert decimal values to float
+                    actual_value = float(actual_subcats.get(subcat, 0))
+                    model_value = float(model_subcats.get(subcat, 0))
+                    
                     comparison["categories"][category]["subcategories"][subcat] = {
-                        "actual": actual_subcats.get(subcat, 0),
-                        "model": model_subcats.get(subcat, 0),
-                        "difference": actual_subcats.get(subcat, 0) - model_subcats.get(subcat, 0)
+                        "actual": actual_value,
+                        "model": model_value,
+                        "difference": actual_value - model_value
                     }
             
             return jsonify({

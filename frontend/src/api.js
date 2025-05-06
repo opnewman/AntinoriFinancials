@@ -311,5 +311,50 @@ window.api = {
             console.error('Entity options error:', error);
             return [];
         }
+    },
+    
+    /**
+     * Get all model portfolios
+     */
+    getModelPortfolios: async () => {
+        try {
+            const response = await axios.get(`${API_BASE_URL}/api/model-portfolios`);
+            return response.data.portfolios || [];
+        } catch (error) {
+            console.error('Error fetching model portfolios:', error);
+            return [];
+        }
+    },
+    
+    /**
+     * Get a specific model portfolio by ID
+     * @param {number} id - The model portfolio ID
+     */
+    getModelPortfolioDetail: async (id) => {
+        try {
+            const response = await axios.get(`${API_BASE_URL}/api/model-portfolios/${id}`);
+            return response.data.portfolio || null;
+        } catch (error) {
+            console.error(`Error fetching model portfolio ${id}:`, error);
+            return null;
+        }
+    },
+    
+    /**
+     * Compare a portfolio against a model portfolio
+     * @param {string} portfolioId - The portfolio to compare
+     * @param {number} modelId - The model portfolio ID
+     * @param {string} date - The date for comparison
+     */
+    compareWithModel: async (portfolioId, modelId, date) => {
+        try {
+            const response = await axios.get(`${API_BASE_URL}/api/compare-portfolio`, {
+                params: { portfolio_id: portfolioId, model_id: modelId, date }
+            });
+            return response.data.comparison || null;
+        } catch (error) {
+            console.error('Error comparing portfolio with model:', error);
+            throw error;
+        }
     }
 };
