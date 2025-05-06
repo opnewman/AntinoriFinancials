@@ -48,7 +48,7 @@ class PortfolioReportService:
                 # Get all positions for this portfolio/client/account
                 positions = self._get_positions(db)
                 
-                if not positions or positions.empty:
+                if positions is None or (isinstance(positions, pd.DataFrame) and positions.empty):
                     logger.warning(f"No positions found for {level}={level_key} on {report_date}")
                     return self._generate_empty_report()
                 
@@ -420,7 +420,7 @@ class PortfolioReportService:
         Returns:
             Dictionary with liquidity data
         """
-        if positions.empty:
+        if isinstance(positions, pd.DataFrame) and positions.empty:
             return {
                 "liquid_assets": 0,
                 "illiquid_assets": 0
@@ -490,7 +490,7 @@ class PortfolioReportService:
         ]
         
         uncorrelated_alt_subcategories = [
-            "crypto", "ctas", "periodic_short_term_alt_fund", "periodic_long_term_alt_fund"
+            "crypto", "ctas", "proficio_short_term_alt_fund", "proficio_long_term_alt_fund"
         ]
         
         return {
