@@ -1782,5 +1782,365 @@ def get_metadata_options():
             "message": f"Error getting metadata options: {str(e)}"
         }), 500
 
+# Model Portfolio API Endpoints
+@app.route("/api/model-portfolios", methods=["GET"])
+def get_model_portfolios():
+    """
+    Get all model portfolios.
+    
+    Returns a list of model portfolios with their basic details.
+    """
+    try:
+        with get_db_connection() as db:
+            query = text("""
+                SELECT * FROM model_portfolios
+                WHERE is_active = TRUE
+                ORDER BY name
+            """)
+            
+            result = db.execute(query).fetchall()
+            
+            portfolios = []
+            for row in result:
+                portfolios.append({
+                    "id": row.id,
+                    "name": row.name,
+                    "description": row.description,
+                    "creation_date": row.creation_date.isoformat() if row.creation_date else None,
+                    "update_date": row.update_date.isoformat() if row.update_date else None
+                })
+            
+            return jsonify({
+                "success": True,
+                "portfolios": portfolios
+            })
+            
+    except Exception as e:
+        logger.error(f"Error getting model portfolios: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Error getting model portfolios: {str(e)}"
+        }), 500
+
+@app.route("/api/model-portfolios/<int:portfolio_id>", methods=["GET"])
+def get_model_portfolio_detail(portfolio_id):
+    """
+    Get details of a specific model portfolio including all its allocations.
+    
+    Path parameters:
+        portfolio_id (int): The ID of the model portfolio
+    
+    Returns all details of the model portfolio including allocations for different asset classes.
+    """
+    try:
+        with get_db_connection() as db:
+            # Get portfolio basic info
+            portfolio_query = text("""
+                SELECT * FROM model_portfolios
+                WHERE id = :portfolio_id
+            """)
+            
+            portfolio = db.execute(portfolio_query, {"portfolio_id": portfolio_id}).fetchone()
+            
+            if not portfolio:
+                return jsonify({
+                    "success": False,
+                    "message": f"Model portfolio with ID {portfolio_id} not found"
+                }), 404
+            
+            # Get allocations
+            allocations_query = text("""
+                SELECT * FROM model_portfolio_allocations
+                WHERE model_portfolio_id = :portfolio_id
+                ORDER BY category, subcategory
+            """)
+            
+            allocations = db.execute(allocations_query, {"portfolio_id": portfolio_id}).fetchall()
+            
+            # Get fixed income metrics
+            fi_metrics_query = text("""
+                SELECT * FROM fixed_income_metrics
+                WHERE model_portfolio_id = :portfolio_id
+                ORDER BY metric_name, metric_subcategory
+            """)
+            
+            fi_metrics = db.execute(fi_metrics_query, {"portfolio_id": portfolio_id}).fetchall()
+            
+            # Get currency allocations
+            currency_query = text("""
+                SELECT * FROM currency_allocations
+                WHERE model_portfolio_id = :portfolio_id
+                ORDER BY currency_name
+            """)
+            
+            currencies = db.execute(currency_query, {"portfolio_id": portfolio_id}).fetchall()
+            
+            # Get performance metrics
+            performance_query = text("""
+                SELECT * FROM performance_metrics
+                WHERE model_portfolio_id = :portfolio_id
+                ORDER BY period
+            """)
+            
+            performance = db.execute(performance_query, {"portfolio_id": portfolio_id}).fetchall()
+            
+            # Format the response
+            response = {
+                "id": portfolio.id,
+                "name": portfolio.name,
+                "description": portfolio.description,
+                "creation_date": portfolio.creation_date.isoformat() if portfolio.creation_date else None,
+                "update_date": portfolio.update_date.isoformat() if portfolio.update_date else None,
+                "allocations": {
+                    "equities": {
+                        "total_pct": 0,
+                        "subcategories": {}
+                    },
+                    "fixed_income": {
+                        "total_pct": 0,
+                        "subcategories": {}
+                    },
+                    "hard_currency": {
+                        "total_pct": 0,
+                        "subcategories": {}
+                    },
+                    "uncorrelated_alternatives": {
+                        "total_pct": 0,
+                        "subcategories": {}
+                    },
+                    "cash": {
+                        "total_pct": 0,
+                        "subcategories": {}
+                    }
+                },
+                "fixed_income_metrics": {},
+                "currency_allocations": {},
+                "performance": {}
+            }
+            
+            # Process allocations
+            for alloc in allocations:
+                category_key = alloc.category.lower().replace(" ", "_")
+                if category_key in response["allocations"]:
+                    if alloc.subcategory:
+                        subcat_key = alloc.subcategory.lower().replace(" ", "_")
+                        response["allocations"][category_key]["subcategories"][subcat_key] = alloc.allocation_percentage
+                    response["allocations"][category_key]["total_pct"] += alloc.allocation_percentage
+            
+            # Process fixed income metrics
+            for metric in fi_metrics:
+                metric_key = metric.metric_name.lower().replace(" ", "_")
+                if metric.metric_subcategory:
+                    subcat_key = metric.metric_subcategory.lower().replace(" ", "_")
+                    if metric_key not in response["fixed_income_metrics"]:
+                        response["fixed_income_metrics"][metric_key] = {}
+                    response["fixed_income_metrics"][metric_key][subcat_key] = metric.metric_value
+                else:
+                    response["fixed_income_metrics"][metric_key] = metric.metric_value
+            
+            # Process currency allocations
+            for curr in currencies:
+                curr_key = curr.currency_name.lower()
+                response["currency_allocations"][curr_key] = curr.allocation_percentage
+            
+            # Process performance metrics
+            for perf in performance:
+                period_key = perf.period
+                response["performance"][period_key] = perf.performance_percentage
+            
+            # Add liquidity calculation based on portfolio allocations
+            response["liquidity"] = {
+                "liquid_assets": 0,
+                "illiquid_assets": 0
+            }
+            
+            # Simplified calculation: equities, cash, and fixed income are liquid; others are illiquid
+            response["liquidity"]["liquid_assets"] = (
+                response["allocations"]["equities"]["total_pct"] +
+                response["allocations"]["cash"]["total_pct"] +
+                response["allocations"]["fixed_income"]["total_pct"]
+            )
+            
+            response["liquidity"]["illiquid_assets"] = (
+                response["allocations"]["hard_currency"]["total_pct"] +
+                response["allocations"]["uncorrelated_alternatives"]["total_pct"]
+            )
+            
+            return jsonify({
+                "success": True,
+                "portfolio": response
+            })
+            
+    except Exception as e:
+        logger.error(f"Error getting model portfolio details: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Error getting model portfolio details: {str(e)}"
+        }), 500
+
+@app.route("/api/compare-portfolio", methods=["GET"])
+def compare_portfolio_with_model():
+    """
+    Compare an actual portfolio with a model portfolio.
+    
+    Query parameters:
+        portfolio_id (str): The ID/name of the actual portfolio to compare
+        model_id (int): The ID of the model portfolio to compare against
+        date (str): The report date for the actual portfolio data
+    
+    Returns comparison data showing differences in allocations.
+    """
+    try:
+        portfolio_id = request.args.get('portfolio_id')
+        model_id = request.args.get('model_id')
+        date = request.args.get('date', '2025-05-01')  # Default to a date with data
+        
+        if not portfolio_id or not model_id:
+            return jsonify({
+                "success": False,
+                "message": "Both portfolio_id and model_id are required"
+            }), 400
+        
+        with get_db_connection() as db:
+            # Get model portfolio data
+            model_query = text("""
+                SELECT mp.name as model_name, 
+                       mpa.category, 
+                       mpa.subcategory, 
+                       mpa.allocation_percentage as model_percentage
+                FROM model_portfolios mp
+                JOIN model_portfolio_allocations mpa ON mp.id = mpa.model_portfolio_id
+                WHERE mp.id = :model_id
+                ORDER BY mpa.category, mpa.subcategory
+            """)
+            
+            model_data = db.execute(model_query, {"model_id": model_id}).fetchall()
+            
+            if not model_data:
+                return jsonify({
+                    "success": False,
+                    "message": f"Model portfolio with ID {model_id} not found"
+                }), 404
+            
+            # Get actual portfolio allocation data
+            # This is a simplified query - in a real implementation you would need more complex
+            # logic to match the categories and subcategories from your financial_positions data
+            actual_query = text("""
+                SELECT 
+                    CASE 
+                        WHEN asset_class = 'Equity' THEN 'Equities'
+                        WHEN asset_class = 'Fixed Income' THEN 'Fixed Income'
+                        WHEN asset_class = 'Hard Currency' THEN 'Hard Currency'
+                        WHEN asset_class = 'Alternative' THEN 'Uncorrelated Alternatives'
+                        WHEN asset_class = 'Cash' THEN 'Cash'
+                        ELSE asset_class
+                    END as category,
+                    second_level as subcategory,
+                    SUM(CAST(
+                        CASE 
+                            WHEN adjusted_value LIKE 'ENC:%' THEN SUBSTRING(adjusted_value, 5)
+                            ELSE adjusted_value 
+                        END AS DECIMAL
+                    )) as value
+                FROM financial_positions
+                WHERE portfolio = :portfolio_id AND date = :date
+                GROUP BY category, subcategory
+                ORDER BY category, subcategory
+            """)
+            
+            actual_data = db.execute(actual_query, {
+                "portfolio_id": portfolio_id,
+                "date": date
+            }).fetchall()
+            
+            if not actual_data:
+                return jsonify({
+                    "success": False,
+                    "message": f"No data found for portfolio {portfolio_id} on date {date}"
+                }), 404
+            
+            # Calculate total portfolio value
+            total_value = sum(row.value for row in actual_data)
+            
+            # Calculate percentages for actual portfolio
+            actual_percentages = {}
+            for row in actual_data:
+                category = row.category
+                subcategory = row.subcategory if row.subcategory else "General"
+                percentage = (row.value / total_value) * 100
+                
+                if category not in actual_percentages:
+                    actual_percentages[category] = {
+                        "total": 0,
+                        "subcategories": {}
+                    }
+                
+                actual_percentages[category]["subcategories"][subcategory] = percentage
+                actual_percentages[category]["total"] += percentage
+            
+            # Format model portfolio data
+            model_percentages = {}
+            model_name = model_data[0].model_name
+            
+            for row in model_data:
+                category = row.category
+                subcategory = row.subcategory if row.subcategory else "General"
+                
+                if category not in model_percentages:
+                    model_percentages[category] = {
+                        "total": 0,
+                        "subcategories": {}
+                    }
+                
+                if subcategory == "General":
+                    model_percentages[category]["total"] = row.model_percentage
+                else:
+                    model_percentages[category]["subcategories"][subcategory] = row.model_percentage
+            
+            # Generate comparison data
+            comparison = {
+                "portfolio_name": portfolio_id,
+                "model_name": model_name,
+                "date": date,
+                "categories": {}
+            }
+            
+            # Combine all categories from both datasets
+            all_categories = set(list(actual_percentages.keys()) + list(model_percentages.keys()))
+            
+            for category in all_categories:
+                comparison["categories"][category] = {
+                    "actual": actual_percentages.get(category, {"total": 0, "subcategories": {}})["total"],
+                    "model": model_percentages.get(category, {"total": 0, "subcategories": {}})["total"],
+                    "difference": actual_percentages.get(category, {"total": 0})["total"] - 
+                                 model_percentages.get(category, {"total": 0})["total"],
+                    "subcategories": {}
+                }
+                
+                # Combine all subcategories
+                actual_subcats = actual_percentages.get(category, {"subcategories": {}})["subcategories"]
+                model_subcats = model_percentages.get(category, {"subcategories": {}})["subcategories"]
+                
+                all_subcategories = set(list(actual_subcats.keys()) + list(model_subcats.keys()))
+                
+                for subcat in all_subcategories:
+                    comparison["categories"][category]["subcategories"][subcat] = {
+                        "actual": actual_subcats.get(subcat, 0),
+                        "model": model_subcats.get(subcat, 0),
+                        "difference": actual_subcats.get(subcat, 0) - model_subcats.get(subcat, 0)
+                    }
+            
+            return jsonify({
+                "success": True,
+                "comparison": comparison
+            })
+            
+    except Exception as e:
+        logger.error(f"Error comparing portfolio with model: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Error comparing portfolio with model: {str(e)}"
+        }), 500
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)

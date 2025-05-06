@@ -9,7 +9,8 @@ const NavigationBar = () => {
         { name: 'Dashboard', path: '/', icon: 'fa-tachometer-alt' },
         { name: 'Upload Files', path: '/upload', icon: 'fa-upload' },
         { name: 'Ownership Tree', path: '/ownership', icon: 'fa-sitemap' },
-        { name: 'Reports', path: '/reports', icon: 'fa-file-text' }
+        { name: 'Reports', path: '/reports', icon: 'fa-file-text' },
+        { name: 'Model Portfolios', path: '/model-portfolios', icon: 'fa-balance-scale' }
     ];
     
     // Check if a path is active
