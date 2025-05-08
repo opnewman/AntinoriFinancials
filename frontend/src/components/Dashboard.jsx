@@ -323,7 +323,37 @@ class Dashboard extends React.Component {
         return (
             <div className="container mx-auto p-4">
                 <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h2 className="text-xl font-bold mb-4">Portfolio Report Generator</h2>
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-xl font-bold">Portfolio Dashboard</h2>
+                        
+                        <div className="flex space-x-2">
+                            <button
+                                onClick={this.handleDisplayFormatToggle}
+                                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none"
+                            >
+                                <i className={displayFormat === 'percent' ? 'fas fa-percentage mr-2' : 'fas fa-dollar-sign mr-2'}></i>
+                                {displayFormat === 'percent' ? 'Show Dollar Values' : 'Show Percentages'}
+                            </button>
+                            
+                            <button
+                                onClick={this.generateReport}
+                                disabled={loading || !levelKey}
+                                className={`px-4 py-2 rounded focus:outline-none ${loading || !levelKey ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-800 text-white hover:bg-green-700'}`}
+                            >
+                                {loading ? (
+                                    <span className="flex items-center">
+                                        <i className="fas fa-circle-notch fa-spin mr-2"></i>
+                                        Refreshing...
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center">
+                                        <i className="fas fa-sync-alt mr-2"></i>
+                                        Refresh Data
+                                    </span>
+                                )}
+                            </button>
+                        </div>
+                    </div>
                     
                     {error && (
                         <div className="bg-red-50 text-red-600 p-3 rounded-md mb-4">
@@ -332,79 +362,107 @@ class Dashboard extends React.Component {
                         </div>
                     )}
                     
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                        <div>
-                            <label htmlFor="reportDate" className="block text-sm font-medium text-gray-700 mb-1">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                        <div className="bg-green-50 p-4 rounded-lg shadow-sm border border-green-100">
+                            <h3 className="text-sm text-green-800 font-medium mb-2">
+                                <i className="fas fa-calendar-day mr-2"></i>
                                 Report Date
-                            </label>
-                            <input
-                                type="date"
-                                id="reportDate"
-                                value={reportDate}
-                                onChange={(e) => this.setState({ reportDate: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                            />
+                            </h3>
+                            <p className="text-xl font-bold">{new Date(reportDate).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'})}</p>
+                            <div className="mt-2">
+                                <select
+                                    id="reportLevel"
+                                    value={reportLevel}
+                                    onChange={this.handleLevelChange}
+                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                                >
+                                    <option value="client">Client View</option>
+                                    <option value="portfolio">Portfolio View</option>
+                                    <option value="group">Group View</option>
+                                    <option value="account">Account View</option>
+                                </select>
+                            </div>
                         </div>
                         
-                        <div>
-                            <label htmlFor="reportLevel" className="block text-sm font-medium text-gray-700 mb-1">
-                                Report Level
-                            </label>
-                            <select
-                                id="reportLevel"
-                                value={reportLevel}
-                                onChange={this.handleLevelChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                            >
-                                <option value="client">Client</option>
-                                <option value="portfolio">Portfolio</option>
-                                <option value="group">Group</option>
-                                <option value="account">Account</option>
-                            </select>
+                        <div className="bg-blue-50 p-4 rounded-lg shadow-sm border border-blue-100">
+                            <h3 className="text-sm text-blue-800 font-medium mb-2">
+                                <i className="fas fa-money-bill-wave mr-2"></i>
+                                Total Value
+                            </h3>
+                            <p className="text-xl font-bold">
+                                {reportData?.total_value ? new Intl.NumberFormat('en-US', {
+                                    style: 'currency',
+                                    currency: 'USD',
+                                    minimumFractionDigits: 0,
+                                    maximumFractionDigits: 0
+                                }).format(reportData.total_value) : 'N/A'}
+                            </p>
+                            <div className="mt-2">
+                                <select
+                                    id="levelKey"
+                                    value={levelKey}
+                                    onChange={(e) => this.setState({ levelKey: e.target.value }, this.generateReport)}
+                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                                >
+                                    <option value="">Select...</option>
+                                    {levelOptions.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
                         
-                        <div>
-                            <label htmlFor="levelKey" className="block text-sm font-medium text-gray-700 mb-1">
-                                Select {reportLevel.charAt(0).toUpperCase() + reportLevel.slice(1)}
-                            </label>
-                            <select
-                                id="levelKey"
-                                value={levelKey}
-                                onChange={(e) => this.setState({ levelKey: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                            >
-                                <option value="">Select...</option>
-                                {levelOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </select>
+                        <div className="bg-purple-50 p-4 rounded-lg shadow-sm border border-purple-100">
+                            <h3 className="text-sm text-purple-800 font-medium mb-2">
+                                <i className="fas fa-chart-line mr-2"></i>
+                                YTD Performance
+                            </h3>
+                            <p className={`text-xl font-bold ${reportData?.performance?.YTD > 0 ? 'text-green-600' : reportData?.performance?.YTD < 0 ? 'text-red-600' : ''}`}>
+                                {reportData?.performance?.YTD !== undefined ? 
+                                    (displayFormat === 'percent' ? reportData.performance.YTD.toFixed(2) + '%' : 
+                                        new Intl.NumberFormat('en-US', {
+                                            style: 'currency',
+                                            currency: 'USD',
+                                            minimumFractionDigits: 0,
+                                            maximumFractionDigits: 0
+                                        }).format(reportData.performance.YTD * reportData.total_value / 100)) 
+                                    : 'N/A'}
+                            </p>
+                            <div className="mt-2 grid grid-cols-3 gap-1 text-xs">
+                                <div className={`p-1 text-center rounded ${reportData?.performance?.MTD > 0 ? 'bg-green-100 text-green-800' : reportData?.performance?.MTD < 0 ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>
+                                    MTD: {reportData?.performance?.MTD?.toFixed(2)}%
+                                </div>
+                                <div className={`p-1 text-center rounded ${reportData?.performance?.QTD > 0 ? 'bg-green-100 text-green-800' : reportData?.performance?.QTD < 0 ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>
+                                    QTD: {reportData?.performance?.QTD?.toFixed(2)}%
+                                </div>
+                                <div className={`p-1 text-center rounded ${reportData?.performance?.['1D'] > 0 ? 'bg-green-100 text-green-800' : reportData?.performance?.['1D'] < 0 ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>
+                                    1D: {reportData?.performance?.['1D']?.toFixed(2)}%
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div className="flex justify-end">
-                        <button
-                            onClick={this.generateReport}
-                            disabled={loading || !levelKey}
-                            className={`py-2 px-6 rounded-md font-medium ${
-                                loading || !levelKey
-                                    ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
-                                    : 'bg-green-700 text-white hover:bg-green-800'
-                            }`}
-                        >
-                            {loading ? (
-                                <span className="flex items-center justify-center">
-                                    <i className="fas fa-spinner fa-spin mr-2"></i>
-                                    Generating...
-                                </span>
-                            ) : (
-                                <span className="flex items-center justify-center">
-                                    <i className="fas fa-chart-line mr-2"></i>
-                                    Generate Report
-                                </span>
-                            )}
-                        </button>
+                        
+                        <div className="bg-yellow-50 p-4 rounded-lg shadow-sm border border-yellow-100">
+                            <h3 className="text-sm text-yellow-800 font-medium mb-2">
+                                <i className="fas fa-tint mr-2"></i>
+                                Liquidity
+                            </h3>
+                            <div className="flex justify-between items-center">
+                                <p className="text-xl font-bold">
+                                    {reportData?.liquidity?.Liquid ? reportData.liquidity.Liquid.toFixed(1) + '%' : 'N/A'}
+                                </p>
+                                <p className="text-sm text-gray-600">Liquid</p>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2.5 mt-2 mb-4">
+                                <div className="bg-yellow-600 h-2.5 rounded-full" style={{ width: `${reportData?.liquidity?.Liquid || 0}%` }}></div>
+                            </div>
+                            <div className="text-xs text-gray-500 flex justify-between">
+                                <span>0%</span>
+                                <span>50%</span>
+                                <span>100%</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 

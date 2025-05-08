@@ -751,6 +751,22 @@ window.PortfolioReportPage = () => {
                 
                 <div className="flex space-x-2">
                     <button
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none flex items-center"
+                        onClick={() => {
+                            const newFormat = displayFormat === 'percent' ? 'dollar' : 'percent';
+                            setDisplayFormat(newFormat);
+                            if (reportData) {
+                                // Regenerate report when format changes if we already have data
+                                setTimeout(generateReport, 0);
+                            }
+                        }}
+                        disabled={!reportData}
+                    >
+                        <i className={displayFormat === 'percent' ? 'fas fa-percentage mr-2' : 'fas fa-dollar-sign mr-2'}></i>
+                        {displayFormat === 'percent' ? 'Show Dollar Values' : 'Show Percentages'}
+                    </button>
+                    
+                    <button
                         className="px-4 py-2 bg-green-800 text-white rounded hover:bg-green-700 focus:outline-none flex items-center"
                         onClick={exportToExcel}
                         disabled={exportLoading.excel || !reportData}
@@ -780,7 +796,7 @@ window.PortfolioReportPage = () => {
             
             {/* Report options */}
             <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                             Level
@@ -813,28 +829,6 @@ window.PortfolioReportPage = () => {
                                 </option>
                             ))}
                         </select>
-                    </div>
-                    
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Display Format
-                        </label>
-                        <button
-                            onClick={() => {
-                                const newFormat = displayFormat === 'percent' ? 'dollar' : 'percent';
-                                setDisplayFormat(newFormat);
-                                if (reportData) {
-                                    // Regenerate report when format changes if we already have data
-                                    setTimeout(generateReport, 0);
-                                }
-                            }}
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 bg-white hover:bg-gray-50 text-left"
-                        >
-                            <div className="flex justify-between items-center">
-                                <span>{displayFormat === 'percent' ? 'Showing Percentages' : 'Showing Dollar Values'}</span>
-                                <span className="text-xs text-gray-500">(Click to toggle)</span>
-                            </div>
-                        </button>
                     </div>
                     
                     <div>
