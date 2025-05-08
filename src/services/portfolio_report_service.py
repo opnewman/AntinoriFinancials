@@ -106,6 +106,7 @@ SQL_HARD_CURRENCY_SUBCATEGORIES = """
 SQL_UNCORRELATED_ALTERNATIVES = """
     SELECT
         position,
+        second_level,
         third_level,
         CASE WHEN adjusted_value LIKE 'ENC:%' 
             THEN CAST(SUBSTRING(adjusted_value, 5) AS NUMERIC) 
@@ -114,7 +115,7 @@ SQL_UNCORRELATED_ALTERNATIVES = """
     FROM financial_positions
     WHERE date = :date
     AND asset_class = 'Alternatives'
-    AND second_level = 'Uncorrelated Alternatives'
+    AND second_level != 'Precious Metals'
     AND {level_filter}
 """
 
@@ -434,6 +435,7 @@ def get_uncorrelated_alternatives_breakdown(db: Session, report_date: date, leve
     
     for row in results:
         position = row.position.lower() if row.position else ''
+        second_level = row.second_level.lower() if row.second_level else ''
         third_level = row.third_level.lower() if row.third_level else ''
         value = float(row.adjusted_value) if row.adjusted_value else 0.0
         percentage = (value / total_value * 100) if total_value > 0 else 0.0
@@ -441,12 +443,15 @@ def get_uncorrelated_alternatives_breakdown(db: Session, report_date: date, leve
         total_alternatives_value += value
         
         # Categorize based on the rules
-        if third_level == 'crypto':
+        # First check if it's crypto
+        if 'crypto' in third_level or 'crypto' in position:
             subcategories['crypto'] += percentage
-        elif 'proficio short term alts fund' in position:
+        # Then check if it's Proficio short or long term
+        elif 'proficio short' in position or 'short term alts' in position:
             subcategories['proficio_short_term'] += percentage
-        elif 'proficio long term alts fund' in position:
+        elif 'proficio long' in position or 'long term alts' in position:
             subcategories['proficio_long_term'] += percentage
+        # Everything else goes to 'other'
         else:
             subcategories['other'] += percentage
     
@@ -589,9 +594,17 @@ def generate_portfolio_report(db: Session, report_date: date, level: str, level_
                 
                 # Convert subcategories if they exist
                 if 'subcategories' in report_data[asset_class]:
-                    for subcat in report_data[asset_class]['subcategories']:
-                        pct = report_data[asset_class]['subcategories'][subcat]
-                        report_data[asset_class]['subcategories'][subcat + '_value'] = (pct / 100.0) * total_value
+                    subcats = report_data[asset_class]['subcategories']
+                    # Handle nested structure (like fixed income)
+                    for subcat, value in subcats.items():
+                        if isinstance(value, dict):
+                            # For nested structures like fixed income
+                            for inner_key, inner_value in value.items():
+                                if inner_key != 'total_value':  # Avoid duplicating
+                                    value[inner_key + '_value'] = (inner_value / 100.0) * total_value
+                        else:
+                            # For flat structures
+                            subcats[subcat + '_value'] = (value / 100.0) * total_value
         
         # Convert liquidity percentages to dollar values
         if 'liquidity' in report_data:
