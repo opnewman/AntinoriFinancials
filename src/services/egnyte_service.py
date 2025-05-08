@@ -90,12 +90,12 @@ def process_excel_file(file_path, db):
     
     # Process each sheet based on its name
     for sheet_name in sheet_names:
-        if sheet_name.lower() == 'equity':
-            stats["equity_records"] = process_equity_sheet(excel_file, sheet_name, import_date, db)
-        elif sheet_name.lower() == 'fixed income':
-            stats["fixed_income_records"] = process_fixed_income_sheet(excel_file, sheet_name, import_date, db)
-        elif sheet_name.lower() == 'alternatives':
-            stats["alternatives_records"] = process_alternatives_sheet(excel_file, sheet_name, import_date, db)
+        if isinstance(sheet_name, str) and sheet_name.lower() == 'equity':
+            stats["equity_records"] = process_equity_sheet(file_path, sheet_name, import_date, db)
+        elif isinstance(sheet_name, str) and sheet_name.lower() == 'fixed income':
+            stats["fixed_income_records"] = process_fixed_income_sheet(file_path, sheet_name, import_date, db)
+        elif isinstance(sheet_name, str) and sheet_name.lower() == 'alternatives':
+            stats["alternatives_records"] = process_alternatives_sheet(file_path, sheet_name, import_date, db)
     
     # Calculate total records
     stats["total_records"] = (
@@ -108,10 +108,10 @@ def process_excel_file(file_path, db):
     return stats
 
 
-def process_equity_sheet(excel_file, sheet_name, import_date, db):
+def process_equity_sheet(file_path, sheet_name, import_date, db):
     """Process the Equity sheet from the Excel file."""
     logger.info(f"Processing Equity sheet")
-    df = pd.read_excel(excel_file, sheet_name=sheet_name)
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
     
     # Clean up column names and drop empty rows
     df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
@@ -166,7 +166,7 @@ def process_equity_sheet(excel_file, sheet_name, import_date, db):
                 beta=beta,
                 notes=notes,
                 amended_id=amended_id,
-                source_file=os.path.basename(excel_file._io.name),
+                source_file=os.path.basename(file_path),
                 source_tab=sheet_name,
                 source_row=index + 2  # +2 for header row and 0-indexing
             )
@@ -184,10 +184,10 @@ def process_equity_sheet(excel_file, sheet_name, import_date, db):
     return records_processed
 
 
-def process_fixed_income_sheet(excel_file, sheet_name, import_date, db):
+def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
     """Process the Fixed Income sheet from the Excel file."""
     logger.info(f"Processing Fixed Income sheet")
-    df = pd.read_excel(excel_file, sheet_name=sheet_name)
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
     
     # Clean up column names and drop empty rows
     df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
@@ -232,7 +232,7 @@ def process_fixed_income_sheet(excel_file, sheet_name, import_date, db):
                 duration=duration,
                 notes=notes,
                 amended_id=amended_id,
-                source_file=os.path.basename(excel_file._io.name),
+                source_file=os.path.basename(file_path),
                 source_tab=sheet_name,
                 source_row=index + 2  # +2 for header row and 0-indexing
             )
@@ -250,10 +250,10 @@ def process_fixed_income_sheet(excel_file, sheet_name, import_date, db):
     return records_processed
 
 
-def process_alternatives_sheet(excel_file, sheet_name, import_date, db):
+def process_alternatives_sheet(file_path, sheet_name, import_date, db):
     """Process the Alternatives sheet from the Excel file."""
     logger.info(f"Processing Alternatives sheet")
-    df = pd.read_excel(excel_file, sheet_name=sheet_name)
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
     
     # Clean up column names and drop empty rows
     df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
@@ -298,7 +298,7 @@ def process_alternatives_sheet(excel_file, sheet_name, import_date, db):
                 beta=beta,
                 notes=notes,
                 amended_id=amended_id,
-                source_file=os.path.basename(excel_file._io.name),
+                source_file=os.path.basename(file_path),
                 source_tab=sheet_name,
                 source_row=index + 2  # +2 for header row and 0-indexing
             )

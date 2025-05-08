@@ -7,6 +7,7 @@ This script tests the ability to download and process the security risk stats fi
 import os
 import sys
 import logging
+import pandas as pd
 from datetime import date
 
 # Configure logging
@@ -25,6 +26,7 @@ os.environ["EGNYTE_ACCESS_TOKEN"] = "pwnvw3mejvy3ptye3p3d4cqt"
 # Import the database module after setting environment variables
 from src.database import init_db, get_db_connection
 from src.services.egnyte_service import download_risk_stats_file, process_excel_file
+from src.services.egnyte_service import process_equity_sheet, process_fixed_income_sheet, process_alternatives_sheet
 from src.models.models import EgnyteRiskStat
 
 
@@ -43,48 +45,56 @@ def main():
         if file_path:
             logger.info(f"File downloaded to {file_path}")
             
-            # Process the file
-            logger.info("Processing risk stats file...")
+            # Examine the file structure first
+            logger.info("Examining Excel file structure...")
+            excel_file = pd.ExcelFile(file_path)
+            sheet_names = excel_file.sheet_names
+            logger.info(f"Found sheets: {sheet_names}")
+            
+            # Process a small sample of each sheet
+            import_date = date.today()
             with get_db_connection() as db:
                 # Get current count of risk stats
                 before_count = db.query(EgnyteRiskStat).count()
                 logger.info(f"Current risk stats count: {before_count}")
                 
-                # Process the file
-                stats = process_excel_file(file_path, db)
+                equity_count = 0
+                fixed_income_count = 0
+                alternatives_count = 0
+                
+                # Process a few rows from each sheet to test functionality
+                for sheet_name in sheet_names:
+                    if isinstance(sheet_name, str) and sheet_name.lower() == 'equity':
+                        logger.info(f"Processing sample from {sheet_name} sheet...")
+                        df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=10)
+                        logger.info(f"Sample columns: {df.columns.tolist()}")
+                        logger.info(f"Sample data: {df.iloc[0].to_dict()}")
+                        equity_count = process_equity_sheet(file_path, sheet_name, import_date, db)
+                        logger.info(f"Processed {equity_count} equity records")
+                    
+                    elif isinstance(sheet_name, str) and sheet_name.lower() == 'fixed income':
+                        logger.info(f"Processing sample from {sheet_name} sheet...")
+                        df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=10)
+                        logger.info(f"Sample columns: {df.columns.tolist()}")
+                        logger.info(f"Sample data: {df.iloc[0].to_dict()}")
+                        fixed_income_count = process_fixed_income_sheet(file_path, sheet_name, import_date, db)
+                        logger.info(f"Processed {fixed_income_count} fixed income records")
+                    
+                    elif isinstance(sheet_name, str) and sheet_name.lower() == 'alternatives':
+                        logger.info(f"Processing sample from {sheet_name} sheet...")
+                        df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=10)
+                        logger.info(f"Sample columns: {df.columns.tolist()}")
+                        logger.info(f"Sample data: {df.iloc[0].to_dict()}")
+                        alternatives_count = process_alternatives_sheet(file_path, sheet_name, import_date, db)
+                        logger.info(f"Processed {alternatives_count} alternatives records")
+                
+                total_count = equity_count + fixed_income_count + alternatives_count
+                logger.info(f"Processed {total_count} total records")
                 
                 # Get new count of risk stats
                 after_count = db.query(EgnyteRiskStat).count()
                 logger.info(f"New risk stats count: {after_count}")
-                
-                # Print processing stats
-                logger.info(f"Processing stats: {stats}")
                 logger.info(f"Records added: {after_count - before_count}")
-                
-                # Check latest import date
-                latest_date = db.query(EgnyteRiskStat.import_date).order_by(
-                    EgnyteRiskStat.import_date.desc()
-                ).first()
-                
-                if latest_date:
-                    logger.info(f"Latest import date: {latest_date[0]}")
-                
-                # Get count by asset class
-                equity_count = db.query(EgnyteRiskStat).filter(
-                    EgnyteRiskStat.asset_class == 'Equity'
-                ).count()
-                
-                fixed_income_count = db.query(EgnyteRiskStat).filter(
-                    EgnyteRiskStat.asset_class == 'Fixed Income'
-                ).count()
-                
-                alternatives_count = db.query(EgnyteRiskStat).filter(
-                    EgnyteRiskStat.asset_class == 'Alternatives'
-                ).count()
-                
-                logger.info(f"Equity records: {equity_count}")
-                logger.info(f"Fixed Income records: {fixed_income_count}")
-                logger.info(f"Alternatives records: {alternatives_count}")
                 
                 # Sample records from each asset class
                 logger.info("Sample Equity record:")
