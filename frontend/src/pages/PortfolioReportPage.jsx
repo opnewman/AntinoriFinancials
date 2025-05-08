@@ -122,7 +122,7 @@ window.PortfolioReportPage = () => {
             // CONSOLIDATED VIEW - ALL SUBCATEGORY DETAILS ON ONE TAB
             // ------------------------------------------------------
             const consolidatedData = [
-                ['ANTINORI FINANCIAL PORTFOLIO REPORT - CONSOLIDATED VIEW'],
+                ['NORI FINANCIAL PORTFOLIO REPORT - CONSOLIDATED VIEW'],
                 [''],
                 [`Portfolio: ${reportData.portfolio || ''}`],
                 [`Report Date: ${reportData.report_date || ''}`],
@@ -274,7 +274,7 @@ window.PortfolioReportPage = () => {
             // SUMMARY WORKSHEET
             // ------------------------------------------------------
             const summaryData = [
-                ['ANTINORI FINANCIAL PORTFOLIO REPORT'],
+                ['NORI FINANCIAL PORTFOLIO REPORT'],
                 [''],
                 [`Portfolio: ${reportData.portfolio || ''}`],
                 [`Report Date: ${reportData.report_date || ''}`],
@@ -503,7 +503,7 @@ window.PortfolioReportPage = () => {
             XLSX.utils.book_append_sheet(wb, perfWs, "Performance");
             
             // Generate Excel file with a professional name
-            XLSX.writeFile(wb, `ANTINORI_Portfolio_Report_${reportData.portfolio || 'Portfolio'}_${reportData.report_date.replace(/\//g, '-')}.xlsx`);
+            XLSX.writeFile(wb, `NORI_Portfolio_Report_${reportData.portfolio || 'Portfolio'}_${reportData.report_date.replace(/\//g, '-')}.xlsx`);
             
         } catch (error) {
             console.error('Excel export error:', error);
@@ -534,7 +534,7 @@ window.PortfolioReportPage = () => {
             // Add title with branding
             doc.setFontSize(20);
             doc.setTextColor(20, 83, 45); // Dark green to match brand
-            doc.text('ANTINORI FINANCIAL', 14, 20);
+            doc.text('NORI FINANCIAL', 14, 20);
             
             doc.setFontSize(18);
             doc.setTextColor(15, 23, 42); // Dark slate blue for subtitles
@@ -720,10 +720,10 @@ window.PortfolioReportPage = () => {
             const timestamp = new Date().toLocaleString('en-US');
             doc.setFontSize(8);
             doc.setTextColor(100, 100, 100); // Light gray
-            doc.text(`Report generated on ${timestamp} | ANTINORI Financial Portfolio Management System`, 14, doc.internal.pageSize.height - 10);
+            doc.text(`Report generated on ${timestamp} | nori Financial Portfolio Management System`, 14, doc.internal.pageSize.height - 10);
             
             // Save the PDF with professional naming
-            doc.save(`ANTINORI_Portfolio_Report_${reportData.portfolio || 'Portfolio'}_${reportData.report_date.replace(/\//g, '-')}.pdf`);
+            doc.save(`NORI_Portfolio_Report_${reportData.portfolio || 'Portfolio'}_${reportData.report_date.replace(/\//g, '-')}.pdf`);
             
         } catch (error) {
             console.error('PDF export error:', error);

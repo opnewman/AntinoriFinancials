@@ -45,7 +45,7 @@ const App = () => {
                     </div>
                     <h1 className="text-2xl font-bold text-gray-800 mb-2">API Connection Error</h1>
                     <p className="text-gray-600 mb-4">
-                        Unable to connect to the ANTINORI backend API. Please check that the backend server is running.
+                        Unable to connect to the nori backend API. Please check that the backend server is running.
                     </p>
                     <div className="bg-gray-100 p-4 rounded-lg text-left text-sm font-mono">
                         <p className="text-gray-700">1. Ensure the FastAPI backend is running</p>
@@ -113,7 +113,7 @@ const App = () => {
                 
                 <footer className="bg-gray-800 text-white py-4 text-center text-sm">
                     <div className="container mx-auto">
-                        <p>ANTINORI Financial Portfolio Reporting System &copy; {new Date().getFullYear()}</p>
+                        <p>nori Financial Portfolio Reporting System &copy; {new Date().getFullYear()}</p>
                         <p className="text-gray-400 text-xs mt-1">
                             Powered by Flask, React, and PostgreSQL
                         </p>
