@@ -10,6 +10,7 @@ window.PortfolioReportPage = () => {
     const [selectedLevelKey, setSelectedLevelKey] = React.useState('');
     const [levelOptions, setLevelOptions] = React.useState([]);
     const [reportDate, setReportDate] = React.useState('2025-05-01');
+    const [displayFormat, setDisplayFormat] = React.useState('percent');
     const [exportLoading, setExportLoading] = React.useState({ excel: false, pdf: false });
     
     // Fetch entity options when level changes
@@ -48,7 +49,8 @@ window.PortfolioReportPage = () => {
             const report = await window.api.getPortfolioReport(
                 reportDate,
                 selectedLevel,
-                selectedLevelKey
+                selectedLevelKey,
+                displayFormat
             );
             
             console.log('Portfolio report data:', report);
@@ -80,6 +82,15 @@ window.PortfolioReportPage = () => {
     // Handle date change
     const handleDateChange = (e) => {
         setReportDate(e.target.value);
+    };
+    
+    // Handle display format change
+    const handleDisplayFormatChange = (e) => {
+        setDisplayFormat(e.target.value);
+        if (reportData) {
+            // Regenerate report when format changes if we already have data
+            setTimeout(generateReport, 0); 
+        }
     };
     
     // Handle form submission
@@ -769,7 +780,7 @@ window.PortfolioReportPage = () => {
             
             {/* Report options */}
             <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                             Level
@@ -801,6 +812,20 @@ window.PortfolioReportPage = () => {
                                     {option.display}
                                 </option>
                             ))}
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Format
+                        </label>
+                        <select
+                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                            value={displayFormat}
+                            onChange={handleDisplayFormatChange}
+                        >
+                            <option value="percent">Percentages</option>
+                            <option value="dollar">Dollar Values</option>
                         </select>
                     </div>
                     
