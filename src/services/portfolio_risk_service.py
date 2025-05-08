@@ -8,7 +8,7 @@ and calculates weighted risk metrics (beta, volatility, duration) by asset class
 import logging
 from datetime import date
 from typing import Dict, List, Optional, Tuple, Any, Union
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
@@ -97,9 +97,16 @@ def calculate_portfolio_risk_metrics(
         asset_class = position.asset_class.lower() if position.asset_class else ""
         standardized_class = asset_class_map.get(asset_class, "other")
         
+        # Convert adjusted_value from string to Decimal
+        try:
+            adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
+        except (ValueError, TypeError, decimal.InvalidOperation):
+            logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Using 0.")
+            adjusted_value_decimal = Decimal('0.0')
+            
         if standardized_class in totals:
-            totals[standardized_class] += position.adjusted_value
-        totals["total"] += position.adjusted_value
+            totals[standardized_class] += adjusted_value_decimal
+        totals["total"] += adjusted_value_decimal
     
     # Calculate percentages of each asset class in the total portfolio
     percentages = {}
@@ -213,7 +220,14 @@ def process_equity_risk(
         )
         
         if risk_stat:
-            position_weight = position.adjusted_value / totals["equity"]
+            # Convert adjusted_value from string to Decimal
+            try:
+                adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
+            except (ValueError, TypeError, decimal.InvalidOperation):
+                logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Using 0.")
+                adjusted_value_decimal = Decimal('0.0')
+                
+            position_weight = adjusted_value_decimal / totals["equity"]
             
             # Beta calculation
             if risk_stat.beta is not None:
@@ -225,7 +239,7 @@ def process_equity_risk(
                 weighted_vol = position_weight * risk_stat.volatility
                 risk_metrics["equity"]["volatility"]["weighted_sum"] += Decimal(str(weighted_vol))
             
-            matched_value += position.adjusted_value
+            matched_value += adjusted_value_decimal
     
     # Calculate coverage
     if totals["equity"] > Decimal('0.0'):
@@ -258,14 +272,21 @@ def process_fixed_income_risk(
         )
         
         if risk_stat:
-            position_weight = position.adjusted_value / totals["fixed_income"]
+            # Convert adjusted_value from string to Decimal
+            try:
+                adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
+            except (ValueError, TypeError, decimal.InvalidOperation):
+                logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Using 0.")
+                adjusted_value_decimal = Decimal('0.0')
+                
+            position_weight = adjusted_value_decimal / totals["fixed_income"]
             
             # Duration calculation
             if risk_stat.duration is not None:
                 weighted_duration = position_weight * risk_stat.duration
                 risk_metrics["fixed_income"]["duration"]["weighted_sum"] += Decimal(str(weighted_duration))
             
-            matched_value += position.adjusted_value
+            matched_value += adjusted_value_decimal
     
     # Calculate coverage
     if totals["fixed_income"] > Decimal('0.0'):
@@ -305,14 +326,21 @@ def process_hard_currency_risk(
             )
         
         if risk_stat:
-            position_weight = position.adjusted_value / totals["hard_currency"]
+            # Convert adjusted_value from string to Decimal
+            try:
+                adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
+            except (ValueError, TypeError, InvalidOperation):
+                logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Using 0.")
+                adjusted_value_decimal = Decimal('0.0')
+                
+            position_weight = adjusted_value_decimal / totals["hard_currency"]
             
             # Beta calculation
             if risk_stat.beta is not None:
                 weighted_beta = position_weight * risk_stat.beta
                 risk_metrics["hard_currency"]["beta"]["weighted_sum"] += Decimal(str(weighted_beta))
             
-            matched_value += position.adjusted_value
+            matched_value += adjusted_value_decimal
     
     # Calculate coverage
     if totals["hard_currency"] > Decimal('0.0'):
