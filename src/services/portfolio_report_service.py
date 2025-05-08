@@ -107,7 +107,10 @@ SQL_UNCORRELATED_ALTERNATIVES = """
     SELECT
         position,
         third_level,
-        CAST(adjusted_value AS NUMERIC) as adjusted_value
+        CASE WHEN adjusted_value LIKE 'ENC:%' 
+            THEN CAST(SUBSTRING(adjusted_value, 5) AS NUMERIC) 
+            ELSE CAST(adjusted_value AS NUMERIC) 
+        END as adjusted_value
     FROM financial_positions
     WHERE date = :date
     AND asset_class = 'alternatives'
@@ -118,7 +121,12 @@ SQL_UNCORRELATED_ALTERNATIVES = """
 SQL_LIQUIDITY = """
     SELECT
         liquid_vs_illiquid,
-        SUM(CAST(adjusted_value AS NUMERIC)) as total_value
+        SUM(
+            CASE WHEN adjusted_value LIKE 'ENC:%' 
+                THEN CAST(SUBSTRING(adjusted_value, 5) AS NUMERIC) 
+                ELSE CAST(adjusted_value AS NUMERIC) 
+            END
+        ) as total_value
     FROM financial_positions
     WHERE date = :date
     AND {level_filter}
