@@ -167,6 +167,7 @@ def process_equity_sheet(file_path, sheet_name, import_date, db):
     
     # Keep track of records processed
     records_processed = 0
+    records_succeeded = 0
     
     # Process in smaller batches to avoid excessive parameter lists
     batch_size = 100
@@ -175,6 +176,12 @@ def process_equity_sheet(file_path, sheet_name, import_date, db):
     # Log the sheet structure
     logger.info(f"Equity sheet columns: {df.columns.tolist()}")
     logger.info(f"Equity sheet has {len(df)} rows")
+    
+    # Check for duplicate positions in the input file
+    position_counts = df['Position'].value_counts()
+    duplicates = position_counts[position_counts > 1].index.tolist()
+    if duplicates:
+        logger.warning(f"Found {len(duplicates)} duplicate position names in the Equity sheet: {', '.join(duplicates[:5])}")
     
     # Map expected columns to our model fields
     for start_idx in range(0, len(df), batch_size):
@@ -246,23 +253,79 @@ def process_equity_sheet(file_path, sheet_name, import_date, db):
             db.add_all(batch_records)
             # Commit the batch
             db.commit()
-            logger.info(f"Committed batch {batch_count} with {len(batch_records)} records")
+            logger.info(f"Committed equity batch {batch_count} with {len(batch_records)} records")
+            records_succeeded += len(batch_records)
         except Exception as e:
             # Roll back on error
             db.rollback()
-            logger.error(f"Error committing batch {batch_count}: {e}")
-            # Try inserting records one by one to identify problematic records
-            for risk_stat in batch_records:
-                try:
-                    db.add(risk_stat)
-                    db.commit()
-                    logger.info(f"Individually added record for position: {risk_stat.position}")
-                except Exception as inner_e:
-                    db.rollback()
-                    logger.error(f"Error adding individual record for position {risk_stat.position}: {inner_e}")
+            error_msg = str(e)
+            logger.error(f"Error committing equity batch {batch_count}: {error_msg}")
+            
+            # Check for specific error conditions
+            if "duplicate key value violates unique constraint" in error_msg:
+                logger.warning("Duplicate key constraint violation detected in equity batch")
+                # Extract the name of the duplicated position if possible
+                duplicate_match = re.search(r"Key \(import_date, position, asset_class\)=\([^,]+, ([^,]+), [^)]+\)", error_msg)
+                duplicate_position = duplicate_match.group(1) if duplicate_match else "unknown"
+                logger.warning(f"Duplicate position: {duplicate_position}")
+                
+                # Try inserting records one by one but skip the problematic ones
+                success_count = 0
+                for risk_stat in batch_records:
+                    try:
+                        # Use a raw SQL INSERT with ON CONFLICT DO NOTHING to handle duplicates gracefully
+                        sql = text("""
+                            INSERT INTO egnyte_risk_stats 
+                            (import_date, position, ticker_symbol, cusip, asset_class, second_level, bloomberg_id, 
+                             volatility, beta, duration, notes, amended_id, source_file, source_tab, source_row)
+                            VALUES 
+                            (:import_date, :position, :ticker_symbol, :cusip, :asset_class, :second_level, :bloomberg_id,
+                             :volatility, :beta, :duration, :notes, :amended_id, :source_file, :source_tab, :source_row)
+                            ON CONFLICT (import_date, position, asset_class) DO NOTHING
+                        """)
+                        
+                        db.execute(sql, {
+                            "import_date": risk_stat.import_date,
+                            "position": risk_stat.position,
+                            "ticker_symbol": risk_stat.ticker_symbol,
+                            "cusip": risk_stat.cusip,
+                            "asset_class": risk_stat.asset_class,
+                            "second_level": risk_stat.second_level,
+                            "bloomberg_id": risk_stat.bloomberg_id,
+                            "volatility": risk_stat.volatility,
+                            "beta": risk_stat.beta,
+                            "duration": None,  # Not used for equity
+                            "notes": risk_stat.notes,
+                            "amended_id": risk_stat.amended_id,
+                            "source_file": risk_stat.source_file,
+                            "source_tab": risk_stat.source_tab,
+                            "source_row": risk_stat.source_row
+                        })
+                        db.commit()
+                        success_count += 1
+                    except Exception as inner_e:
+                        db.rollback()
+                        logger.error(f"Error adding individual equity record for position {risk_stat.position}: {inner_e}")
+                
+                records_succeeded += success_count
+                logger.info(f"Successfully added {success_count} out of {len(batch_records)} equity records individually")
+            else:
+                # Handle other types of errors with individual inserts
+                success_count = 0
+                for risk_stat in batch_records:
+                    try:
+                        db.add(risk_stat)
+                        db.commit()
+                        success_count += 1
+                    except Exception as inner_e:
+                        db.rollback()
+                        logger.error(f"Error adding individual equity record for position {risk_stat.position}: {inner_e}")
+                
+                records_succeeded += success_count
+                logger.info(f"Successfully added {success_count} out of {len(batch_records)} equity records individually")
     
-    logger.info(f"Processed {records_processed} equity risk statistics")
-    return records_processed
+    logger.info(f"Processed {records_processed} equity risk statistics, successfully imported {records_succeeded}")
+    return records_succeeded
 
 
 def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
@@ -478,6 +541,7 @@ def fetch_and_process_risk_stats(db: Session):
         
         # Set the import date
         import_date = date.today()
+        file_path = None
         
         # Download the file first to avoid cleaning records if there's no file to process
         try:
@@ -500,10 +564,10 @@ def fetch_and_process_risk_stats(db: Session):
             # Always do the delete even if count is 0, just to be safe
             logger.info(f"Cleaning up {existing_count} existing records for import date {import_date}")
             
-            # Use synchronize_session=False for more efficient bulk delete
-            db.query(EgnyteRiskStat).filter(
-                EgnyteRiskStat.import_date == import_date
-            ).delete(synchronize_session=False)
+            # Use raw SQL for better performance on large deletes
+            # This is especially important when dealing with potential conflicts
+            sql = text("DELETE FROM egnyte_risk_stats WHERE import_date = :import_date")
+            db.execute(sql, {"import_date": import_date})
             
             # Commit immediately to ensure clean state
             db.commit()
@@ -514,10 +578,11 @@ def fetch_and_process_risk_stats(db: Session):
             db.rollback()
             logger.error(f"Failed to clean up existing records: {db_error}")
             # In case of database errors, better not to proceed
-            try:
-                os.unlink(file_path)  # Clean up file since we're not using it
-            except:
-                pass
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.unlink(file_path)  # Clean up file since we're not using it
+                except:
+                    pass
             return {
                 "success": False,
                 "error": f"Database error during preparation: {str(db_error)}"
@@ -525,22 +590,40 @@ def fetch_and_process_risk_stats(db: Session):
         
         # Now process the file and insert data into the database
         try:
+            # Make sure we have a clean database session
+            db.begin()
+            
             stats = process_excel_file(file_path, db)
             logger.info(f"Successfully processed Excel file with stats: {stats}")
+            
+            # Commit the processed data
+            db.commit()
+            logger.info("Successfully committed all risk stats data to database")
         except Exception as process_error:
             db.rollback()  # Roll back any partial changes
             logger.error(f"Error processing Excel file: {process_error}")
-            return {
-                "success": False,
-                "error": f"Failed to process risk statistics file: {str(process_error)}"
-            }
+            
+            # Provide more specific error information
+            error_msg = str(process_error)
+            if "duplicate key value violates unique constraint" in error_msg:
+                return {
+                    "success": False,
+                    "error": "Duplicate records found in the risk stats file. Please check your data and try again.",
+                    "detail": error_msg
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": f"Failed to process risk statistics file: {error_msg}"
+                }
         finally:
             # Always try to clean up the temporary file
-            try:
-                os.unlink(file_path)
-                logger.info(f"Temporary file {file_path} removed")
-            except Exception as cleanup_error:
-                logger.warning(f"Failed to remove temporary file {file_path}: {cleanup_error}")
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.unlink(file_path)
+                    logger.info(f"Temporary file {file_path} removed")
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to remove temporary file {file_path}: {cleanup_error}")
         
         return {
             "success": True,
@@ -551,10 +634,26 @@ def fetch_and_process_risk_stats(db: Session):
     
     except Exception as e:
         logger.exception(f"Error in risk statistics processing: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        
+        # Check for specific error types to provide better feedback
+        error_msg = str(e)
+        if "duplicate key value violates unique constraint" in error_msg:
+            return {
+                "success": False,
+                "error": "Database conflict occurred. The system already has risk statistics for this date.",
+                "detail": error_msg
+            }
+        elif "EGNYTE_ACCESS_TOKEN" in error_msg:
+            return {
+                "success": False,
+                "error": "Egnyte API token is missing or invalid. Please check your configuration.",
+                "detail": error_msg
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"Unexpected error processing risk statistics: {error_msg}"
+            }
 
 
 def get_latest_risk_stats(db: Session, asset_class=None):
