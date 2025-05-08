@@ -65,7 +65,7 @@ SQL_EQUITY_SUBCATEGORIES = """
         ) as total_value
     FROM financial_positions
     WHERE date = :date
-    AND asset_class = 'equity'
+    AND asset_class = 'Equity'
     AND {level_filter}
     GROUP BY second_level
 """
@@ -81,7 +81,7 @@ SQL_FIXED_INCOME_SUBCATEGORIES = """
         ) as total_value
     FROM financial_positions
     WHERE date = :date
-    AND asset_class = 'fixed income'
+    AND asset_class = 'Fixed Income'
     AND {level_filter}
     GROUP BY second_level
 """
