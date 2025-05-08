@@ -331,7 +331,7 @@ class Dashboard extends React.Component {
                                 onClick={this.handleDisplayFormatToggle}
                                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none"
                             >
-                                <i className={displayFormat === 'percent' ? 'fas fa-percentage mr-2' : 'fas fa-dollar-sign mr-2'}></i>
+                                <i className={displayFormat === 'percent' ? 'fas fa-dollar-sign mr-2' : 'fas fa-percentage mr-2'}></i>
                                 {displayFormat === 'percent' ? 'Show Dollar Values' : 'Show Percentages'}
                             </button>
                             
