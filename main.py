@@ -48,25 +48,12 @@ def serve_spa():
 def serve_static(path):
     return send_from_directory('frontend', path)
 
-# Test upload page
+# Redirecting legacy routes to SPA
 @app.route('/test')
-def test_page():
-    return send_from_directory('frontend', 'upload_test.html')
-
-# Ownership tree visualization page
 @app.route('/ownership-tree')
-def ownership_tree_page():
-    return send_from_directory('frontend', 'ownership-tree.html')
-
-# Upload data page
-@app.route('/upload')
-def upload_page():
-    return send_from_directory('frontend', 'upload.html')
-
-# Ownership relationship explorer page
 @app.route('/ownership-explorer')
-def ownership_explorer_page():
-    return send_from_directory('frontend', 'ownership-explorer.html')
+def redirect_to_spa():
+    return send_from_directory('frontend', 'index.html')
 
 # API root endpoint
 @app.route("/api")
