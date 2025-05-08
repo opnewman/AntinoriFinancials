@@ -100,7 +100,7 @@ def calculate_portfolio_risk_metrics(
         # Convert adjusted_value from string to Decimal
         try:
             adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
-        except (ValueError, TypeError, decimal.InvalidOperation):
+        except (ValueError, TypeError, InvalidOperation):
             logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Using 0.")
             adjusted_value_decimal = Decimal('0.0')
             
@@ -223,7 +223,7 @@ def process_equity_risk(
             # Convert adjusted_value from string to Decimal
             try:
                 adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
-            except (ValueError, TypeError, decimal.InvalidOperation):
+            except (ValueError, TypeError, InvalidOperation):
                 logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Using 0.")
                 adjusted_value_decimal = Decimal('0.0')
                 
@@ -275,7 +275,7 @@ def process_fixed_income_risk(
             # Convert adjusted_value from string to Decimal
             try:
                 adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
-            except (ValueError, TypeError, decimal.InvalidOperation):
+            except (ValueError, TypeError, InvalidOperation):
                 logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Using 0.")
                 adjusted_value_decimal = Decimal('0.0')
                 
@@ -373,14 +373,21 @@ def process_alternatives_risk(
         )
         
         if risk_stat:
-            position_weight = position.adjusted_value / totals["alternatives"]
+            # Convert adjusted_value from string to Decimal
+            try:
+                adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
+            except (ValueError, TypeError, InvalidOperation):
+                logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Using 0.")
+                adjusted_value_decimal = Decimal('0.0')
+                
+            position_weight = adjusted_value_decimal / totals["alternatives"]
             
             # Beta calculation
             if risk_stat.beta is not None:
                 weighted_beta = position_weight * risk_stat.beta
                 risk_metrics["alternatives"]["beta"]["weighted_sum"] += Decimal(str(weighted_beta))
             
-            matched_value += position.adjusted_value
+            matched_value += adjusted_value_decimal
     
     # Calculate coverage
     if totals["alternatives"] > Decimal('0.0'):
