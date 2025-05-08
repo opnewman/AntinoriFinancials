@@ -1182,19 +1182,25 @@ def get_ownership_tree():
             logger.info("Building ownership tree based on Excel file row ordering")
             
             # Get all entities ordered by their row_order field
-            all_entities = db.query(
-                OwnershipItem.name,
-                OwnershipItem.type,
-                OwnershipItem.parent_id,
-                OwnershipItem.account_number,
-                OwnershipItem.row_order,
-                OwnershipItem.id  # Use ID as a proxy for row order until migration completes
-            ).filter(
-                OwnershipItem.metadata_id == latest_metadata.id
-            ).order_by(
-                # First try to use row_order if available, fall back to id if not
-                OwnershipItem.row_order.asc(), OwnershipItem.id.asc()
-            ).all()
+            # Use raw SQL since model field names don't match actual DB schema
+            all_entities = db.execute(text("""
+                SELECT 
+                    client as name,
+                    grouping_attribute_name as type,
+                    group_id as parent_id,
+                    holding_account_number as account_number,
+                    row_order,
+                    id
+                FROM ownership_items
+                WHERE metadata_id = :metadata_id
+                ORDER BY row_order ASC, id ASC
+            """), {"metadata_id": latest_metadata.id}).fetchall()
+            
+            # Log sample entities to help with debugging
+            if all_entities and len(all_entities) > 0:
+                logger.info(f"Sample entity from database: {dict(all_entities[0])}")
+            else:
+                logger.warning("No entities found in the ownership_items table")
             
             # Create a set of client names and maps for all entity types
             client_names = set()
@@ -1217,7 +1223,7 @@ def get_ownership_tree():
                     continue
                 
                 # Process different entity types
-                if entity.type == "client":
+                if entity.type == "Client":
                     # Found a new client - this starts a new section in the hierarchy
                     current_client = entity.name
                     current_group = None  # Reset current group when a new client starts
@@ -1227,7 +1233,7 @@ def get_ownership_tree():
                     # Store metadata if available
                     client_entity_map[current_client] = entity.id
                 
-                elif entity.type == "group" and current_client:
+                elif entity.type == "Group" and current_client:
                     # Found a group that belongs to the current client
                     current_group = entity.name
                     
@@ -1240,7 +1246,7 @@ def get_ownership_tree():
                         "id": entity.id
                     })
                 
-                elif entity.type == "account":
+                elif entity.type == "Holding Account":
                     # This is an account - link it to either current group or client
                     account_data = {
                         "name": entity.name,
