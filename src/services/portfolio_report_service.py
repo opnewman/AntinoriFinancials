@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # SQL Queries for direct database access
 SQL_TOTAL_PORTFOLIO_VALUE = """
-    SELECT SUM(adjusted_value) as total_value
+    SELECT SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
     WHERE report_date = :report_date
     AND {level_filter}
@@ -37,7 +37,7 @@ SQL_TOTAL_PORTFOLIO_VALUE = """
 SQL_ASSET_CLASS_TOTALS = """
     SELECT
         asset_class,
-        SUM(adjusted_value) as total_value
+        SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
     WHERE report_date = :report_date
     AND {level_filter}
@@ -47,7 +47,7 @@ SQL_ASSET_CLASS_TOTALS = """
 SQL_EQUITY_SUBCATEGORIES = """
     SELECT
         second_level,
-        SUM(adjusted_value) as total_value
+        SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
     WHERE report_date = :report_date
     AND asset_class = 'equity'
@@ -58,7 +58,7 @@ SQL_EQUITY_SUBCATEGORIES = """
 SQL_FIXED_INCOME_SUBCATEGORIES = """
     SELECT
         second_level,
-        SUM(adjusted_value) as total_value
+        SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
     WHERE report_date = :report_date
     AND asset_class = 'fixed income'
@@ -69,7 +69,7 @@ SQL_FIXED_INCOME_SUBCATEGORIES = """
 SQL_HARD_CURRENCY_SUBCATEGORIES = """
     SELECT
         third_level,
-        SUM(adjusted_value) as total_value
+        SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
     WHERE report_date = :report_date
     AND asset_class = 'alternatives'
@@ -82,7 +82,7 @@ SQL_UNCORRELATED_ALTERNATIVES = """
     SELECT
         position,
         third_level,
-        adjusted_value
+        CAST(adjusted_value AS NUMERIC) as adjusted_value
     FROM financial_positions
     WHERE report_date = :report_date
     AND asset_class = 'alternatives'
