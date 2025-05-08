@@ -1058,6 +1058,18 @@ def get_ownership_tree():
                     SELECT * FROM ownership_metadata 
                     ORDER BY id DESC LIMIT 1
                 """)).fetchone()
+            
+            if not latest_metadata:
+                # If still no metadata found, return an empty tree with a message
+                logger.error("No ownership metadata found in the database")
+                return jsonify({
+                    "success": False,
+                    "error": "No ownership data available. Please upload an ownership file.",
+                    "data": tree,
+                    "client_count": 0,
+                    "total_records": 0,
+                    "processing_time_seconds": 0.0
+                }), 404
                 
             logger.info(f"Using metadata ID {latest_metadata.id} which has proper Client/Group/Holding Account classifications")
             
