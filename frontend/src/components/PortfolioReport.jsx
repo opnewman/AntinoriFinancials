@@ -291,8 +291,12 @@ window.PortfolioReport = ({ reportData, loading, displayFormat = 'percent' }) =>
             <table className="min-w-full text-sm border-collapse">
                 <tbody>
                     <tr>
-                        <td className="bg-orange-200 px-4 py-2 text-left font-medium">Uncorrelated Alternatives</td>
+                        <td className="bg-amber-200 px-4 py-2 text-left font-medium">Uncorrelated Alternatives</td>
                         <td className="border px-4 py-2 text-right">{formatValue(uncorrelated_alternatives.total_pct)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6 bg-amber-50 font-medium">Crypto Beta</td>
+                        <td className="border px-4 py-2 text-right bg-amber-50">{formatNumber('NaN')}</td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6">Crypto</td>

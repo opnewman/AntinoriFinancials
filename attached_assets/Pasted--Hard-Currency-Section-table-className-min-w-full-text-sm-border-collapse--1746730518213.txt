@@ -1,0 +1,134 @@
+ {/* Hard Currency Section */}
+            <table className="min-w-full text-sm border-collapse">
+                <tbody>
+                    <tr>
+                        <td className="bg-yellow-200 px-4 py-2 text-left font-medium">Hard Currency</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(hard_currency.total_pct)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6 bg-yellow-50 font-medium">HC Beta</td>
+                        <td className="border px-4 py-2 text-right bg-yellow-50">{formatNumber(hard_currency.beta || '')}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6 bg-yellow-50 font-medium">Beta adj.</td>
+                        <td className="border px-4 py-2 text-right bg-yellow-50">{formatNumber(hard_currency.beta_adjusted || '')}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">Gold</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(hard_currency.subcategories.gold)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">Gold Miners</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(hard_currency.subcategories.gold_miners)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">Silver</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(hard_currency.subcategories.silver)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">Silver Miners</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(hard_currency.subcategories.silver_miners)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">Industrial Metals</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(hard_currency.subcategories.industrial_metals)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">Hard Currency Private Investment</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(hard_currency.subcategories.hard_currency_physical_investment)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">Precious Metals Derivatives</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(hard_currency.subcategories.precious_metals_derivatives)}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div className="mt-4"></div>
+
+            {/* Uncorrelated Alternatives Section */}
+            <table className="min-w-full text-sm border-collapse">
+                <tbody>
+                    <tr>
+                        <td className="bg-orange-200 px-4 py-2 text-left font-medium">Uncorrelated Alternatives</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(uncorrelated_alternatives.total_pct)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">Crypto</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(uncorrelated_alternatives.subcategories.crypto)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">Other</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(uncorrelated_alternatives.subcategories.other)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">Proficio Short Term Alts Fund</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(uncorrelated_alternatives.subcategories.proficio_short_term)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">Proficio Long Term Alts Fund</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(uncorrelated_alternatives.subcategories.proficio_long_term)}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div className="mt-4"></div>
+
+            {/* Cash Section */}
+            <table className="min-w-full text-sm border-collapse">
+                <tbody>
+                    <tr>
+                        <td className="bg-green-200 px-4 py-2 text-left font-medium">Cash & Cash Equivalent</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(cash.total_pct)}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div className="mt-4"></div>
+
+            {/* Liquidity Section */}
+            <table className="min-w-full text-sm border-collapse">
+                <tbody>
+                    <tr>
+                        <td className="bg-gray-200 px-4 py-2 text-left font-medium">Liquidity %</td>
+                        <td className="border px-4 py-2 text-right"></td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">Liquid Asset %</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(liquidity.liquid_assets)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">Illiquid Asset %</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(liquidity.illiquid_assets)}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div className="mt-4"></div>
+
+            {/* Performance Section */}
+            <table className="min-w-full text-sm border-collapse">
+                <tbody>
+                    <tr>
+                        <td className="bg-purple-200 px-4 py-2 text-left font-medium">Performance:</td>
+                        <td className="border px-4 py-2 text-right"></td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">1D</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(performance['1D'])}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">MTD</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(performance.MTD)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">QTD</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(performance.QTD)}</td>
+                    </tr>
+                    <tr>
+                        <td className="border px-4 py-2 text-left pl-6">YTD</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(performance.YTD)}</td>
+                    </tr>
+                </tbody>
+            </table>
+            
