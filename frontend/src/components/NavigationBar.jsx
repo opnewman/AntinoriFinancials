@@ -26,8 +26,7 @@ const NavigationBar = () => {
                     <div className="flex items-center">
                         <div className="flex-shrink-0 font-bold text-xl tracking-tight">
                             <Link to="/" className="flex items-center">
-                                <i className="fas fa-chart-line mr-2"></i>
-                                ANTINORI
+                                <img src="/src/assets/nori-logo.png" alt="nori" className="h-8 mr-2" />
                             </Link>
                         </div>
                     </div>
