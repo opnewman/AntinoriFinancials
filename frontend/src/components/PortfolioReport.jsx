@@ -286,15 +286,15 @@ window.PortfolioReport = ({ reportData, loading }) => {
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6">Other</td>
-                        <td className="border px-4 py-2 text-right">{formatPercent(uncorrelated_alternatives.subcategories.ctas)}</td>
+                        <td className="border px-4 py-2 text-right">{formatPercent(uncorrelated_alternatives.subcategories.other)}</td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6">Proficio Short Term Alts Fund</td>
-                        <td className="border px-4 py-2 text-right">{formatPercent(uncorrelated_alternatives.subcategories.proficio_short_term_alt_fund)}</td>
+                        <td className="border px-4 py-2 text-right">{formatPercent(uncorrelated_alternatives.subcategories.proficio_short_term)}</td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6">Proficio Long Term Alts Fund</td>
-                        <td className="border px-4 py-2 text-right">{formatPercent(uncorrelated_alternatives.subcategories.proficio_long_term_alt_fund)}</td>
+                        <td className="border px-4 py-2 text-right">{formatPercent(uncorrelated_alternatives.subcategories.proficio_long_term)}</td>
                     </tr>
                 </tbody>
             </table>

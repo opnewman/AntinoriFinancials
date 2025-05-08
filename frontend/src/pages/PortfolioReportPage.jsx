@@ -762,7 +762,7 @@ window.PortfolioReportPage = () => {
                         }}
                         disabled={!reportData}
                     >
-                        <i className={displayFormat === 'percent' ? 'fas fa-percentage mr-2' : 'fas fa-dollar-sign mr-2'}></i>
+                        <i className={displayFormat === 'percent' ? 'fas fa-dollar-sign mr-2' : 'fas fa-percentage mr-2'}></i>
                         {displayFormat === 'percent' ? 'Show Dollar Values' : 'Show Percentages'}
                     </button>
                     
