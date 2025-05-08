@@ -19,9 +19,14 @@ import pandas as pd
 import numpy as np
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Union
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func, distinct
+
+# Import models and services
+from src.models.models import EgnyteRiskStat
+from src.services.portfolio_risk_service import calculate_portfolio_risk_metrics
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -619,5 +624,145 @@ def generate_portfolio_report(db: Session, report_date: date, level: str, level_
         report_data['client'] = level_key
     elif level == 'account':
         report_data['account'] = level_key
+    
+    # Calculate and integrate risk metrics
+    risk_metrics_result = calculate_portfolio_risk_metrics(db, level, level_key, report_date)
+    
+    # Only include risk metrics if the calculation was successful
+    if risk_metrics_result.get('success', False):
+        report_data['risk_metrics'] = {}
+        
+        # Process equity risk metrics
+        if 'equity' in risk_metrics_result.get('risk_metrics', {}):
+            equity_metrics = risk_metrics_result['risk_metrics']['equity']
+            report_data['risk_metrics']['equity'] = {
+                'beta': float(equity_metrics['beta']['value']) if equity_metrics['beta']['value'] is not None else None,
+                'volatility': float(equity_metrics['volatility']['value']) if equity_metrics['volatility']['value'] is not None else None,
+                'coverage_pct': float(equity_metrics['beta']['coverage_pct']) if equity_metrics['beta']['coverage_pct'] is not None else None
+            }
+            
+            # Calculate beta adjusted value
+            if report_data['risk_metrics']['equity']['beta'] is not None:
+                # Beta adjusted = Equity % × Portfolio's Equity Beta
+                report_data['equities']['beta_adjusted'] = (report_data['equities']['total_pct'] * 
+                                                          report_data['risk_metrics']['equity']['beta']) / 100.0
+        
+        # Process fixed income risk metrics
+        if 'fixed_income' in risk_metrics_result.get('risk_metrics', {}):
+            fi_metrics = risk_metrics_result['risk_metrics']['fixed_income']
+            report_data['risk_metrics']['fixed_income'] = {
+                'duration': float(fi_metrics['duration']['value']) if fi_metrics['duration']['value'] is not None else None,
+                'coverage_pct': float(fi_metrics['duration']['coverage_pct']) if fi_metrics['duration']['coverage_pct'] is not None else None
+            }
+            
+            # Categorize fixed income durations based on duration values
+            # Process durations for municipal bonds, government bonds, and investment grade
+            # Update according to our defined duration categories: 
+            # - Low/short duration: < 2 years
+            # - Market duration: 2-7 years
+            # - Long duration: > 7 years
+            
+            # Get all fixed income positions to categorize by duration
+            level_filter = get_level_filter(level, level_key)
+            duration_sql = f"""
+                SELECT
+                    second_level,
+                    position,
+                    cusip,
+                    ticker_symbol,
+                    CASE WHEN adjusted_value LIKE 'ENC:%' 
+                        THEN CAST(SUBSTRING(adjusted_value, 5) AS NUMERIC) 
+                        ELSE CAST(adjusted_value AS NUMERIC) 
+                    END as value
+                FROM financial_positions
+                WHERE date = :date
+                AND asset_class = 'Fixed Income'
+                AND {level_filter}
+            """
+            
+            fi_positions = db.execute(text(duration_sql), {'date': report_date}).fetchall()
+            
+            # Get latest risk stats
+            latest_risk_stats_date = db.query(func.max(EgnyteRiskStat.import_date)).scalar()
+            
+            if latest_risk_stats_date:
+                # Create dictionaries to track totals by category and duration
+                for category in ['municipal_bonds', 'government_bonds', 'investment_grade']:
+                    report_data['fixed_income']['subcategories'][category]['short_duration'] = 0.0
+                    report_data['fixed_income']['subcategories'][category]['market_duration'] = 0.0
+                    report_data['fixed_income']['subcategories'][category]['long_duration'] = 0.0
+                
+                # Map second level to category
+                second_level_to_category = {
+                    'municipal bonds': 'municipal_bonds',
+                    'government bonds': 'government_bonds',
+                    'investment grade': 'investment_grade',
+                    'corporate bonds': 'investment_grade'
+                }
+                
+                # Process each position
+                for position in fi_positions:
+                    second_level = position.second_level.lower() if position.second_level else 'unknown'
+                    category = second_level_to_category.get(second_level)
+                    
+                    if not category:
+                        continue
+                    
+                    # Try to find risk stats for this position
+                    risk_stat = db.query(EgnyteRiskStat).filter(
+                        EgnyteRiskStat.import_date == latest_risk_stats_date,
+                        EgnyteRiskStat.asset_class == 'Fixed Income'
+                    )
+                    
+                    # Try matching by CUSIP
+                    if position.cusip:
+                        risk_stat = risk_stat.filter(
+                            func.lower(EgnyteRiskStat.cusip) == func.lower(position.cusip)
+                        ).first()
+                    
+                    # If not found, try by ticker
+                    if not risk_stat and position.ticker_symbol:
+                        risk_stat = db.query(EgnyteRiskStat).filter(
+                            EgnyteRiskStat.import_date == latest_risk_stats_date,
+                            EgnyteRiskStat.asset_class == 'Fixed Income',
+                            func.lower(EgnyteRiskStat.ticker_symbol) == func.lower(position.ticker_symbol)
+                        ).first()
+                    
+                    # If still not found, try by position name
+                    if not risk_stat:
+                        risk_stat = db.query(EgnyteRiskStat).filter(
+                            EgnyteRiskStat.import_date == latest_risk_stats_date,
+                            EgnyteRiskStat.asset_class == 'Fixed Income',
+                            func.lower(EgnyteRiskStat.position).contains(func.lower(position.position))
+                        ).first()
+                    
+                    position_pct = (position.value / total_value * 100) if total_value > 0 else 0.0
+                    
+                    # Categorize based on duration
+                    if risk_stat and risk_stat.duration is not None:
+                        duration = float(risk_stat.duration)
+                        if duration < 2.0:
+                            report_data['fixed_income']['subcategories'][category]['short_duration'] += position_pct
+                        elif duration <= 7.0:
+                            report_data['fixed_income']['subcategories'][category]['market_duration'] += position_pct
+                        else:
+                            report_data['fixed_income']['subcategories'][category]['long_duration'] += position_pct
+                    else:
+                        # Default to market duration if no duration data
+                        # This ensures the numbers balance - we put unmatched positions into market duration
+                        report_data['fixed_income']['subcategories'][category]['market_duration'] += position_pct
+        
+        # Process hard currency risk metrics
+        if 'hard_currency' in risk_metrics_result.get('risk_metrics', {}):
+            hc_metrics = risk_metrics_result['risk_metrics']['hard_currency']
+            report_data['risk_metrics']['hard_currency'] = {
+                'beta': float(hc_metrics['beta']['value']) if hc_metrics['beta']['value'] is not None else None,
+                'coverage_pct': float(hc_metrics['beta']['coverage_pct']) if hc_metrics['beta']['coverage_pct'] is not None else None
+            }
+            
+            # Calculate beta adjusted value for hard currency
+            if report_data['risk_metrics']['hard_currency']['beta'] is not None:
+                report_data['risk_metrics']['hard_currency']['beta_adjusted'] = (report_data['hard_currency']['total_pct'] * 
+                                                                               report_data['risk_metrics']['hard_currency']['beta']) / 100.0
     
     return report_data
