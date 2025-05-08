@@ -101,17 +101,37 @@ def calculate_portfolio_risk_metrics(
             totals[standardized_class] += position.adjusted_value
         totals["total"] += position.adjusted_value
     
-    # Get the latest risk stats import date
+    # Calculate percentages of each asset class in the total portfolio
+    percentages = {}
+    for asset_class, value in totals.items():
+        if asset_class != "total" and totals["total"] > Decimal('0.0'):
+            percentages[asset_class] = (value / totals["total"]) * 100
+        else:
+            percentages[asset_class] = Decimal('0.0')
+    
+    # Get the latest risk stats import date - always use the most recent available stats
+    # instead of trying to match the report date exactly
     latest_risk_stats_date = db.query(func.max(EgnyteRiskStat.import_date)).scalar()
     
     if not latest_risk_stats_date:
-        logger.warning("No risk statistics available")
+        logger.warning("No risk statistics available in the database")
         return {
             "success": True,
             "message": "Risk metrics calculation skipped - no risk statistics available",
             "totals": totals,
+            "percentages": percentages,
             "risk_metrics": {}
         }
+        
+    # Log the date difference if there is one
+    if latest_risk_stats_date != report_date:
+        logger.info(f"Using risk stats from {latest_risk_stats_date} for report date {report_date}")
+        
+    # Get a count of available risk stats for this date to help with debugging
+    risk_stats_count = db.query(EgnyteRiskStat).filter(
+        EgnyteRiskStat.import_date == latest_risk_stats_date
+    ).count()
+    logger.info(f"Found {risk_stats_count} risk statistics for date {latest_risk_stats_date}")
     
     # Initialize risk metrics
     risk_metrics = {
@@ -142,6 +162,10 @@ def calculate_portfolio_risk_metrics(
                 "weighted_sum": Decimal('0.0'),
                 "coverage_pct": Decimal('0.0')
             }
+        },
+        "portfolio": {
+            "beta_adjusted": Decimal('0.0'),
+            "total_beta": Decimal('0.0')
         }
     }
     
@@ -152,11 +176,13 @@ def calculate_portfolio_risk_metrics(
     process_alternatives_risk(db, positions, totals, risk_metrics, latest_risk_stats_date)
     
     # Calculate final metrics by dividing weighted sums by coverage percentage
-    finalize_risk_metrics(risk_metrics)
+    # and compute beta-adjusted values based on asset class percentages
+    finalize_risk_metrics(risk_metrics, percentages)
     
     return {
         "success": True,
         "totals": totals,
+        "percentages": percentages,
         "risk_metrics": risk_metrics,
         "latest_risk_stats_date": latest_risk_stats_date.isoformat(),
         "report_date": report_date.isoformat()
@@ -437,18 +463,24 @@ def find_matching_risk_stat(
     logger.debug(f"No risk stat match found for {position_name} ({asset_class})")
     return None
 
-def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]) -> None:
+def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]], percentages: Dict[str, Decimal]) -> None:
     """
     Finalize risk metrics by calculating actual values from weighted sums and coverage.
+    Also calculates beta-adjusted values based on asset class percentages.
     
     Args:
         risk_metrics (Dict): Risk metrics dictionary with weighted sums and coverage percentages
+        percentages (Dict): Percentages of each asset class in the total portfolio
     """
     # Process equity metrics
     if risk_metrics["equity"]["beta"]["coverage_pct"] > Decimal('0.0'):
         risk_metrics["equity"]["beta"]["value"] = risk_metrics["equity"]["beta"]["weighted_sum"]
+        # Calculate equity beta-adjusted value (equity % * equity beta)
+        equity_beta_adjusted = (percentages["equity"] / 100) * risk_metrics["equity"]["beta"]["weighted_sum"]
+        risk_metrics["equity"]["beta"]["beta_adjusted"] = equity_beta_adjusted
     else:
         risk_metrics["equity"]["beta"]["value"] = None
+        risk_metrics["equity"]["beta"]["beta_adjusted"] = Decimal('0.0')
         
     if risk_metrics["equity"]["volatility"]["coverage_pct"] > Decimal('0.0'):
         risk_metrics["equity"]["volatility"]["value"] = risk_metrics["equity"]["volatility"]["weighted_sum"]
@@ -458,17 +490,60 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
     # Process fixed income metrics
     if risk_metrics["fixed_income"]["duration"]["coverage_pct"] > Decimal('0.0'):
         risk_metrics["fixed_income"]["duration"]["value"] = risk_metrics["fixed_income"]["duration"]["weighted_sum"]
+        
+        # Categorize duration into buckets for report
+        duration_value = risk_metrics["fixed_income"]["duration"]["weighted_sum"]
+        if duration_value < 2:
+            risk_metrics["fixed_income"]["duration"]["category"] = "short_duration"
+        elif duration_value < 7:
+            risk_metrics["fixed_income"]["duration"]["category"] = "market_duration"
+        else:
+            risk_metrics["fixed_income"]["duration"]["category"] = "long_duration"
+            
     else:
         risk_metrics["fixed_income"]["duration"]["value"] = None
+        risk_metrics["fixed_income"]["duration"]["category"] = "unknown"
     
     # Process hard currency metrics
     if risk_metrics["hard_currency"]["beta"]["coverage_pct"] > Decimal('0.0'):
         risk_metrics["hard_currency"]["beta"]["value"] = risk_metrics["hard_currency"]["beta"]["weighted_sum"]
+        
+        # Calculate hard currency beta-adjusted value (hard currency % * hard currency beta)
+        hc_beta_adjusted = (percentages["hard_currency"] / 100) * risk_metrics["hard_currency"]["beta"]["weighted_sum"]
+        risk_metrics["hard_currency"]["beta"]["beta_adjusted"] = hc_beta_adjusted
     else:
         risk_metrics["hard_currency"]["beta"]["value"] = None
+        risk_metrics["hard_currency"]["beta"]["beta_adjusted"] = Decimal('0.0')
     
     # Process alternatives metrics
     if risk_metrics["alternatives"]["beta"]["coverage_pct"] > Decimal('0.0'):
         risk_metrics["alternatives"]["beta"]["value"] = risk_metrics["alternatives"]["beta"]["weighted_sum"]
+        
+        # Calculate alternatives beta-adjusted value (alternatives % * alternatives beta)
+        alt_beta_adjusted = (percentages["alternatives"] / 100) * risk_metrics["alternatives"]["beta"]["weighted_sum"]
+        risk_metrics["alternatives"]["beta"]["beta_adjusted"] = alt_beta_adjusted
     else:
         risk_metrics["alternatives"]["beta"]["value"] = None
+        risk_metrics["alternatives"]["beta"]["beta_adjusted"] = Decimal('0.0')
+    
+    # Calculate total portfolio beta-adjusted metrics
+    # Sum up all the beta-adjusted values
+    total_beta_adjusted = Decimal('0.0')
+    
+    # Add equity beta-adjusted if available
+    if "beta_adjusted" in risk_metrics["equity"]["beta"]:
+        total_beta_adjusted += risk_metrics["equity"]["beta"]["beta_adjusted"]
+    
+    # Add hard currency beta-adjusted if available
+    if "beta_adjusted" in risk_metrics["hard_currency"]["beta"]:
+        total_beta_adjusted += risk_metrics["hard_currency"]["beta"]["beta_adjusted"]
+    
+    # Add alternatives beta-adjusted if available
+    if "beta_adjusted" in risk_metrics["alternatives"]["beta"]:
+        total_beta_adjusted += risk_metrics["alternatives"]["beta"]["beta_adjusted"]
+    
+    # Store the total beta-adjusted value in the portfolio section
+    risk_metrics["portfolio"]["beta_adjusted"] = total_beta_adjusted
+    
+    # Log the results for debugging
+    logger.info(f"Portfolio beta-adjusted value: {total_beta_adjusted}")
