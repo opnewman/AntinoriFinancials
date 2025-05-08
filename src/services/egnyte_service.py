@@ -120,66 +120,99 @@ def process_equity_sheet(file_path, sheet_name, import_date, db):
     # Keep track of records processed
     records_processed = 0
     
-    # Map expected columns to our model fields
-    for index, row in df.iterrows():
-        try:
-            position = str(row.get('Position', '')).strip()
-            if not position:
-                continue
-                
-            ticker_symbol = str(row.get('Ticker Symbol', '')).strip() if 'Ticker Symbol' in row else None
-            cusip = str(row.get('CUSIP', '')).strip() if 'CUSIP' in row else None
-            bloomberg_id = str(row.get('Bloomberg ID', '')).strip() if 'Bloomberg ID' in row else None
-            second_level = str(row.get('Second Level', '')).strip() if 'Second Level' in row else None
-            amended_id = str(row.get('Amended ID', '')).strip() if 'Amended ID' in row else None
-            notes = str(row.get('Notes', '')).strip() if 'Notes' in row else None
-            
-            # Get volatility and beta, handling potential missing or non-numeric values
-            volatility = row.get('Vol', None)
-            if pd.isna(volatility):
-                volatility = None
-            else:
-                try:
-                    volatility = float(volatility)
-                except (ValueError, TypeError):
-                    volatility = None
-            
-            beta = row.get('BETA', None)
-            if pd.isna(beta):
-                beta = None
-            else:
-                try:
-                    beta = float(beta)
-                except (ValueError, TypeError):
-                    beta = None
-            
-            # Create a new risk stat record
-            risk_stat = EgnyteRiskStat(
-                import_date=import_date,
-                position=position,
-                ticker_symbol=ticker_symbol,
-                cusip=cusip,
-                asset_class='Equity',
-                second_level=second_level,
-                bloomberg_id=bloomberg_id,
-                volatility=volatility,
-                beta=beta,
-                notes=notes,
-                amended_id=amended_id,
-                source_file=os.path.basename(file_path),
-                source_tab=sheet_name,
-                source_row=index + 2  # +2 for header row and 0-indexing
-            )
-            
-            # Use merge to insert or update
-            db.merge(risk_stat)
-            records_processed += 1
-            
-        except Exception as e:
-            logger.error(f"Error processing equity row {index}: {e}")
+    # Process in smaller batches to avoid excessive parameter lists
+    batch_size = 100
+    batch_count = 0
     
-    # Commit after processing all records
-    db.commit()
+    # Log the sheet structure
+    logger.info(f"Equity sheet columns: {df.columns.tolist()}")
+    logger.info(f"Equity sheet has {len(df)} rows")
+    
+    # Map expected columns to our model fields
+    for start_idx in range(0, len(df), batch_size):
+        batch_count += 1
+        end_idx = min(start_idx + batch_size, len(df))
+        logger.info(f"Processing equity batch {batch_count} (rows {start_idx}-{end_idx})")
+        
+        batch_records = []
+        
+        for index, row in df.iloc[start_idx:end_idx].iterrows():
+            try:
+                position = str(row.get('Position', '')).strip()
+                if not position:
+                    continue
+                    
+                ticker_symbol = str(row.get('Ticker Symbol', '')).strip() if 'Ticker Symbol' in row and not pd.isna(row.get('Ticker Symbol')) else None
+                cusip = str(row.get('CUSIP', '')).strip() if 'CUSIP' in row and not pd.isna(row.get('CUSIP')) else None
+                bloomberg_id = str(row.get('Bloomberg ID', '')).strip() if 'Bloomberg ID' in row and not pd.isna(row.get('Bloomberg ID')) else None
+                second_level = str(row.get('Second Level', '')).strip() if 'Second Level' in row and not pd.isna(row.get('Second Level')) else None
+                amended_id = str(row.get('Amended ID', '')).strip() if 'Amended ID' in row and not pd.isna(row.get('Amended ID')) else None
+                notes = str(row.get('Notes', '')).strip() if 'Notes' in row and not pd.isna(row.get('Notes')) else None
+                
+                # Get volatility and beta, handling potential missing or non-numeric values
+                volatility = row.get('Vol', None)
+                if pd.isna(volatility):
+                    volatility = None
+                else:
+                    try:
+                        volatility = float(volatility)
+                    except (ValueError, TypeError):
+                        volatility = None
+                
+                beta = row.get('BETA', None)
+                if pd.isna(beta):
+                    beta = None
+                else:
+                    try:
+                        beta = float(beta)
+                    except (ValueError, TypeError):
+                        beta = None
+                
+                # Create a new risk stat record
+                risk_stat = EgnyteRiskStat(
+                    import_date=import_date,
+                    position=position,
+                    ticker_symbol=ticker_symbol,
+                    cusip=cusip,
+                    asset_class='Equity',
+                    second_level=second_level,
+                    bloomberg_id=bloomberg_id,
+                    volatility=volatility,
+                    beta=beta,
+                    notes=notes,
+                    amended_id=amended_id,
+                    source_file=os.path.basename(file_path),
+                    source_tab=sheet_name,
+                    source_row=index + 2  # +2 for header row and 0-indexing
+                )
+                
+                batch_records.append(risk_stat)
+                records_processed += 1
+                
+            except Exception as e:
+                logger.error(f"Error processing equity row {index}: {e}")
+        
+        # Insert the batch of records
+        try:
+            # Add all records in the batch
+            db.add_all(batch_records)
+            # Commit the batch
+            db.commit()
+            logger.info(f"Committed batch {batch_count} with {len(batch_records)} records")
+        except Exception as e:
+            # Roll back on error
+            db.rollback()
+            logger.error(f"Error committing batch {batch_count}: {e}")
+            # Try inserting records one by one to identify problematic records
+            for risk_stat in batch_records:
+                try:
+                    db.add(risk_stat)
+                    db.commit()
+                    logger.info(f"Individually added record for position: {risk_stat.position}")
+                except Exception as inner_e:
+                    db.rollback()
+                    logger.error(f"Error adding individual record for position {risk_stat.position}: {inner_e}")
+    
     logger.info(f"Processed {records_processed} equity risk statistics")
     return records_processed
 
@@ -196,56 +229,89 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
     # Keep track of records processed
     records_processed = 0
     
-    # Map expected columns to our model fields
-    for index, row in df.iterrows():
-        try:
-            position = str(row.get('Position', '')).strip()
-            if not position:
-                continue
-                
-            ticker_symbol = str(row.get('Ticker Symbol', '')).strip() if 'Ticker Symbol' in row else None
-            cusip = str(row.get('CUSIP', '')).strip() if 'CUSIP' in row else None
-            bloomberg_id = str(row.get('Bloomberg ID', '')).strip() if 'Bloomberg ID' in row else None
-            second_level = str(row.get('Second Level', '')).strip() if 'Second Level' in row else None
-            amended_id = str(row.get('Amended ID', '')).strip() if 'Amended ID' in row else None
-            notes = str(row.get('Notes', '')).strip() if 'Notes' in row else None
-            
-            # Get duration, handling potential missing or non-numeric values
-            duration = row.get('Duration', None)
-            if pd.isna(duration):
-                duration = None
-            else:
-                try:
-                    duration = float(duration)
-                except (ValueError, TypeError):
-                    duration = None
-            
-            # Create a new risk stat record
-            risk_stat = EgnyteRiskStat(
-                import_date=import_date,
-                position=position,
-                ticker_symbol=ticker_symbol,
-                cusip=cusip,
-                asset_class='Fixed Income',
-                second_level=second_level,
-                bloomberg_id=bloomberg_id,
-                duration=duration,
-                notes=notes,
-                amended_id=amended_id,
-                source_file=os.path.basename(file_path),
-                source_tab=sheet_name,
-                source_row=index + 2  # +2 for header row and 0-indexing
-            )
-            
-            # Use merge to insert or update
-            db.merge(risk_stat)
-            records_processed += 1
-            
-        except Exception as e:
-            logger.error(f"Error processing fixed income row {index}: {e}")
+    # Process in smaller batches to avoid excessive parameter lists
+    batch_size = 100
+    batch_count = 0
     
-    # Commit after processing all records
-    db.commit()
+    # Log the sheet structure
+    logger.info(f"Fixed Income sheet columns: {df.columns.tolist()}")
+    logger.info(f"Fixed Income sheet has {len(df)} rows")
+    
+    # Map expected columns to our model fields
+    for start_idx in range(0, len(df), batch_size):
+        batch_count += 1
+        end_idx = min(start_idx + batch_size, len(df))
+        logger.info(f"Processing fixed income batch {batch_count} (rows {start_idx}-{end_idx})")
+        
+        batch_records = []
+        
+        for index, row in df.iloc[start_idx:end_idx].iterrows():
+            try:
+                position = str(row.get('Position', '')).strip()
+                if not position:
+                    continue
+                    
+                ticker_symbol = str(row.get('Ticker Symbol', '')).strip() if 'Ticker Symbol' in row and not pd.isna(row.get('Ticker Symbol')) else None
+                cusip = str(row.get('CUSIP', '')).strip() if 'CUSIP' in row and not pd.isna(row.get('CUSIP')) else None
+                bloomberg_id = str(row.get('Bloomberg ID', '')).strip() if 'Bloomberg ID' in row and not pd.isna(row.get('Bloomberg ID')) else None
+                second_level = str(row.get('Second Level', '')).strip() if 'Second Level' in row and not pd.isna(row.get('Second Level')) else None
+                amended_id = str(row.get('Amended ID', '')).strip() if 'Amended ID' in row and not pd.isna(row.get('Amended ID')) else None
+                notes = str(row.get('Notes', '')).strip() if 'Notes' in row and not pd.isna(row.get('Notes')) else None
+                
+                # Get duration, handling potential missing or non-numeric values
+                duration = row.get('Duration', None)
+                if pd.isna(duration):
+                    duration = None
+                else:
+                    try:
+                        duration = float(duration)
+                    except (ValueError, TypeError):
+                        duration = None
+                
+                # Create a new risk stat record
+                risk_stat = EgnyteRiskStat(
+                    import_date=import_date,
+                    position=position,
+                    ticker_symbol=ticker_symbol,
+                    cusip=cusip,
+                    asset_class='Fixed Income',
+                    second_level=second_level,
+                    bloomberg_id=bloomberg_id,
+                    duration=duration,
+                    notes=notes,
+                    amended_id=amended_id,
+                    source_file=os.path.basename(file_path),
+                    source_tab=sheet_name,
+                    source_row=index + 2  # +2 for header row and 0-indexing
+                )
+                
+                batch_records.append(risk_stat)
+                records_processed += 1
+                
+            except Exception as e:
+                logger.error(f"Error processing fixed income row {index}: {e}")
+        
+        # Insert the batch of records
+        try:
+            # Add all records in the batch
+            db.add_all(batch_records)
+            # Commit the batch
+            db.commit()
+            logger.info(f"Committed batch {batch_count} with {len(batch_records)} records")
+        except Exception as e:
+            # Roll back on error
+            db.rollback()
+            logger.error(f"Error committing batch {batch_count}: {e}")
+            # Try inserting records one by one to identify problematic records
+            for risk_stat in batch_records:
+                try:
+                    db.add(risk_stat)
+                    db.commit()
+                    logger.info(f"Individually added record for position: {risk_stat.position}")
+                except Exception as inner_e:
+                    db.rollback()
+                    logger.error(f"Error adding individual record for position {risk_stat.position}: {inner_e}")
+    
     logger.info(f"Processed {records_processed} fixed income risk statistics")
     return records_processed
 
@@ -262,56 +328,89 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db):
     # Keep track of records processed
     records_processed = 0
     
-    # Map expected columns to our model fields
-    for index, row in df.iterrows():
-        try:
-            position = str(row.get('Position', '')).strip()
-            if not position:
-                continue
-                
-            ticker_symbol = str(row.get('Ticker Symbol', '')).strip() if 'Ticker Symbol' in row else None
-            cusip = str(row.get('CUSIP', '')).strip() if 'CUSIP' in row else None
-            bloomberg_id = str(row.get('Bloomberg ID', '')).strip() if 'Bloomberg ID' in row else None
-            second_level = str(row.get('Second Level', '')).strip() if 'Second Level' in row else None
-            amended_id = str(row.get('Amended ID', '')).strip() if 'Amended ID' in row else None
-            notes = str(row.get('Notes', '')).strip() if 'Notes' in row else None
-            
-            # Alternatives typically only have beta
-            beta = row.get('BETA', None)
-            if pd.isna(beta):
-                beta = None
-            else:
-                try:
-                    beta = float(beta)
-                except (ValueError, TypeError):
-                    beta = None
-            
-            # Create a new risk stat record
-            risk_stat = EgnyteRiskStat(
-                import_date=import_date,
-                position=position,
-                ticker_symbol=ticker_symbol,
-                cusip=cusip,
-                asset_class='Alternatives',
-                second_level=second_level,
-                bloomberg_id=bloomberg_id,
-                beta=beta,
-                notes=notes,
-                amended_id=amended_id,
-                source_file=os.path.basename(file_path),
-                source_tab=sheet_name,
-                source_row=index + 2  # +2 for header row and 0-indexing
-            )
-            
-            # Use merge to insert or update
-            db.merge(risk_stat)
-            records_processed += 1
-            
-        except Exception as e:
-            logger.error(f"Error processing alternatives row {index}: {e}")
+    # Process in smaller batches to avoid excessive parameter lists
+    batch_size = 100
+    batch_count = 0
     
-    # Commit after processing all records
-    db.commit()
+    # Log the sheet structure
+    logger.info(f"Alternatives sheet columns: {df.columns.tolist()}")
+    logger.info(f"Alternatives sheet has {len(df)} rows")
+    
+    # Map expected columns to our model fields
+    for start_idx in range(0, len(df), batch_size):
+        batch_count += 1
+        end_idx = min(start_idx + batch_size, len(df))
+        logger.info(f"Processing alternatives batch {batch_count} (rows {start_idx}-{end_idx})")
+        
+        batch_records = []
+        
+        for index, row in df.iloc[start_idx:end_idx].iterrows():
+            try:
+                position = str(row.get('Position', '')).strip()
+                if not position:
+                    continue
+                    
+                ticker_symbol = str(row.get('Ticker Symbol', '')).strip() if 'Ticker Symbol' in row and not pd.isna(row.get('Ticker Symbol')) else None
+                cusip = str(row.get('CUSIP', '')).strip() if 'CUSIP' in row and not pd.isna(row.get('CUSIP')) else None
+                bloomberg_id = str(row.get('Bloomberg ID', '')).strip() if 'Bloomberg ID' in row and not pd.isna(row.get('Bloomberg ID')) else None
+                second_level = str(row.get('Second Level', '')).strip() if 'Second Level' in row and not pd.isna(row.get('Second Level')) else None
+                amended_id = str(row.get('Amended ID', '')).strip() if 'Amended ID' in row and not pd.isna(row.get('Amended ID')) else None
+                notes = str(row.get('Notes', '')).strip() if 'Notes' in row and not pd.isna(row.get('Notes')) else None
+                
+                # Alternatives typically only have beta
+                beta = row.get('BETA', None)
+                if pd.isna(beta):
+                    beta = None
+                else:
+                    try:
+                        beta = float(beta)
+                    except (ValueError, TypeError):
+                        beta = None
+                
+                # Create a new risk stat record
+                risk_stat = EgnyteRiskStat(
+                    import_date=import_date,
+                    position=position,
+                    ticker_symbol=ticker_symbol,
+                    cusip=cusip,
+                    asset_class='Alternatives',
+                    second_level=second_level,
+                    bloomberg_id=bloomberg_id,
+                    beta=beta,
+                    notes=notes,
+                    amended_id=amended_id,
+                    source_file=os.path.basename(file_path),
+                    source_tab=sheet_name,
+                    source_row=index + 2  # +2 for header row and 0-indexing
+                )
+                
+                batch_records.append(risk_stat)
+                records_processed += 1
+                
+            except Exception as e:
+                logger.error(f"Error processing alternatives row {index}: {e}")
+        
+        # Insert the batch of records
+        try:
+            # Add all records in the batch
+            db.add_all(batch_records)
+            # Commit the batch
+            db.commit()
+            logger.info(f"Committed batch {batch_count} with {len(batch_records)} records")
+        except Exception as e:
+            # Roll back on error
+            db.rollback()
+            logger.error(f"Error committing batch {batch_count}: {e}")
+            # Try inserting records one by one to identify problematic records
+            for risk_stat in batch_records:
+                try:
+                    db.add(risk_stat)
+                    db.commit()
+                    logger.info(f"Individually added record for position: {risk_stat.position}")
+                except Exception as inner_e:
+                    db.rollback()
+                    logger.error(f"Error adding individual record for position {risk_stat.position}: {inner_e}")
+    
     logger.info(f"Processed {records_processed} alternatives risk statistics")
     return records_processed
 
@@ -329,6 +428,25 @@ def fetch_and_process_risk_stats(db: Session):
     try:
         logger.info("Starting risk statistics fetch from Egnyte")
         
+        # Set the import date
+        import_date = date.today()
+        
+        # Delete any existing records for today's date to prevent unique constraint violations
+        try:
+            existing_count = db.query(EgnyteRiskStat).filter(
+                EgnyteRiskStat.import_date == import_date
+            ).count()
+            
+            if existing_count > 0:
+                logger.info(f"Deleting {existing_count} existing records for import date {import_date}")
+                db.query(EgnyteRiskStat).filter(
+                    EgnyteRiskStat.import_date == import_date
+                ).delete()
+                db.commit()
+        except Exception as e:
+            logger.warning(f"Error deleting existing records: {str(e)}")
+            # Continue with the process regardless
+        
         # Download the file from Egnyte
         file_path = download_risk_stats_file()
         
@@ -344,7 +462,7 @@ def fetch_and_process_risk_stats(db: Session):
         
         return {
             "success": True,
-            "import_date": date.today().isoformat(),
+            "import_date": import_date.isoformat(),
             "stats": stats
         }
     
