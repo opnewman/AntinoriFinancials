@@ -77,25 +77,37 @@ def process_excel_file(file_path, db):
     """
     logger.info(f"Processing risk statistics file: {file_path}")
     
-    # Read the Excel file with multiple sheets
-    excel_file = pd.ExcelFile(file_path)
-    sheet_names = excel_file.sheet_names
-    logger.info(f"Excel file contains sheets: {sheet_names}")
+    # Read the Excel file with optimized settings for large files
+    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    logger.info(f"Excel file size: {file_size_mb:.2f} MB")
     
-    # Examine the structure of each sheet for better understanding
+    try:
+        # For large files, use optimized reading options
+        if file_size_mb > 50:  # If over 50 MB, use optimized settings
+            logger.info("Large file detected: Using optimized Excel reader settings")
+            excel_file = pd.ExcelFile(file_path, engine='openpyxl')
+        else:
+            excel_file = pd.ExcelFile(file_path)
+        
+        sheet_names = excel_file.sheet_names
+        logger.info(f"Excel file contains sheets: {sheet_names}")
+    except Exception as e:
+        logger.error(f"Failed to read Excel file with primary engine: {e}")
+        try:
+            # Try with an alternative engine
+            excel_file = pd.ExcelFile(file_path, engine='xlrd')
+            sheet_names = excel_file.sheet_names
+            logger.info("Successfully read Excel file using alternative engine")
+        except Exception as inner_e:
+            logger.error(f"Failed to read Excel file with alternative engine: {inner_e}")
+            raise ValueError(f"Could not read Excel file: {inner_e}")
+        
+    # Examine only the first row of each sheet to reduce memory usage
     for sheet in sheet_names:
         try:
-            # Read just a few rows to analyze structure
-            df = pd.read_excel(file_path, sheet_name=sheet, nrows=5)
+            # Read just a single row to analyze structure
+            df = pd.read_excel(file_path, sheet_name=sheet, nrows=1)
             logger.info(f"Sheet: {sheet}, Columns: {df.columns.tolist()}")
-            if len(df) > 0:
-                sample_row = df.iloc[0].to_dict()
-                # Convert any non-serializable types to strings for logging
-                sample_row = {k: str(v) if not isinstance(v, (int, float, str, bool, type(None))) else v 
-                              for k, v in sample_row.items()}
-                logger.info(f"Sample data from {sheet}: {sample_row}")
-            else:
-                logger.info(f"No data in sheet {sheet}")
         except Exception as e:
             logger.warning(f"Could not read sheet {sheet}: {e}")
     
@@ -160,11 +172,69 @@ def process_excel_file(file_path, db):
 def process_equity_sheet(file_path, sheet_name, import_date, db):
     """Process the Equity sheet from the Excel file."""
     logger.info(f"Processing Equity sheet")
-    df = pd.read_excel(file_path, sheet_name=sheet_name)
     
-    # Clean up column names and drop empty rows
-    df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
-    df = df.dropna(subset=['Position'], how='all')
+    # For large files, we need to handle them efficiently
+    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    
+    # Check if the file is large (over 100 MB)
+    if file_size_mb > 100:
+        logger.info(f"Large file detected ({file_size_mb:.2f} MB): Using optimized reading for Equity sheet")
+        
+        # Excel reader object
+        xl = pd.ExcelFile(file_path)
+        
+        # Get information about the sheet
+        sheet_data = xl.book.sheet_by_name(sheet_name)
+        total_rows = sheet_data.nrows
+        
+        # Process in manageable chunks (not using chunksize as pandas doesn't support it for Excel)
+        chunk_size = 1000
+        chunks_processed = 0
+        df = pd.DataFrame()
+        
+        for start_row in range(0, total_rows, chunk_size):
+            chunks_processed += 1
+            end_row = min(start_row + chunk_size, total_rows)
+            
+            # Read a specific range of rows
+            # First row (usually row 0) contains headers
+            if start_row == 0:
+                # First chunk includes headers
+                temp_df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=end_row)
+            else:
+                # Subsequent chunks need headers for proper column names and then skip the header row
+                temp_df = pd.read_excel(file_path, sheet_name=sheet_name, 
+                                       skiprows=start_row-1, nrows=end_row-start_row+1)
+                
+                # Drop the header row which is now the first row
+                if len(temp_df) > 0:
+                    temp_df = temp_df.iloc[1:]
+            
+            # Clean up column names
+            temp_df.columns = [col.strip() if isinstance(col, str) else col for col in temp_df.columns]
+            
+            # Drop rows with no Position
+            temp_df = temp_df.dropna(subset=['Position'], how='all')
+            
+            # Append to our main dataframe
+            if not temp_df.empty:
+                df = pd.concat([df, temp_df])
+            
+            logger.info(f"Processed Equity chunk {chunks_processed} ({start_row}-{end_row}), got {len(temp_df)} valid rows, total rows: {len(df)}")
+            
+            # If we've read enough rows to handle a large dataset, stop
+            if len(df) > 30000:  # Limit to 30,000 rows as a safety valve
+                logger.warning(f"Reached maximum row limit of 30,000 for Equity sheet, stopping read process")
+                break
+        
+        # Close the Excel file
+        xl.close()
+    else:
+        # For smaller files, read the entire sheet at once
+        df = pd.read_excel(file_path, sheet_name=sheet_name)
+        # Clean up column names and drop empty rows
+        df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
+        df = df.dropna(subset=['Position'], how='all')
     
     # Keep track of records processed
     records_processed = 0
@@ -179,10 +249,17 @@ def process_equity_sheet(file_path, sheet_name, import_date, db):
     logger.info(f"Equity sheet has {len(df)} rows")
     
     # Check for duplicate positions in the input file
-    position_counts = df['Position'].value_counts()
-    duplicates = position_counts[position_counts > 1].index.tolist()
-    if duplicates:
-        logger.warning(f"Found {len(duplicates)} duplicate position names in the Equity sheet: {', '.join(duplicates[:5])}")
+    try:
+        # Use Series.duplicated() to find positions that appear more than once
+        duplicate_mask = df['Position'].duplicated(keep='first')
+        duplicate_positions = df.loc[duplicate_mask, 'Position'].tolist()
+        
+        if duplicate_positions:
+            # Take up to 5 examples to log
+            sample_duplicates = duplicate_positions[:5]
+            logger.warning(f"Found {len(duplicate_positions)} duplicate position names in the Equity sheet: {', '.join(str(d) for d in sample_duplicates)}")
+    except Exception as e:
+        logger.warning(f"Could not check for duplicates in Equity sheet: {e}")
     
     # Map expected columns to our model fields
     for start_idx in range(0, len(df), batch_size):
@@ -334,11 +411,69 @@ def process_equity_sheet(file_path, sheet_name, import_date, db):
 def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
     """Process the Fixed Income sheet from the Excel file."""
     logger.info(f"Processing Fixed Income sheet")
-    df = pd.read_excel(file_path, sheet_name=sheet_name)
     
-    # Clean up column names and drop empty rows
-    df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
-    df = df.dropna(subset=['Position'], how='all')
+    # For large files, we need to handle them efficiently
+    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    
+    # Check if the file is large (over 100 MB)
+    if file_size_mb > 100:
+        logger.info(f"Large file detected ({file_size_mb:.2f} MB): Using optimized reading for Fixed Income sheet")
+        
+        # Excel reader object
+        xl = pd.ExcelFile(file_path)
+        
+        # Get information about the sheet
+        sheet_data = xl.book.sheet_by_name(sheet_name)
+        total_rows = sheet_data.nrows
+        
+        # Process in manageable chunks (not using chunksize as pandas doesn't support it for Excel)
+        chunk_size = 1000
+        chunks_processed = 0
+        df = pd.DataFrame()
+        
+        for start_row in range(0, total_rows, chunk_size):
+            chunks_processed += 1
+            end_row = min(start_row + chunk_size, total_rows)
+            
+            # Read a specific range of rows
+            # First row (usually row 0) contains headers
+            if start_row == 0:
+                # First chunk includes headers
+                temp_df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=end_row)
+            else:
+                # Subsequent chunks need headers for proper column names and then skip the header row
+                temp_df = pd.read_excel(file_path, sheet_name=sheet_name, 
+                                       skiprows=start_row-1, nrows=end_row-start_row+1)
+                
+                # Drop the header row which is now the first row
+                if len(temp_df) > 0:
+                    temp_df = temp_df.iloc[1:]
+            
+            # Clean up column names
+            temp_df.columns = [col.strip() if isinstance(col, str) else col for col in temp_df.columns]
+            
+            # Drop rows with no Position
+            temp_df = temp_df.dropna(subset=['Position'], how='all')
+            
+            # Append to our main dataframe
+            if not temp_df.empty:
+                df = pd.concat([df, temp_df])
+            
+            logger.info(f"Processed Fixed Income chunk {chunks_processed} ({start_row}-{end_row}), got {len(temp_df)} valid rows, total rows: {len(df)}")
+            
+            # If we've read enough rows to handle a large dataset, stop
+            if len(df) > 30000:  # Limit to 30,000 rows as a safety valve
+                logger.warning(f"Reached maximum row limit of 30,000 for Fixed Income sheet, stopping read process")
+                break
+        
+        # Close the Excel file
+        xl.close()
+    else:
+        # For smaller files, read the entire sheet at once
+        df = pd.read_excel(file_path, sheet_name=sheet_name)
+        # Clean up column names and drop empty rows
+        df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
+        df = df.dropna(subset=['Position'], how='all')
     
     # Keep track of records processed
     records_processed = 0
@@ -353,10 +488,17 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
     logger.info(f"Fixed Income sheet has {len(df)} rows")
     
     # Check for duplicate positions in the input file
-    position_counts = df['Position'].value_counts()
-    duplicates = position_counts[position_counts > 1].index.tolist()
-    if duplicates:
-        logger.warning(f"Found {len(duplicates)} duplicate position names in the Fixed Income sheet: {', '.join(duplicates[:5])}")
+    try:
+        # Use Series.duplicated() to find positions that appear more than once
+        duplicate_mask = df['Position'].duplicated(keep='first')
+        duplicate_positions = df.loc[duplicate_mask, 'Position'].tolist()
+        
+        if duplicate_positions:
+            # Take up to 5 examples to log
+            sample_duplicates = duplicate_positions[:5]
+            logger.warning(f"Found {len(duplicate_positions)} duplicate position names in the Fixed Income sheet: {', '.join(str(d) for d in sample_duplicates)}")
+    except Exception as e:
+        logger.warning(f"Could not check for duplicates in Fixed Income sheet: {e}")
     
     # Map expected columns to our model fields
     for start_idx in range(0, len(df), batch_size):
@@ -499,11 +641,69 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
 def process_alternatives_sheet(file_path, sheet_name, import_date, db):
     """Process the Alternatives sheet from the Excel file."""
     logger.info(f"Processing Alternatives sheet")
-    df = pd.read_excel(file_path, sheet_name=sheet_name)
     
-    # Clean up column names and drop empty rows
-    df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
-    df = df.dropna(subset=['Position'], how='all')
+    # For large files, we need to handle them efficiently
+    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    
+    # Check if the file is large (over 100 MB)
+    if file_size_mb > 100:
+        logger.info(f"Large file detected ({file_size_mb:.2f} MB): Using optimized reading for Alternatives sheet")
+        
+        # Excel reader object
+        xl = pd.ExcelFile(file_path)
+        
+        # Get information about the sheet
+        sheet_data = xl.book.sheet_by_name(sheet_name)
+        total_rows = sheet_data.nrows
+        
+        # Process in manageable chunks (not using chunksize as pandas doesn't support it for Excel)
+        chunk_size = 1000
+        chunks_processed = 0
+        df = pd.DataFrame()
+        
+        for start_row in range(0, total_rows, chunk_size):
+            chunks_processed += 1
+            end_row = min(start_row + chunk_size, total_rows)
+            
+            # Read a specific range of rows
+            # First row (usually row 0) contains headers
+            if start_row == 0:
+                # First chunk includes headers
+                temp_df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=end_row)
+            else:
+                # Subsequent chunks need headers for proper column names and then skip the header row
+                temp_df = pd.read_excel(file_path, sheet_name=sheet_name, 
+                                       skiprows=start_row-1, nrows=end_row-start_row+1)
+                
+                # Drop the header row which is now the first row
+                if len(temp_df) > 0:
+                    temp_df = temp_df.iloc[1:]
+            
+            # Clean up column names
+            temp_df.columns = [col.strip() if isinstance(col, str) else col for col in temp_df.columns]
+            
+            # Drop rows with no Position
+            temp_df = temp_df.dropna(subset=['Position'], how='all')
+            
+            # Append to our main dataframe
+            if not temp_df.empty:
+                df = pd.concat([df, temp_df])
+            
+            logger.info(f"Processed Alternatives chunk {chunks_processed} ({start_row}-{end_row}), got {len(temp_df)} valid rows, total rows: {len(df)}")
+            
+            # If we've read enough rows to handle a large dataset, stop
+            if len(df) > 30000:  # Limit to 30,000 rows as a safety valve
+                logger.warning(f"Reached maximum row limit of 30,000 for Alternatives sheet, stopping read process")
+                break
+        
+        # Close the Excel file
+        xl.close()
+    else:
+        # For smaller files, read the entire sheet at once
+        df = pd.read_excel(file_path, sheet_name=sheet_name)
+        # Clean up column names and drop empty rows
+        df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
+        df = df.dropna(subset=['Position'], how='all')
     
     # Keep track of records processed
     records_processed = 0
@@ -518,10 +718,17 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db):
     logger.info(f"Alternatives sheet has {len(df)} rows")
     
     # Check for duplicate positions in the input file
-    position_counts = df['Position'].value_counts()
-    duplicates = position_counts[position_counts > 1].index.tolist()
-    if duplicates:
-        logger.warning(f"Found {len(duplicates)} duplicate position names in the Alternatives sheet: {', '.join(duplicates[:5])}")
+    try:
+        # Use Series.duplicated() to find positions that appear more than once
+        duplicate_mask = df['Position'].duplicated(keep='first')
+        duplicate_positions = df.loc[duplicate_mask, 'Position'].tolist()
+        
+        if duplicate_positions:
+            # Take up to 5 examples to log
+            sample_duplicates = duplicate_positions[:5]
+            logger.warning(f"Found {len(duplicate_positions)} duplicate position names in the Alternatives sheet: {', '.join(str(d) for d in sample_duplicates)}")
+    except Exception as e:
+        logger.warning(f"Could not check for duplicates in Alternatives sheet: {e}")
     
     # Map expected columns to our model fields
     for start_idx in range(0, len(df), batch_size):
