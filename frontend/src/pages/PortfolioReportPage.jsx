@@ -880,7 +880,11 @@ window.PortfolioReportPage = () => {
             
             {/* Report display */}
             {reportData && (
-                <PortfolioReport reportData={reportData} loading={loading} />
+                <PortfolioReport 
+                    reportData={reportData} 
+                    loading={loading} 
+                    displayFormat={displayFormat} 
+                />
             )}
         </div>
     );

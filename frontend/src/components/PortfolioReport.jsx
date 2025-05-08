@@ -1,5 +1,5 @@
 // Professional portfolio report component to match exactly the Excel template format
-window.PortfolioReport = ({ reportData, loading }) => {
+window.PortfolioReport = ({ reportData, loading, displayFormat = 'percent' }) => {
     const formatDate = (dateStr) => {
         if (!dateStr) return '';
         const date = new Date(dateStr);
@@ -31,6 +31,20 @@ window.PortfolioReport = ({ reportData, loading }) => {
     const formatNumber = (value) => {
         if (value === null || value === undefined) return '';
         return parseFloat(value).toFixed(2);
+    };
+    
+    // Format value based on display format (percent or dollar)
+    const formatValue = (percentValue) => {
+        if (percentValue === null || percentValue === undefined) return '';
+        
+        if (displayFormat === 'dollar' && total_adjusted_value) {
+            // Convert percentage to dollar amount
+            const dollarValue = (percentValue * total_adjusted_value / 100);
+            return formatCurrency(dollarValue);
+        } else {
+            // Display as percentage
+            return formatPercent(percentValue);
+        }
     };
 
     if (loading) {
@@ -94,7 +108,7 @@ window.PortfolioReport = ({ reportData, loading }) => {
                 <tbody>
                     <tr>
                         <td className="bg-blue-200 px-4 py-2 text-left font-medium">Equity</td>
-                        <td className="border px-4 py-2 text-right">{formatPercent(equities.total_pct)}</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(equities.total_pct)}</td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6 bg-gray-50">Vol</td>
@@ -162,7 +176,7 @@ window.PortfolioReport = ({ reportData, loading }) => {
                 <tbody>
                     <tr>
                         <td className="bg-red-200 px-4 py-2 text-left font-medium">Fixed Income</td>
-                        <td className="border px-4 py-2 text-right">{formatPercent(fixed_income.total_pct)}</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(fixed_income.total_pct)}</td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6 bg-gray-50">Duration</td>
@@ -230,7 +244,7 @@ window.PortfolioReport = ({ reportData, loading }) => {
                 <tbody>
                     <tr>
                         <td className="bg-yellow-200 px-4 py-2 text-left font-medium">Hard Currency</td>
-                        <td className="border px-4 py-2 text-right">{formatPercent(hard_currency.total_pct)}</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(hard_currency.total_pct)}</td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6 bg-gray-50">HC Beta</td>
@@ -278,7 +292,7 @@ window.PortfolioReport = ({ reportData, loading }) => {
                 <tbody>
                     <tr>
                         <td className="bg-orange-200 px-4 py-2 text-left font-medium">Uncorrelated Alternatives</td>
-                        <td className="border px-4 py-2 text-right">{formatPercent(uncorrelated_alternatives.total_pct)}</td>
+                        <td className="border px-4 py-2 text-right">{formatValue(uncorrelated_alternatives.total_pct)}</td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6">Crypto</td>
