@@ -99,6 +99,60 @@ def update_risk_stats():
             "error": str(e)
         }), 500
 
+@app.route("/api/portfolio/risk-metrics", methods=["GET"])
+def get_portfolio_risk_metrics():
+    """
+    Calculate risk metrics for a portfolio.
+    
+    This endpoint calculates risk metrics for a portfolio based on its positions
+    and the risk statistics from Egnyte. It calculates weighted metrics like beta,
+    volatility, and duration by asset class.
+    
+    Query parameters:
+    - level: The level for the report ('client', 'portfolio', 'account')
+    - level_key: The identifier for the specified level
+    - date: Report date in YYYY-MM-DD format
+    
+    Returns:
+        JSON with portfolio risk metrics organized by asset class
+    """
+    try:
+        # Get query parameters
+        level = request.args.get('level')
+        level_key = request.args.get('level_key')
+        report_date_str = request.args.get('date')
+        
+        # Validate parameters
+        if not level or not level_key or not report_date_str:
+            return jsonify({
+                "success": False,
+                "error": "Missing required parameters: level, level_key, date"
+            }), 400
+            
+        # Parse the date
+        try:
+            report_date = datetime.strptime(report_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({
+                "success": False,
+                "error": f"Invalid date format: {report_date_str}. Expected format: YYYY-MM-DD"
+            }), 400
+            
+        # Import the service
+        from src.services.portfolio_risk_service import calculate_portfolio_risk_metrics
+        
+        with get_db_connection() as db:
+            # Calculate risk metrics
+            result = calculate_portfolio_risk_metrics(db, level, level_key, report_date)
+            return jsonify(result)
+            
+    except Exception as e:
+        logger.exception(f"Error calculating portfolio risk metrics: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 @app.route("/api/risk-stats", methods=["GET"])
 def get_risk_stats():
     """
