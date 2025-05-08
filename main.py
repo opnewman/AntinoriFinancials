@@ -1341,10 +1341,22 @@ def get_ownership_tree():
             })
     
     except Exception as e:
-        logger.error(f"Error generating ownership tree: {str(e)}")
+        # Log the full traceback for debugging
+        logger.exception(f"Error generating ownership tree: {str(e)}")
+        
+        # Check for specific error types to provide better user feedback
+        if "relationship is not found" in str(e).lower() or "no such table" in str(e).lower():
+            error_message = "Ownership structure data not found. Please upload an ownership file first."
+        elif "permission" in str(e).lower():
+            error_message = "Database permission error. Please contact the administrator."
+        else:
+            error_message = "An unexpected error occurred while loading ownership data. Please try again later."
+        
+        # Return a user-friendly error response
         return jsonify({
             "success": False,
-            "message": f"Error generating ownership tree: {str(e)}"
+            "error": error_message,
+            "technical_details": str(e) if app.debug else "Enable debug mode for technical details"
         }), 500
 
 @app.route("/api/entity-options", methods=["GET"])
