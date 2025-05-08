@@ -97,8 +97,8 @@ SQL_HARD_CURRENCY_SUBCATEGORIES = """
         ) as total_value
     FROM financial_positions
     WHERE date = :date
-    AND asset_class = 'alternatives'
-    AND second_level = 'hard currency'
+    AND asset_class = 'Alternatives'
+    AND second_level = 'Precious Metals'
     AND {level_filter}
     GROUP BY third_level
 """
@@ -113,8 +113,8 @@ SQL_UNCORRELATED_ALTERNATIVES = """
         END as adjusted_value
     FROM financial_positions
     WHERE date = :date
-    AND asset_class = 'alternatives'
-    AND second_level != 'hard currency'
+    AND asset_class = 'Alternatives'
+    AND second_level = 'Uncorrelated Alternatives'
     AND {level_filter}
 """
 
@@ -204,15 +204,15 @@ def get_asset_class_breakdowns(db: Session, report_date: date, level: str, level
     }
     
     for row in results:
-        asset_class = row.asset_class.lower() if row.asset_class else 'unknown'
+        asset_class = row.asset_class if row.asset_class else 'unknown'
         value = float(row.total_value) if row.total_value else 0.0
         percentage = (value / total_value * 100) if total_value > 0 else 0.0
         
-        if asset_class == 'equity':
+        if asset_class == 'Equity':
             breakdowns['equities']['total_pct'] = percentage
-        elif asset_class == 'fixed income':
+        elif asset_class == 'Fixed Income':
             breakdowns['fixed_income']['total_pct'] = percentage
-        elif asset_class == 'cash & cash equivalent':
+        elif asset_class == 'Cash & Cash Equivalent':
             breakdowns['cash']['total_pct'] = percentage
     
     # Hard Currency and Uncorrelated Alternatives will be calculated separately
