@@ -1183,7 +1183,7 @@ def get_ownership_tree():
             
             # Get all entities ordered by their row_order field
             # Use raw SQL since model field names don't match actual DB schema
-            all_entities = db.execute(text("""
+            result = db.execute(text("""
                 SELECT 
                     client as name,
                     grouping_attribute_name as type,
@@ -1194,11 +1194,25 @@ def get_ownership_tree():
                 FROM ownership_items
                 WHERE metadata_id = :metadata_id
                 ORDER BY row_order ASC, id ASC
-            """), {"metadata_id": latest_metadata.id}).fetchall()
+            """), {"metadata_id": latest_metadata.id})
+            
+            # Convert to list of dicts to avoid SQLAlchemy row access issues
+            all_entities = []
+            for row in result:
+                # Access by index to avoid attribute errors
+                entity = {
+                    'name': row[0],
+                    'type': row[1],
+                    'parent_id': row[2],
+                    'account_number': row[3],
+                    'row_order': row[4],
+                    'id': row[5]
+                }
+                all_entities.append(entity)
             
             # Log sample entities to help with debugging
             if all_entities and len(all_entities) > 0:
-                logger.info(f"Sample entity from database: {dict(all_entities[0])}")
+                logger.info(f"Sample entity from database: {all_entities[0]}")
             else:
                 logger.warning("No entities found in the ownership_items table")
             
@@ -1219,39 +1233,39 @@ def get_ownership_tree():
             
             for entity in all_entities:
                 # Skip rows with missing essential data
-                if not entity.name:
+                if not entity['name']:
                     continue
                 
                 # Process different entity types
-                if entity.type == "Client":
+                if entity['type'] == "Client":
                     # Found a new client - this starts a new section in the hierarchy
-                    current_client = entity.name
+                    current_client = entity['name']
                     current_group = None  # Reset current group when a new client starts
                     
                     # Store client information
                     client_names.add(current_client)
                     # Store metadata if available
-                    client_entity_map[current_client] = entity.id
+                    client_entity_map[current_client] = entity['id']
                 
-                elif entity.type == "Group" and current_client:
+                elif entity['type'] == "Group" and current_client:
                     # Found a group that belongs to the current client
-                    current_group = entity.name
+                    current_group = entity['name']
                     
                     # Store group information
-                    group_name_to_id[current_group] = entity.id
+                    group_name_to_id[current_group] = entity['id']
                     
                     # Link this group to its parent client
                     client_to_groups[current_client].append({
                         "name": current_group,
-                        "id": entity.id
+                        "id": entity['id']
                     })
                 
-                elif entity.type == "Holding Account":
+                elif entity['type'] == "Holding Account":
                     # This is an account - link it to either current group or client
                     account_data = {
-                        "name": entity.name,
-                        "entity_id": entity.id,
-                        "account_number": entity.account_number,
+                        "name": entity['name'],
+                        "entity_id": entity['id'],
+                        "account_number": entity['account_number'],
                         "value": 1  # Fixed value for visualization
                     }
                     

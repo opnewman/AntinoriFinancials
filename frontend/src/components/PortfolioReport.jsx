@@ -289,26 +289,26 @@ window.PortfolioReport = ({ reportData, loading, displayFormat = 'percent' }) =>
 
             {/* Uncorrelated Alternatives Section */}
             <table className="min-w-full text-sm border-collapse">
-                <tbody className="bg-orange-100">
+                <tbody>
                     <tr>
                         <td className="bg-orange-200 px-4 py-2 text-left font-medium">Uncorrelated Alternatives</td>
                         <td className="bg-orange-200 border px-4 py-2 text-right font-medium">{formatValue(uncorrelated_alternatives.total_pct)}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6 bg-orange-100">Crypto</td>
-                        <td className="border px-4 py-2 text-right bg-orange-100">{formatValue(uncorrelated_alternatives.subcategories.crypto)}</td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-orange-50">Crypto</td>
+                        <td className="border px-4 py-2 text-right bg-orange-50">{formatValue(uncorrelated_alternatives.subcategories.crypto)}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6 bg-orange-100">Other</td>
-                        <td className="border px-4 py-2 text-right bg-orange-100">{formatValue(uncorrelated_alternatives.subcategories.other)}</td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-orange-50">Other</td>
+                        <td className="border px-4 py-2 text-right bg-orange-50">{formatValue(uncorrelated_alternatives.subcategories.other)}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6 bg-orange-100">Proficio Short Term Alts Fund</td>
-                        <td className="border px-4 py-2 text-right bg-orange-100">{formatValue(uncorrelated_alternatives.subcategories.proficio_short_term)}</td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-orange-50">Proficio Short Term Alts Fund</td>
+                        <td className="border px-4 py-2 text-right bg-orange-50">{formatValue(uncorrelated_alternatives.subcategories.proficio_short_term)}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6 bg-orange-100">Proficio Long Term Alts Fund</td>
-                        <td className="border px-4 py-2 text-right bg-orange-100">{formatValue(uncorrelated_alternatives.subcategories.proficio_long_term)}</td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-orange-50">Proficio Long Term Alts Fund</td>
+                        <td className="border px-4 py-2 text-right bg-orange-50">{formatValue(uncorrelated_alternatives.subcategories.proficio_long_term)}</td>
                     </tr>
                 </tbody>
             </table>
