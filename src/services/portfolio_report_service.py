@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 SQL_TOTAL_PORTFOLIO_VALUE = """
     SELECT SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
-    WHERE report_date = :report_date
+    WHERE date = :report_date
     AND {level_filter}
 """
 
@@ -39,7 +39,7 @@ SQL_ASSET_CLASS_TOTALS = """
         asset_class,
         SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
-    WHERE report_date = :report_date
+    WHERE date = :report_date
     AND {level_filter}
     GROUP BY asset_class
 """
@@ -49,7 +49,7 @@ SQL_EQUITY_SUBCATEGORIES = """
         second_level,
         SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
-    WHERE report_date = :report_date
+    WHERE date = :report_date
     AND asset_class = 'equity'
     AND {level_filter}
     GROUP BY second_level
@@ -60,7 +60,7 @@ SQL_FIXED_INCOME_SUBCATEGORIES = """
         second_level,
         SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
-    WHERE report_date = :report_date
+    WHERE date = :report_date
     AND asset_class = 'fixed income'
     AND {level_filter}
     GROUP BY second_level
@@ -71,7 +71,7 @@ SQL_HARD_CURRENCY_SUBCATEGORIES = """
         third_level,
         SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
-    WHERE report_date = :report_date
+    WHERE date = :report_date
     AND asset_class = 'alternatives'
     AND second_level = 'hard currency'
     AND {level_filter}
@@ -84,7 +84,7 @@ SQL_UNCORRELATED_ALTERNATIVES = """
         third_level,
         CAST(adjusted_value AS NUMERIC) as adjusted_value
     FROM financial_positions
-    WHERE report_date = :report_date
+    WHERE date = :report_date
     AND asset_class = 'alternatives'
     AND second_level != 'hard currency'
     AND {level_filter}
@@ -95,7 +95,7 @@ SQL_LIQUIDITY = """
         liquid_vs_illiquid,
         SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
-    WHERE report_date = :report_date
+    WHERE date = :report_date
     AND {level_filter}
     GROUP BY liquid_vs_illiquid
 """
