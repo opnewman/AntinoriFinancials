@@ -87,6 +87,7 @@ window.PortfolioReport = ({
         cash,
         liquidity,
         performance,
+        risk_metrics,
     } = reportData;
 
     return (
@@ -133,7 +134,14 @@ window.PortfolioReport = ({
                             Vol
                         </td>
                         <td className="border px-4 py-2 text-right bg-blue-50">
-                            {formatNumber(equities.vol || "")}
+                            {risk_metrics && risk_metrics.equity && risk_metrics.equity.volatility ? 
+                                formatNumber(risk_metrics.equity.volatility) : 
+                                formatNumber(equities.vol || "")}
+                            {risk_metrics && risk_metrics.equity && risk_metrics.equity.coverage_pct && 
+                                <span className="text-xs text-gray-500 ml-1">
+                                    ({formatNumber(risk_metrics.equity.coverage_pct)}% coverage)
+                                </span>
+                            }
                         </td>
                     </tr>
                     <tr>
@@ -141,7 +149,9 @@ window.PortfolioReport = ({
                             Beta
                         </td>
                         <td className="border px-4 py-2 text-right bg-blue-50">
-                            {formatNumber(equities.beta || "")}
+                            {risk_metrics && risk_metrics.equity && risk_metrics.equity.beta ? 
+                                formatNumber(risk_metrics.equity.beta) : 
+                                formatNumber(equities.beta || "")}
                         </td>
                     </tr>
                     <tr>
@@ -150,7 +160,6 @@ window.PortfolioReport = ({
                         </td>
                         <td className="border px-4 py-2 text-right bg-blue-50">
                             {formatNumber(equities.beta_adjusted || "")}
-                        </td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6">
@@ -267,7 +276,14 @@ window.PortfolioReport = ({
                             Duration
                         </td>
                         <td className="border px-4 py-2 text-right bg-red-50">
-                            {formatNumber(fixed_income.duration || "")}
+                            {risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.duration ? 
+                                formatNumber(risk_metrics.fixed_income.duration) : 
+                                formatNumber(fixed_income.duration || "")}
+                            {risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.coverage_pct && 
+                                <span className="text-xs text-gray-500 ml-1">
+                                    ({formatNumber(risk_metrics.fixed_income.coverage_pct)}% coverage)
+                                </span>
+                            }
                         </td>
                     </tr>
                     <tr>

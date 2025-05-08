@@ -1727,10 +1727,56 @@ def generate_portfolio_report():
     try:
         # Use the portfolio report service to generate the report
         from src.services.portfolio_report_service import generate_portfolio_report
+        from src.services.portfolio_risk_service import calculate_portfolio_risk_metrics
+
         with get_db_connection() as db:
+            # Get portfolio report data
             report_data = generate_portfolio_report(db, report_date, level, level_key, display_format)
+            
+            # Get risk metrics data
+            try:
+                risk_metrics = calculate_portfolio_risk_metrics(db, level, level_key, report_date)
+                if risk_metrics.get("success", False):
+                    # Add risk metrics to the report data
+                    report_data["risk_metrics"] = {
+                        "equity": {
+                            "beta": risk_metrics.get("risk_metrics", {}).get("equity", {}).get("beta", {}).get("value"),
+                            "volatility": risk_metrics.get("risk_metrics", {}).get("equity", {}).get("volatility", {}).get("value"),
+                            "coverage_pct": risk_metrics.get("risk_metrics", {}).get("equity", {}).get("beta", {}).get("coverage_pct")
+                        },
+                        "fixed_income": {
+                            "duration": risk_metrics.get("risk_metrics", {}).get("fixed_income", {}).get("duration", {}).get("value"),
+                            "coverage_pct": risk_metrics.get("risk_metrics", {}).get("fixed_income", {}).get("duration", {}).get("coverage_pct")
+                        },
+                        "hard_currency": {
+                            "beta": risk_metrics.get("risk_metrics", {}).get("hard_currency", {}).get("beta", {}).get("value"),
+                            "coverage_pct": risk_metrics.get("risk_metrics", {}).get("hard_currency", {}).get("beta", {}).get("coverage_pct")
+                        },
+                        "alternatives": {
+                            "beta": risk_metrics.get("risk_metrics", {}).get("alternatives", {}).get("beta", {}).get("value"),
+                            "coverage_pct": risk_metrics.get("risk_metrics", {}).get("alternatives", {}).get("beta", {}).get("coverage_pct")
+                        },
+                        "latest_risk_stats_date": risk_metrics.get("latest_risk_stats_date")
+                    }
+                    
+                    # Format numbers for display
+                    for asset_class in ["equity", "fixed_income", "hard_currency", "alternatives"]:
+                        for metric in ["beta", "volatility", "duration"]:
+                            if asset_class in report_data["risk_metrics"] and metric in report_data["risk_metrics"][asset_class]:
+                                value = report_data["risk_metrics"][asset_class][metric]
+                                if value is not None:
+                                    # Format to 2 decimal places and avoid scientific notation
+                                    if isinstance(value, (float, Decimal)):
+                                        report_data["risk_metrics"][asset_class][metric] = float(f"{value:.2f}")
+            except Exception as risk_error:
+                logger.warning(f"Error calculating risk metrics: {str(risk_error)}")
+                # Continue without risk metrics
+                report_data["risk_metrics"] = {
+                    "error": f"Risk metrics unavailable: {str(risk_error)}",
+                    "available": False
+                }
         
-        # Return only data for the specified portfolio
+        # Return the enhanced report data with risk metrics
         return jsonify(report_data)
         
     except Exception as e:
