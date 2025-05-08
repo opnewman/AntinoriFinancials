@@ -28,7 +28,12 @@ logger = logging.getLogger(__name__)
 
 # SQL Queries for direct database access
 SQL_TOTAL_PORTFOLIO_VALUE = """
-    SELECT SUM(CAST(adjusted_value AS NUMERIC)) as total_value
+    SELECT SUM(
+        CASE WHEN adjusted_value LIKE 'ENC:%' 
+            THEN CAST(SUBSTRING(adjusted_value, 5) AS NUMERIC) 
+            ELSE CAST(adjusted_value AS NUMERIC) 
+        END
+    ) as total_value
     FROM financial_positions
     WHERE date = :date
     AND {level_filter}
@@ -37,7 +42,12 @@ SQL_TOTAL_PORTFOLIO_VALUE = """
 SQL_ASSET_CLASS_TOTALS = """
     SELECT
         asset_class,
-        SUM(CAST(adjusted_value AS NUMERIC)) as total_value
+        SUM(
+            CASE WHEN adjusted_value LIKE 'ENC:%' 
+                THEN CAST(SUBSTRING(adjusted_value, 5) AS NUMERIC) 
+                ELSE CAST(adjusted_value AS NUMERIC) 
+            END
+        ) as total_value
     FROM financial_positions
     WHERE date = :date
     AND {level_filter}
@@ -47,7 +57,12 @@ SQL_ASSET_CLASS_TOTALS = """
 SQL_EQUITY_SUBCATEGORIES = """
     SELECT
         second_level,
-        SUM(CAST(adjusted_value AS NUMERIC)) as total_value
+        SUM(
+            CASE WHEN adjusted_value LIKE 'ENC:%' 
+                THEN CAST(SUBSTRING(adjusted_value, 5) AS NUMERIC) 
+                ELSE CAST(adjusted_value AS NUMERIC) 
+            END
+        ) as total_value
     FROM financial_positions
     WHERE date = :date
     AND asset_class = 'equity'
@@ -58,7 +73,12 @@ SQL_EQUITY_SUBCATEGORIES = """
 SQL_FIXED_INCOME_SUBCATEGORIES = """
     SELECT
         second_level,
-        SUM(CAST(adjusted_value AS NUMERIC)) as total_value
+        SUM(
+            CASE WHEN adjusted_value LIKE 'ENC:%' 
+                THEN CAST(SUBSTRING(adjusted_value, 5) AS NUMERIC) 
+                ELSE CAST(adjusted_value AS NUMERIC) 
+            END
+        ) as total_value
     FROM financial_positions
     WHERE date = :date
     AND asset_class = 'fixed income'
@@ -69,7 +89,12 @@ SQL_FIXED_INCOME_SUBCATEGORIES = """
 SQL_HARD_CURRENCY_SUBCATEGORIES = """
     SELECT
         third_level,
-        SUM(CAST(adjusted_value AS NUMERIC)) as total_value
+        SUM(
+            CASE WHEN adjusted_value LIKE 'ENC:%' 
+                THEN CAST(SUBSTRING(adjusted_value, 5) AS NUMERIC) 
+                ELSE CAST(adjusted_value AS NUMERIC) 
+            END
+        ) as total_value
     FROM financial_positions
     WHERE date = :date
     AND asset_class = 'alternatives'
