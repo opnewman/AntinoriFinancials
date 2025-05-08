@@ -147,12 +147,13 @@ window.api = {
      * @param {string} date - Report date (YYYY-MM-DD)
      * @param {string} level - Report level (client, group, portfolio, account, custom)
      * @param {string} levelKey - Key for the selected level
+     * @param {string} displayFormat - Format to display values (percent, dollar)
      */
-    getPortfolioReport: async (date, level, levelKey) => {
+    getPortfolioReport: async (date, level, levelKey, displayFormat = 'percent') => {
         try {
             const response = await axios.get(
                 `${API_BASE_URL}/api/portfolio-report`, {
-                    params: { date, level, level_key: levelKey }
+                    params: { date, level, level_key: levelKey, display_format: displayFormat }
                 }
             );
             
