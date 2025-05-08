@@ -14,6 +14,7 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from src.models.models import FinancialPosition, EgnyteRiskStat, FinancialSummary
+from src.utils.encryption import encryption_service
 
 logger = logging.getLogger(__name__)
 
@@ -97,11 +98,23 @@ def calculate_portfolio_risk_metrics(
         asset_class = position.asset_class.lower() if position.asset_class else ""
         standardized_class = asset_class_map.get(asset_class, "other")
         
-        # Convert adjusted_value from string to Decimal
+        # Convert adjusted_value from string to Decimal, handle encrypted values
         try:
-            adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
-        except (ValueError, TypeError, InvalidOperation):
-            logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Using 0.")
+            # Check if the value is encrypted (starts with "ENC:")
+            if position.adjusted_value and position.adjusted_value.startswith('ENC:'):
+                # Extract the encrypted part (remove "ENC:" prefix)
+                encrypted_part = position.adjusted_value[4:]
+                # Decrypt the value and convert to Decimal
+                decrypted_value = encryption_service.decrypt(encrypted_part)
+                if decrypted_value:
+                    adjusted_value_decimal = Decimal(decrypted_value.replace(',', '').replace('$', ''))
+                else:
+                    adjusted_value_decimal = Decimal('0.0')
+            else:
+                # Regular non-encrypted value
+                adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
+        except (ValueError, TypeError, InvalidOperation) as e:
+            logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Error: {str(e)}. Using 0.")
             adjusted_value_decimal = Decimal('0.0')
             
         if standardized_class in totals:
