@@ -111,16 +111,16 @@ window.PortfolioReport = ({ reportData, loading, displayFormat = 'percent' }) =>
                         <td className="border px-4 py-2 text-right">{formatValue(equities.total_pct)}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6 bg-gray-50">Vol</td>
-                        <td className="border px-4 py-2 text-right bg-gray-50">{formatNumber(equities.vol || '')}</td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-blue-50 font-medium">Vol</td>
+                        <td className="border px-4 py-2 text-right bg-blue-50">{formatNumber(equities.vol || '')}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6 bg-gray-50">Beta</td>
-                        <td className="border px-4 py-2 text-right bg-gray-50">{formatNumber(equities.beta || '')}</td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-blue-50 font-medium">Beta</td>
+                        <td className="border px-4 py-2 text-right bg-blue-50">{formatNumber(equities.beta || '')}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6 bg-gray-50">Beta Adjusted</td>
-                        <td className="border px-4 py-2 text-right bg-gray-50">{formatNumber(equities.beta_adjusted || '')}</td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-blue-50 font-medium">Beta Adjusted</td>
+                        <td className="border px-4 py-2 text-right bg-blue-50">{formatNumber(equities.beta_adjusted || '')}</td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6">US Markets</td>
@@ -179,8 +179,8 @@ window.PortfolioReport = ({ reportData, loading, displayFormat = 'percent' }) =>
                         <td className="border px-4 py-2 text-right">{formatValue(fixed_income.total_pct)}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6 bg-gray-50">Duration</td>
-                        <td className="border px-4 py-2 text-right bg-gray-50">{formatNumber(fixed_income.duration || '')}</td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-red-50 font-medium">Duration</td>
+                        <td className="border px-4 py-2 text-right bg-red-50">{formatNumber(fixed_income.duration || '')}</td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6">Municipal Bonds</td>
@@ -247,12 +247,12 @@ window.PortfolioReport = ({ reportData, loading, displayFormat = 'percent' }) =>
                         <td className="border px-4 py-2 text-right">{formatValue(hard_currency.total_pct)}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6 bg-gray-50">HC Beta</td>
-                        <td className="border px-4 py-2 text-right bg-gray-50"></td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-yellow-50 font-medium">HC Beta</td>
+                        <td className="border px-4 py-2 text-right bg-yellow-50">{formatNumber(hard_currency.beta || '')}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6 bg-gray-50">Beta adj.</td>
-                        <td className="border px-4 py-2 text-right bg-gray-50"></td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-yellow-50 font-medium">Beta adj.</td>
+                        <td className="border px-4 py-2 text-right bg-yellow-50">{formatNumber(hard_currency.beta_adjusted || '')}</td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6">Gold</td>
@@ -291,7 +291,7 @@ window.PortfolioReport = ({ reportData, loading, displayFormat = 'percent' }) =>
             <table className="min-w-full text-sm border-collapse">
                 <tbody>
                     <tr>
-                        <td className="bg-orange-200 px-4 py-2 text-left font-medium">Uncorrelated Alternatives</td>
+                        <td className="bg-orange-300 px-4 py-2 text-left font-medium">Uncorrelated Alternatives</td>
                         <td className="border px-4 py-2 text-right">{formatValue(uncorrelated_alternatives.total_pct)}</td>
                     </tr>
                     <tr>
