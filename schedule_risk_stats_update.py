@@ -9,8 +9,12 @@ import sys
 import logging
 import time
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -59,15 +63,20 @@ def main():
     )
     
     # Log the next run time
+    # We need to start the scheduler before accessing next_run_time
+    scheduler.start()
+    logger.info("Scheduler started successfully")
+    
+    # Now we can safely access next_run_time
     job = scheduler.get_job('risk_stats_update')
-    if job:
+    if job and hasattr(job, 'next_run_time'):
         next_run = job.next_run_time
         logger.info(f"Next scheduled run: {next_run}")
+    else:
+        logger.info("Job scheduled, but next run time is not available yet")
     
     try:
-        # Start the scheduler
-        scheduler.start()
-        logger.info("Scheduler started successfully")
+        # Scheduler is already started above
         
         # Run the job immediately for the first time
         logger.info("Running initial risk statistics update...")
