@@ -97,16 +97,16 @@ window.PortfolioReport = ({ reportData, loading }) => {
                         <td className="border px-4 py-2 text-right">{formatPercent(equities.total_pct)}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6">Vol</td>
-                        <td className="border px-4 py-2 text-right">{formatNumber(equities.vol || '')}</td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-gray-50">Vol</td>
+                        <td className="border px-4 py-2 text-right bg-gray-50">{formatNumber(equities.vol || '')}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6">Beta</td>
-                        <td className="border px-4 py-2 text-right">{formatNumber(equities.beta || '')}</td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-gray-50">Beta</td>
+                        <td className="border px-4 py-2 text-right bg-gray-50">{formatNumber(equities.beta || '')}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6">Beta Adjusted</td>
-                        <td className="border px-4 py-2 text-right">{formatNumber(equities.beta_adjusted || '')}</td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-gray-50">Beta Adjusted</td>
+                        <td className="border px-4 py-2 text-right bg-gray-50">{formatNumber(equities.beta_adjusted || '')}</td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6">US Markets</td>
@@ -165,8 +165,8 @@ window.PortfolioReport = ({ reportData, loading }) => {
                         <td className="border px-4 py-2 text-right">{formatPercent(fixed_income.total_pct)}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6">Duration</td>
-                        <td className="border px-4 py-2 text-right">{formatNumber(fixed_income.duration || '')}</td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-gray-50">Duration</td>
+                        <td className="border px-4 py-2 text-right bg-gray-50">{formatNumber(fixed_income.duration || '')}</td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6">Municipal Bonds</td>
@@ -233,12 +233,12 @@ window.PortfolioReport = ({ reportData, loading }) => {
                         <td className="border px-4 py-2 text-right">{formatPercent(hard_currency.total_pct)}</td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6">HC Beta</td>
-                        <td className="border px-4 py-2 text-right"></td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-gray-50">HC Beta</td>
+                        <td className="border px-4 py-2 text-right bg-gray-50"></td>
                     </tr>
                     <tr>
-                        <td className="border px-4 py-2 text-left pl-6">Beta adj.</td>
-                        <td className="border px-4 py-2 text-right"></td>
+                        <td className="border px-4 py-2 text-left pl-6 bg-gray-50">Beta adj.</td>
+                        <td className="border px-4 py-2 text-right bg-gray-50"></td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6">Gold</td>

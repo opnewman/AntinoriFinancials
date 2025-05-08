@@ -45,6 +45,9 @@ window.PortfolioReportPage = () => {
         setError(null);
         
         try {
+            // Make sure we're sending the correct format to the API
+            console.log('Requesting report with format:', displayFormat);
+            
             // Use window.api instead of direct axios call
             const report = await window.api.getPortfolioReport(
                 reportDate,
@@ -754,6 +757,7 @@ window.PortfolioReportPage = () => {
                         className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none flex items-center"
                         onClick={() => {
                             const newFormat = displayFormat === 'percent' ? 'dollar' : 'percent';
+                            console.log('Toggle button clicked: changing format from', displayFormat, 'to', newFormat);
                             setDisplayFormat(newFormat);
                             if (reportData) {
                                 // Regenerate report when format changes if we already have data
