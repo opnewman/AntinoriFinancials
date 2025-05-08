@@ -79,6 +79,24 @@ def process_excel_file(file_path, db):
     # Read the Excel file with multiple sheets
     excel_file = pd.ExcelFile(file_path)
     sheet_names = excel_file.sheet_names
+    logger.info(f"Excel file contains sheets: {sheet_names}")
+    
+    # Examine the structure of each sheet for better understanding
+    for sheet in sheet_names:
+        try:
+            # Read just a few rows to analyze structure
+            df = pd.read_excel(file_path, sheet_name=sheet, nrows=5)
+            logger.info(f"Sheet: {sheet}, Columns: {df.columns.tolist()}")
+            if len(df) > 0:
+                sample_row = df.iloc[0].to_dict()
+                # Convert any non-serializable types to strings for logging
+                sample_row = {k: str(v) if not isinstance(v, (int, float, str, bool, type(None))) else v 
+                              for k, v in sample_row.items()}
+                logger.info(f"Sample data from {sheet}: {sample_row}")
+            else:
+                logger.info(f"No data in sheet {sheet}")
+        except Exception as e:
+            logger.warning(f"Could not read sheet {sheet}: {e}")
     
     import_date = date.today()
     stats = {
@@ -88,14 +106,44 @@ def process_excel_file(file_path, db):
         "alternatives_records": 0
     }
     
-    # Process each sheet based on its name
-    for sheet_name in sheet_names:
-        if isinstance(sheet_name, str) and sheet_name.lower() == 'equity':
-            stats["equity_records"] = process_equity_sheet(file_path, sheet_name, import_date, db)
-        elif isinstance(sheet_name, str) and sheet_name.lower() == 'fixed income':
-            stats["fixed_income_records"] = process_fixed_income_sheet(file_path, sheet_name, import_date, db)
-        elif isinstance(sheet_name, str) and sheet_name.lower() == 'alternatives':
-            stats["alternatives_records"] = process_alternatives_sheet(file_path, sheet_name, import_date, db)
+    # Find the appropriate sheets using more flexible matching
+    equity_sheet = None
+    fixed_income_sheet = None
+    alternatives_sheet = None
+    
+    # Find the sheet names based on more flexible matching patterns
+    for sheet in sheet_names:
+        if not isinstance(sheet, str):
+            continue
+            
+        lower_sheet = sheet.lower()
+        if "equity" in lower_sheet:
+            equity_sheet = sheet
+        elif any(term in lower_sheet for term in ["fixed", "fixed income", "fi ", "fixed inc", "duration"]):
+            fixed_income_sheet = sheet
+        elif any(term in lower_sheet for term in ["alternative", "alt", "alts"]):
+            alternatives_sheet = sheet
+    
+    # Process the Equity sheet if found
+    if equity_sheet:
+        logger.info(f"Found Equity sheet: {equity_sheet}")
+        stats["equity_records"] = process_equity_sheet(file_path, equity_sheet, import_date, db)
+    else:
+        logger.warning("No Equity sheet found in the Excel file")
+    
+    # Process the Fixed Income sheet if found
+    if fixed_income_sheet:
+        logger.info(f"Found Fixed Income sheet: {fixed_income_sheet}")
+        stats["fixed_income_records"] = process_fixed_income_sheet(file_path, fixed_income_sheet, import_date, db)
+    else:
+        logger.warning("No Fixed Income sheet found in the Excel file")
+    
+    # Process the Alternatives sheet if found
+    if alternatives_sheet:
+        logger.info(f"Found Alternatives sheet: {alternatives_sheet}")
+        stats["alternatives_records"] = process_alternatives_sheet(file_path, alternatives_sheet, import_date, db)
+    else:
+        logger.warning("No Alternatives sheet found in the Excel file")
     
     # Calculate total records
     stats["total_records"] = (
