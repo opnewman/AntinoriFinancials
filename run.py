@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Server startup script for the ANTINORI Financial Portfolio Reporting API.
+Server startup script for the nori Financial Portfolio Reporting API.
 This script correctly starts a uvicorn server suitable for FastAPI applications.
 """
 import os

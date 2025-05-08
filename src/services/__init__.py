@@ -1,5 +1,5 @@
 """
-Services module for ANTINORI Financial Portfolio Reporting System.
+Services module for nori Financial Portfolio Reporting System.
 """
 
 from src.services.portfolio_report_service import generate_portfolio_report

@@ -71,7 +71,7 @@ def ownership_explorer_page():
 # API root endpoint
 @app.route("/api")
 def api_root():
-    return jsonify({"message": "ANTINORI Financial Portfolio Reporting API"})
+    return jsonify({"message": "nori Financial Portfolio Reporting API"})
 
 # Health check endpoint
 @app.route("/health")

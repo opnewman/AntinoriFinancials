@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Service script for ANTINORI Financial Portfolio Reporting System.
+Service script for nori Financial Portfolio Reporting System.
 This script can run either the Flask app (for testing) or integrate with FastAPI.
 """
 import os

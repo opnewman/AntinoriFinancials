@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def index():
-    return jsonify({"message": "ANTINORI Financial Portfolio Reporting API - Flask Version"})
+    return jsonify({"message": "nori Financial Portfolio Reporting API - Flask Version"})
 
 @app.route("/health")
 def health():

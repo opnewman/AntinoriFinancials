@@ -17,7 +17,7 @@ class EncryptionService:
         if not self.key:
             logger.warning("ENCRYPTION_KEY not found in environment variables. Using a default key (not recommended for production).")
             # Create a default key for development - this should be replaced in production
-            salt = b'antinori_salt'
+            salt = b'nori_salt'
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
                 length=32,

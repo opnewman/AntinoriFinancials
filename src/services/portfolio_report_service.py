@@ -2,7 +2,7 @@
 Portfolio Report Service - Optimized Database Queries
 
 This service uses direct PostgreSQL queries to efficiently generate portfolio reports
-according to the ANTINORI categorization schema:
+according to the nori categorization schema:
 
 - Equity: Uses asset_class='equity' with subcategories from second_level
 - Fixed Income: Uses asset_class='fixed income' with subcategories from second_level

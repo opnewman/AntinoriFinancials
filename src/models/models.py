@@ -1,5 +1,5 @@
 """
-Database models for the ANTINORI Financial Portfolio Reporting System.
+Database models for the nori Financial Portfolio Reporting System.
 """
 
 import sqlalchemy as sa
