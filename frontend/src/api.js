@@ -1,5 +1,5 @@
 /**
- * API service for ANTINORI Financial Portfolio Reporting
+ * API service for nori Financial Portfolio Reporting
  */
 // Using the already loaded axios from CDN
 // No need to import
