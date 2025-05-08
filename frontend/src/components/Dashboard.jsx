@@ -12,7 +12,8 @@ class Dashboard extends React.Component {
             liquidityChart: null,
             performanceChart: null,
             error: '',
-            loading: false
+            loading: false,
+            displayFormat: 'percent' // Default to percentage display
         };
         this._isMounted = false; // Track component mount state
     }
@@ -103,7 +104,7 @@ class Dashboard extends React.Component {
     
     // Generate report
     generateReport = async () => {
-        const { reportDate, reportLevel, levelKey } = this.state;
+        const { reportDate, reportLevel, levelKey, displayFormat } = this.state;
         
         if (!levelKey) {
             this.setState({ error: 'Please select a valid option' });
@@ -122,7 +123,7 @@ class Dashboard extends React.Component {
         
         // Create all API request promises but handle them individually
         // Use window.api to access the global API object
-        const portfolioReportPromise = window.api.getPortfolioReport(reportDate, reportLevel, levelKey);
+        const portfolioReportPromise = window.api.getPortfolioReport(reportDate, reportLevel, levelKey, displayFormat);
         const allocationChartPromise = window.api.getAllocationChartData(reportDate, reportLevel, levelKey);
         const liquidityChartPromise = window.api.getLiquidityChartData(reportDate, reportLevel, levelKey);
         const performanceChartPromise = window.api.getPerformanceChartData(reportDate, reportLevel, levelKey, 'YTD');
@@ -268,10 +269,22 @@ class Dashboard extends React.Component {
         }));
     };
     
+    // Handle display format change
+    handleDisplayFormatChange = (e) => {
+        const format = e.target.value;
+        this.setState({ displayFormat: format }, () => {
+            // Regenerate the report if we already have data
+            if (this.state.reportData) {
+                this.generateReport();
+            }
+        });
+    };
+    
     render() {
         const { 
             reportDate, reportLevel, levelKey, levelOptions, error, loading,
-            reportData, allocationsChart, liquidityChart, performanceChart
+            reportData, allocationsChart, liquidityChart, performanceChart,
+            displayFormat
         } = this.state;
         
         if (loading && !reportData) {
@@ -379,7 +392,23 @@ class Dashboard extends React.Component {
                     <>
                         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
                             <div className="flex justify-between items-center mb-4">
-                                <h2 className="text-xl font-bold">Portfolio Overview</h2>
+                                <div className="flex items-center">
+                                    <h2 className="text-xl font-bold mr-6">Portfolio Overview</h2>
+                                    <div className="flex items-center">
+                                        <label htmlFor="displayFormat" className="mr-2 text-sm font-medium text-gray-700">
+                                            Display As:
+                                        </label>
+                                        <select
+                                            id="displayFormat"
+                                            value={displayFormat}
+                                            onChange={this.handleDisplayFormatChange}
+                                            className="px-3 py-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 text-sm"
+                                        >
+                                            <option value="percent">Percentages</option>
+                                            <option value="dollar">Dollar Values</option>
+                                        </select>
+                                    </div>
+                                </div>
                                 <div className="text-right">
                                     <div className="text-sm text-gray-500">Report Date</div>
                                     <div className="text-lg font-semibold">{reportData.report_date}</div>
@@ -502,7 +531,20 @@ class Dashboard extends React.Component {
                                 data={this.formatAssetAllocation()}
                                 columns={[
                                     { id: 'name', label: 'Asset Class', accessor: 'name' },
-                                    { id: 'percentage', label: 'Allocation (%)', accessor: 'percentage', format: (value) => `${Number(value).toFixed(2)}%` }
+                                    { 
+                                        id: 'percentage', 
+                                        label: displayFormat === 'percent' ? 'Allocation (%)' : 'Allocation ($)', 
+                                        accessor: 'percentage', 
+                                        format: (value) => {
+                                            if (displayFormat === 'percent') {
+                                                return `${Number(value).toFixed(2)}%`;
+                                            } else {
+                                                // Calculate dollar value from percentage of total
+                                                const dollarValue = (Number(value) / 100) * reportData.total_adjusted_value;
+                                                return `$${dollarValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                                            }
+                                        }
+                                    }
                                 ]}
                             />
                             
