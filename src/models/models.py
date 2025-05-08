@@ -22,7 +22,7 @@ class OwnershipMetadata(Base):
     has_classifications = sa.Column(sa.Boolean, default=False)
     
     # Relationships
-    items = relationship("OwnershipItem", back_populates="metadata", cascade="all, delete-orphan")
+    items = relationship("OwnershipItem", back_populates="meta_info", cascade="all, delete-orphan")
 
 
 class OwnershipItem(Base):
@@ -40,7 +40,7 @@ class OwnershipItem(Base):
     row_order = sa.Column(sa.Integer)
     
     # Relationships
-    meta_data = relationship("OwnershipMetadata", back_populates="items")
+    meta_info = relationship("OwnershipMetadata", back_populates="items")
     children = relationship("OwnershipItem", 
                            backref=sa.orm.backref('parent', remote_side=[id]),
                            cascade="all, delete-orphan")

@@ -26,8 +26,7 @@ const NavigationBar = () => {
                     <div className="flex items-center">
                         <div className="flex-shrink-0 font-bold text-xl tracking-tight">
                             <Link to="/" className="flex items-center">
-                                <img src="src/assets/nori-logo.svg" alt="NORI" className="h-8 mr-2" />
-                                <span className="text-white text-xl font-bold">NORI</span>
+                                <span className="text-white text-2xl font-bold">NORI</span>
                             </Link>
                         </div>
                     </div>

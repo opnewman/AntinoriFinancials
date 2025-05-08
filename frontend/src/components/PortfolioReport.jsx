@@ -289,10 +289,10 @@ window.PortfolioReport = ({ reportData, loading, displayFormat = 'percent' }) =>
 
             {/* Uncorrelated Alternatives Section */}
             <table className="min-w-full text-sm border-collapse">
-                <tbody>
+                <tbody className="bg-orange-100">
                     <tr>
-                        <td className="bg-orange-300 px-4 py-2 text-left font-medium">Uncorrelated Alternatives</td>
-                        <td className="bg-orange-300 border px-4 py-2 text-right font-medium">{formatValue(uncorrelated_alternatives.total_pct)}</td>
+                        <td className="bg-orange-200 px-4 py-2 text-left font-medium">Uncorrelated Alternatives</td>
+                        <td className="bg-orange-200 border px-4 py-2 text-right font-medium">{formatValue(uncorrelated_alternatives.total_pct)}</td>
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6 bg-orange-100">Crypto</td>
