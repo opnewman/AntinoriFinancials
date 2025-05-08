@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Database initialization script for ANTINORI.
+Database initialization script for nori.
 This script recreates the database tables with all indexes and optimizations.
 """
 

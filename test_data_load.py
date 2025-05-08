@@ -314,7 +314,7 @@ def check_financial_summary(engine):
 
 def main():
     """Main execution function"""
-    logger.info("=== ANTINORI Data Load Diagnostic Tool ===")
+    logger.info("=== nori Data Load Diagnostic Tool ===")
     
     # Test database connection
     engine = test_database_connection()
