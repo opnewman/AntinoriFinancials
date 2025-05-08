@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
@@ -10,6 +11,10 @@ from collections import defaultdict, Counter
 import json
 import re
 import traceback
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, 
