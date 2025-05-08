@@ -241,22 +241,31 @@ class Dashboard extends React.Component {
         const { reportData } = this.state;
         if (!reportData || !reportData.performance) return [];
         
-        // Handle case where performance is an object rather than an array
-        if (!Array.isArray(reportData.performance)) {
-            // Convert the object to an array of objects
-            return Object.entries(reportData.performance).map(([period, value]) => ({
-                name: period,
-                value: value,
-                percentage: value // Use the same value for percentage since that's what we have
+        try {
+            // Handle case where performance is an object rather than an array
+            if (!Array.isArray(reportData.performance)) {
+                // Convert the object to an array of objects
+                return Object.entries(reportData.performance).map(([period, value]) => ({
+                    name: period,
+                    value: value,
+                    percentage: value // Use the same value for percentage since that's what we have
+                }));
+            }
+            
+            // If it's already an array, use the original format
+            return reportData.performance.map(perf => ({
+                name: perf.period,
+                value: perf.value,
+                percentage: perf.percentage
             }));
+        } catch (error) {
+            console.error("Error in formatPerformance:", error);
+            return [
+                { name: "YTD", value: 0, percentage: 0 },
+                { name: "QTD", value: 0, percentage: 0 },
+                { name: "MTD", value: 0, percentage: 0 }
+            ];
         }
-        
-        // If it's already an array, use the original format
-        return reportData.performance.map(perf => ({
-            name: perf.period,
-            value: perf.value,
-            percentage: perf.percentage
-        }));
     };
     
     formatRiskMetrics = () => {
