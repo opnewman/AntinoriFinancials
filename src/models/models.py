@@ -67,15 +67,25 @@ class FinancialPosition(Base):
     third_level = sa.Column(sa.String, index=True)
     adv_classification = sa.Column(sa.String)
     liquid_vs_illiquid = sa.Column(sa.String, index=True)
-    adjusted_value = sa.Column(sa.Numeric(20, 2), nullable=False)
-    row_order = sa.Column(sa.Integer, index=True)  # To preserve original order
-    created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
-    updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
+    adjusted_value = sa.Column(sa.String, nullable=False)  # In database it's character varying
+    upload_date = sa.Column(sa.Date)  # This column exists in the database
     
-    # For compatibility with code that expects 'report_date'
+    # Compatibility properties for fields expected by code but not in database
     @property
     def report_date(self):
         return self.date
+        
+    @property
+    def row_order(self):
+        return None
+        
+    @property
+    def created_at(self):
+        return None
+        
+    @property
+    def updated_at(self):
+        return None
 
 
 class FinancialSummary(Base):
