@@ -1183,18 +1183,17 @@ def get_ownership_tree():
             
             # Get all entities ordered by their row_order field
             all_entities = db.query(
-                OwnershipItem.client,
-                OwnershipItem.portfolio,
-                OwnershipItem.entity_id,
-                OwnershipItem.group_id,
-                OwnershipItem.holding_account_number,
-                OwnershipItem.grouping_attribute_name,
+                OwnershipItem.name,
+                OwnershipItem.type,
+                OwnershipItem.parent_id,
+                OwnershipItem.account_number,
+                OwnershipItem.row_order,
                 OwnershipItem.id  # Use ID as a proxy for row order until migration completes
             ).filter(
                 OwnershipItem.metadata_id == latest_metadata.id
             ).order_by(
                 # First try to use row_order if available, fall back to id if not
-                text("COALESCE(row_order, id) ASC")
+                OwnershipItem.row_order.asc(), OwnershipItem.id.asc()
             ).all()
             
             # Create a set of client names and maps for all entity types
@@ -1214,42 +1213,39 @@ def get_ownership_tree():
             
             for entity in all_entities:
                 # Skip rows with missing essential data
-                if not entity.client:
+                if not entity.name:
                     continue
                 
                 # Process different entity types
-                if entity.grouping_attribute_name == "Client":
+                if entity.type == "client":
                     # Found a new client - this starts a new section in the hierarchy
-                    current_client = entity.client
+                    current_client = entity.name
                     current_group = None  # Reset current group when a new client starts
                     
                     # Store client information
                     client_names.add(current_client)
-                    if entity.portfolio:
-                        client_portfolio_map[current_client] = entity.portfolio
-                    if entity.entity_id:
-                        client_entity_map[current_client] = entity.entity_id
+                    # Store metadata if available
+                    client_entity_map[current_client] = entity.id
                 
-                elif entity.grouping_attribute_name == "Group" and current_client:
+                elif entity.type == "group" and current_client:
                     # Found a group that belongs to the current client
-                    current_group = entity.client
+                    current_group = entity.name
                     
                     # Store group information
-                    if entity.group_id:
-                        group_name_to_id[current_group] = entity.group_id
+                    group_name_to_id[current_group] = entity.id
                     
                     # Link this group to its parent client
                     client_to_groups[current_client].append({
                         "name": current_group,
-                        "id": entity.group_id
+                        "id": entity.id
                     })
                 
-                elif entity.grouping_attribute_name == "Holding Account":
+                elif entity.type == "account":
                     # This is an account - link it to either current group or client
                     account_data = {
-                        "name": entity.client,
-                        "entity_id": entity.entity_id,
-                        "account_number": entity.holding_account_number,
+                        "name": entity.name,
+                        "entity_id": entity.id,
+                        "account_number": entity.account_number,
                         "value": 1  # Fixed value for visualization
                     }
                     
