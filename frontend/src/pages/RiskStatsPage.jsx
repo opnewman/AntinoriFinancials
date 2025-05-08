@@ -56,9 +56,9 @@ const RiskStatsPage = () => {
         setRiskStats(result.risk_stats || []);
         
         // Extract unique second level values for filter dropdown
-        if (assetClass && result.data && result.data.length > 0) {
+        if (assetClass && result.risk_stats && result.risk_stats.length > 0) {
           const uniqueSecondLevels = [...new Set(
-            result.data
+            result.risk_stats
               .filter(stat => stat.second_level)
               .map(stat => stat.second_level)
           )];
@@ -217,19 +217,19 @@ const RiskStatsPage = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-3 rounded shadow">
             <p className="text-sm text-gray-600">Last Updated</p>
-            <p className="font-medium">{status.last_update_date ? formatDate(status.last_update_date) : 'Never'}</p>
+            <p className="font-medium">{status.latest_import_date ? formatDate(status.latest_import_date) : 'Never'}</p>
           </div>
           <div className="bg-white p-3 rounded shadow">
             <p className="text-sm text-gray-600">Equity Records</p>
-            <p className="font-medium">{status.equity_count || 0}</p>
+            <p className="font-medium">{status.equity_records || 0}</p>
           </div>
           <div className="bg-white p-3 rounded shadow">
             <p className="text-sm text-gray-600">Fixed Income Records</p>
-            <p className="font-medium">{status.fixed_income_count || 0}</p>
+            <p className="font-medium">{status.fixed_income_records || 0}</p>
           </div>
           <div className="bg-white p-3 rounded shadow">
             <p className="text-sm text-gray-600">Alternative Records</p>
-            <p className="font-medium">{status.alternatives_count || 0}</p>
+            <p className="font-medium">{status.alternatives_records || 0}</p>
           </div>
         </div>
       </div>
