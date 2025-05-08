@@ -2,6 +2,7 @@
 Service for interacting with the Egnyte API to fetch risk statistics.
 """
 import os
+import re
 import logging
 import tempfile
 from datetime import datetime, date
@@ -339,6 +340,7 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
     
     # Keep track of records processed
     records_processed = 0
+    records_succeeded = 0
     
     # Process in smaller batches to avoid excessive parameter lists
     batch_size = 100
@@ -347,6 +349,12 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
     # Log the sheet structure
     logger.info(f"Fixed Income sheet columns: {df.columns.tolist()}")
     logger.info(f"Fixed Income sheet has {len(df)} rows")
+    
+    # Check for duplicate positions in the input file
+    position_counts = df['Position'].value_counts()
+    duplicates = position_counts[position_counts > 1].index.tolist()
+    if duplicates:
+        logger.warning(f"Found {len(duplicates)} duplicate position names in the Fixed Income sheet: {', '.join(duplicates[:5])}")
     
     # Map expected columns to our model fields
     for start_idx in range(0, len(df), batch_size):
@@ -408,23 +416,79 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
             db.add_all(batch_records)
             # Commit the batch
             db.commit()
-            logger.info(f"Committed batch {batch_count} with {len(batch_records)} records")
+            logger.info(f"Committed fixed income batch {batch_count} with {len(batch_records)} records")
+            records_succeeded += len(batch_records)
         except Exception as e:
             # Roll back on error
             db.rollback()
-            logger.error(f"Error committing batch {batch_count}: {e}")
-            # Try inserting records one by one to identify problematic records
-            for risk_stat in batch_records:
-                try:
-                    db.add(risk_stat)
-                    db.commit()
-                    logger.info(f"Individually added record for position: {risk_stat.position}")
-                except Exception as inner_e:
-                    db.rollback()
-                    logger.error(f"Error adding individual record for position {risk_stat.position}: {inner_e}")
+            error_msg = str(e)
+            logger.error(f"Error committing fixed income batch {batch_count}: {error_msg}")
+            
+            # Check for specific error conditions
+            if "duplicate key value violates unique constraint" in error_msg:
+                logger.warning("Duplicate key constraint violation detected in fixed income batch")
+                # Extract the name of the duplicated position if possible
+                duplicate_match = re.search(r"Key \(import_date, position, asset_class\)=\([^,]+, ([^,]+), [^)]+\)", error_msg)
+                duplicate_position = duplicate_match.group(1) if duplicate_match else "unknown"
+                logger.warning(f"Duplicate position: {duplicate_position}")
+                
+                # Try inserting records one by one but skip the problematic ones
+                success_count = 0
+                for risk_stat in batch_records:
+                    try:
+                        # Use a raw SQL INSERT with ON CONFLICT DO NOTHING to handle duplicates gracefully
+                        sql = text("""
+                            INSERT INTO egnyte_risk_stats 
+                            (import_date, position, ticker_symbol, cusip, asset_class, second_level, bloomberg_id, 
+                             volatility, beta, duration, notes, amended_id, source_file, source_tab, source_row)
+                            VALUES 
+                            (:import_date, :position, :ticker_symbol, :cusip, :asset_class, :second_level, :bloomberg_id,
+                             :volatility, :beta, :duration, :notes, :amended_id, :source_file, :source_tab, :source_row)
+                            ON CONFLICT (import_date, position, asset_class) DO NOTHING
+                        """)
+                        
+                        db.execute(sql, {
+                            "import_date": risk_stat.import_date,
+                            "position": risk_stat.position,
+                            "ticker_symbol": risk_stat.ticker_symbol,
+                            "cusip": risk_stat.cusip,
+                            "asset_class": risk_stat.asset_class,
+                            "second_level": risk_stat.second_level,
+                            "bloomberg_id": risk_stat.bloomberg_id,
+                            "volatility": None,  # Not used for fixed income
+                            "beta": None,  # Not used for fixed income
+                            "duration": risk_stat.duration,
+                            "notes": risk_stat.notes,
+                            "amended_id": risk_stat.amended_id,
+                            "source_file": risk_stat.source_file,
+                            "source_tab": risk_stat.source_tab,
+                            "source_row": risk_stat.source_row
+                        })
+                        db.commit()
+                        success_count += 1
+                    except Exception as inner_e:
+                        db.rollback()
+                        logger.error(f"Error adding individual fixed income record for position {risk_stat.position}: {inner_e}")
+                
+                records_succeeded += success_count
+                logger.info(f"Successfully added {success_count} out of {len(batch_records)} fixed income records individually")
+            else:
+                # Handle other types of errors with individual inserts
+                success_count = 0
+                for risk_stat in batch_records:
+                    try:
+                        db.add(risk_stat)
+                        db.commit()
+                        success_count += 1
+                    except Exception as inner_e:
+                        db.rollback()
+                        logger.error(f"Error adding individual fixed income record for position {risk_stat.position}: {inner_e}")
+                
+                records_succeeded += success_count
+                logger.info(f"Successfully added {success_count} out of {len(batch_records)} fixed income records individually")
     
-    logger.info(f"Processed {records_processed} fixed income risk statistics")
-    return records_processed
+    logger.info(f"Processed {records_processed} fixed income risk statistics, successfully imported {records_succeeded}")
+    return records_succeeded
 
 
 def process_alternatives_sheet(file_path, sheet_name, import_date, db):
@@ -438,6 +502,7 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db):
     
     # Keep track of records processed
     records_processed = 0
+    records_succeeded = 0
     
     # Process in smaller batches to avoid excessive parameter lists
     batch_size = 100
@@ -446,6 +511,12 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db):
     # Log the sheet structure
     logger.info(f"Alternatives sheet columns: {df.columns.tolist()}")
     logger.info(f"Alternatives sheet has {len(df)} rows")
+    
+    # Check for duplicate positions in the input file
+    position_counts = df['Position'].value_counts()
+    duplicates = position_counts[position_counts > 1].index.tolist()
+    if duplicates:
+        logger.warning(f"Found {len(duplicates)} duplicate position names in the Alternatives sheet: {', '.join(duplicates[:5])}")
     
     # Map expected columns to our model fields
     for start_idx in range(0, len(df), batch_size):
@@ -507,23 +578,79 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db):
             db.add_all(batch_records)
             # Commit the batch
             db.commit()
-            logger.info(f"Committed batch {batch_count} with {len(batch_records)} records")
+            logger.info(f"Committed alternatives batch {batch_count} with {len(batch_records)} records")
+            records_succeeded += len(batch_records)
         except Exception as e:
             # Roll back on error
             db.rollback()
-            logger.error(f"Error committing batch {batch_count}: {e}")
-            # Try inserting records one by one to identify problematic records
-            for risk_stat in batch_records:
-                try:
-                    db.add(risk_stat)
-                    db.commit()
-                    logger.info(f"Individually added record for position: {risk_stat.position}")
-                except Exception as inner_e:
-                    db.rollback()
-                    logger.error(f"Error adding individual record for position {risk_stat.position}: {inner_e}")
+            error_msg = str(e)
+            logger.error(f"Error committing alternatives batch {batch_count}: {error_msg}")
+            
+            # Check for specific error conditions
+            if "duplicate key value violates unique constraint" in error_msg:
+                logger.warning("Duplicate key constraint violation detected in alternatives batch")
+                # Extract the name of the duplicated position if possible
+                duplicate_match = re.search(r"Key \(import_date, position, asset_class\)=\([^,]+, ([^,]+), [^)]+\)", error_msg)
+                duplicate_position = duplicate_match.group(1) if duplicate_match else "unknown"
+                logger.warning(f"Duplicate position: {duplicate_position}")
+                
+                # Try inserting records one by one but skip the problematic ones
+                success_count = 0
+                for risk_stat in batch_records:
+                    try:
+                        # Use a raw SQL INSERT with ON CONFLICT DO NOTHING to handle duplicates gracefully
+                        sql = text("""
+                            INSERT INTO egnyte_risk_stats 
+                            (import_date, position, ticker_symbol, cusip, asset_class, second_level, bloomberg_id, 
+                             volatility, beta, duration, notes, amended_id, source_file, source_tab, source_row)
+                            VALUES 
+                            (:import_date, :position, :ticker_symbol, :cusip, :asset_class, :second_level, :bloomberg_id,
+                             :volatility, :beta, :duration, :notes, :amended_id, :source_file, :source_tab, :source_row)
+                            ON CONFLICT (import_date, position, asset_class) DO NOTHING
+                        """)
+                        
+                        db.execute(sql, {
+                            "import_date": risk_stat.import_date,
+                            "position": risk_stat.position,
+                            "ticker_symbol": risk_stat.ticker_symbol,
+                            "cusip": risk_stat.cusip,
+                            "asset_class": risk_stat.asset_class,
+                            "second_level": risk_stat.second_level,
+                            "bloomberg_id": risk_stat.bloomberg_id,
+                            "volatility": None,  # Not used for alternatives
+                            "beta": risk_stat.beta,
+                            "duration": None,  # Not used for alternatives
+                            "notes": risk_stat.notes,
+                            "amended_id": risk_stat.amended_id,
+                            "source_file": risk_stat.source_file,
+                            "source_tab": risk_stat.source_tab,
+                            "source_row": risk_stat.source_row
+                        })
+                        db.commit()
+                        success_count += 1
+                    except Exception as inner_e:
+                        db.rollback()
+                        logger.error(f"Error adding individual alternatives record for position {risk_stat.position}: {inner_e}")
+                
+                records_succeeded += success_count
+                logger.info(f"Successfully added {success_count} out of {len(batch_records)} alternatives records individually")
+            else:
+                # Handle other types of errors with individual inserts
+                success_count = 0
+                for risk_stat in batch_records:
+                    try:
+                        db.add(risk_stat)
+                        db.commit()
+                        success_count += 1
+                    except Exception as inner_e:
+                        db.rollback()
+                        logger.error(f"Error adding individual alternatives record for position {risk_stat.position}: {inner_e}")
+                
+                records_succeeded += success_count
+                logger.info(f"Successfully added {success_count} out of {len(batch_records)} alternatives records individually")
     
-    logger.info(f"Processed {records_processed} alternatives risk statistics")
-    return records_processed
+    logger.info(f"Processed {records_processed} alternatives risk statistics, successfully imported {records_succeeded}")
+    return records_succeeded
 
 
 def fetch_and_process_risk_stats(db: Session):
@@ -590,15 +717,20 @@ def fetch_and_process_risk_stats(db: Session):
         
         # Now process the file and insert data into the database
         try:
-            # Make sure we have a clean database session
-            db.begin()
-            
             stats = process_excel_file(file_path, db)
             logger.info(f"Successfully processed Excel file with stats: {stats}")
             
-            # Commit the processed data
-            db.commit()
-            logger.info("Successfully committed all risk stats data to database")
+            # We don't need to commit here as each processing function manages its own transactions
+            logger.info("Successfully completed risk stats data import")
+            
+            # Add a success check - if any records were actually imported
+            if stats["total_records"] == 0:
+                logger.warning("No records were imported from the risk stats file")
+                return {
+                    "success": True,
+                    "warning": "No records were found in the risk stats file",
+                    "stats": stats
+                }
         except Exception as process_error:
             db.rollback()  # Roll back any partial changes
             logger.error(f"Error processing Excel file: {process_error}")
