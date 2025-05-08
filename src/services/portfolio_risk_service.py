@@ -249,12 +249,8 @@ def process_equity_risk(
         )
         
         if risk_stat:
-            # Convert adjusted_value from string to Decimal
-            try:
-                adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
-            except (ValueError, TypeError, InvalidOperation):
-                logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Using 0.")
-                adjusted_value_decimal = Decimal('0.0')
+            # Convert adjusted_value from string to Decimal using the utility function
+            adjusted_value_decimal = convert_position_value_to_decimal(position.adjusted_value, position.position)
                 
             position_weight = adjusted_value_decimal / totals["equity"]
             
@@ -301,12 +297,8 @@ def process_fixed_income_risk(
         )
         
         if risk_stat:
-            # Convert adjusted_value from string to Decimal
-            try:
-                adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
-            except (ValueError, TypeError, InvalidOperation):
-                logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Using 0.")
-                adjusted_value_decimal = Decimal('0.0')
+            # Convert adjusted_value from string to Decimal using the utility function
+            adjusted_value_decimal = convert_position_value_to_decimal(position.adjusted_value, position.position)
                 
             position_weight = adjusted_value_decimal / totals["fixed_income"]
             
@@ -355,12 +347,8 @@ def process_hard_currency_risk(
             )
         
         if risk_stat:
-            # Convert adjusted_value from string to Decimal
-            try:
-                adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
-            except (ValueError, TypeError, InvalidOperation):
-                logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Using 0.")
-                adjusted_value_decimal = Decimal('0.0')
+            # Convert adjusted_value from string to Decimal using the utility function
+            adjusted_value_decimal = convert_position_value_to_decimal(position.adjusted_value, position.position)
                 
             position_weight = adjusted_value_decimal / totals["hard_currency"]
             
@@ -402,12 +390,8 @@ def process_alternatives_risk(
         )
         
         if risk_stat:
-            # Convert adjusted_value from string to Decimal
-            try:
-                adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
-            except (ValueError, TypeError, InvalidOperation):
-                logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Using 0.")
-                adjusted_value_decimal = Decimal('0.0')
+            # Convert adjusted_value from string to Decimal using the utility function
+            adjusted_value_decimal = convert_position_value_to_decimal(position.adjusted_value, position.position)
                 
             position_weight = adjusted_value_decimal / totals["alternatives"]
             
