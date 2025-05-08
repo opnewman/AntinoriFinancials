@@ -487,7 +487,7 @@ def get_performance_data(db: Session, report_date: date, level: str, level_key: 
     }
 
 
-def generate_portfolio_report(db: Session, report_date: date, level: str, level_key: str) -> Dict:
+def generate_portfolio_report(db: Session, report_date: date, level: str, level_key: str, display_format: str = 'percent') -> Dict:
     """
     Generate a comprehensive portfolio report.
     
@@ -496,6 +496,7 @@ def generate_portfolio_report(db: Session, report_date: date, level: str, level_
         report_date: The report date
         level: The hierarchy level ('client', 'portfolio', 'account')
         level_key: The identifier for the specified level
+        display_format: Format to display values ('percent' or 'dollar')
         
     Returns:
         Dict with complete portfolio report data
@@ -543,6 +544,27 @@ def generate_portfolio_report(db: Session, report_date: date, level: str, level_
     report_data['level_key'] = level_key
     report_data['report_date'] = report_date.strftime('%Y-%m-%d')
     report_data['total_adjusted_value'] = total_value
+    report_data['display_format'] = display_format
+    
+    # Convert percentages to dollar values if requested
+    if display_format == 'dollar':
+        # Convert main asset class percentages to dollar values
+        for asset_class in ['equities', 'fixed_income', 'hard_currency', 'uncorrelated_alternatives', 'cash']:
+            if asset_class in report_data and 'total_pct' in report_data[asset_class]:
+                pct = report_data[asset_class]['total_pct']
+                report_data[asset_class]['total_value'] = (pct / 100.0) * total_value
+                
+                # Convert subcategories if they exist
+                if 'subcategories' in report_data[asset_class]:
+                    for subcat in report_data[asset_class]['subcategories']:
+                        pct = report_data[asset_class]['subcategories'][subcat]
+                        report_data[asset_class]['subcategories'][subcat + '_value'] = (pct / 100.0) * total_value
+        
+        # Convert liquidity percentages to dollar values
+        if 'liquidity' in report_data:
+            for liquidity_type in report_data['liquidity']:
+                pct = report_data['liquidity'][liquidity_type]
+                report_data['liquidity'][liquidity_type + '_value'] = (pct / 100.0) * total_value
     
     # Map level_key to portfolio name for display
     if level == 'portfolio':

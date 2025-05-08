@@ -1451,6 +1451,11 @@ def generate_portfolio_report():
     # Use 2025-05-01 as the date since we know it has data
     date_str = request.args.get('date', '2025-05-01')
     
+    # Get the display format parameter
+    display_format = request.args.get('display_format', 'percent')
+    if display_format not in ['percent', 'dollar']:
+        display_format = 'percent'  # Default to percent if invalid value
+        
     # Convert the date string into a date object
     try:
         # Split the date string into year, month, day
@@ -1462,13 +1467,13 @@ def generate_portfolio_report():
             "error": f"Invalid date format: {date_str}. Please use YYYY-MM-DD format."
         }), 400
         
-    logger.info(f"Portfolio report: Using date {report_date} for level={level}, level_key={level_key}")
+    logger.info(f"Portfolio report: Using date {report_date} for level={level}, level_key={level_key}, display_format={display_format}")
     
     try:
         # Use the portfolio report service to generate the report
-        from src.services.portfolio_report_service import PortfolioReportService
-        report_service = PortfolioReportService()
-        report_data = report_service.generate_report(report_date, level, level_key)
+        from src.services.portfolio_report_service import generate_portfolio_report
+        with get_db_connection() as db:
+            report_data = generate_portfolio_report(db, report_date, level, level_key, display_format)
         
         # Return only data for the specified portfolio
         return jsonify(report_data)
