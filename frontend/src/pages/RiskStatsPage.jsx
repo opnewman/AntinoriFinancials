@@ -1,5 +1,3 @@
-import React, { useState, useEffect } from 'react';
-
 /**
  * Risk Statistics Page Component
  * 
@@ -55,7 +53,7 @@ const RiskStatsPage = () => {
       );
       
       if (result.success) {
-        setRiskStats(result.data || []);
+        setRiskStats(result.risk_stats || []);
         
         // Extract unique second level values for filter dropdown
         if (assetClass && result.data && result.data.length > 0) {
@@ -368,4 +366,3 @@ const RiskStatsPage = () => {
   );
 };
 
-export default RiskStatsPage;

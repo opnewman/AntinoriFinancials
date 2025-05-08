@@ -72,7 +72,7 @@ def health():
     return jsonify({"status": "healthy"})
 
 # Risk Stats API Endpoints
-@app.route("/api/risk-stats/update", methods=["POST"])
+@app.route("/api/risk-stats/update", methods=["GET", "POST"])
 def update_risk_stats():
     """
     Update risk statistics from Egnyte.
