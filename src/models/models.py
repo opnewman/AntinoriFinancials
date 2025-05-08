@@ -1,225 +1,317 @@
-import datetime
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, Boolean, func, Index, JSON
-from sqlalchemy.orm import relationship
+"""
+Database models for the ANTINORI Financial Portfolio Reporting System.
+"""
 
-# Import Base from database module
+import sqlalchemy as sa
+from sqlalchemy.orm import relationship
+from datetime import date
+
 from src.database import Base
 
-class FinancialPosition(Base):
-    """
-    Stores financial position data from data_dump.xlsx
-    """
-    __tablename__ = "financial_positions"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    position = Column(String, nullable=False)
-    top_level_client = Column(String, nullable=False)
-    holding_account = Column(String, nullable=False)
-    holding_account_number = Column(String, nullable=False)
-    portfolio = Column(String, nullable=False)
-    cusip = Column(String)
-    ticker_symbol = Column(String)
-    asset_class = Column(String, nullable=False)
-    second_level = Column(String)
-    third_level = Column(String)
-    adv_classification = Column(String)
-    liquid_vs_illiquid = Column(String, nullable=False)
-    adjusted_value = Column(String, nullable=False)  # Encrypted value stored as string
-    date = Column(Date, nullable=False)
-    upload_date = Column(Date, default=datetime.date.today, nullable=False)
-    
-    # Relationships
-    risk_equity = relationship("RiskStatisticEquity", 
-                              primaryjoin="and_(FinancialPosition.position==RiskStatisticEquity.position, "
-                                         "FinancialPosition.ticker_symbol==RiskStatisticEquity.ticker_symbol)",
-                              foreign_keys="[RiskStatisticEquity.position, RiskStatisticEquity.ticker_symbol]", 
-                              uselist=False, viewonly=True)
-    risk_fixed_income = relationship("RiskStatisticFixedIncome", 
-                                    primaryjoin="and_(FinancialPosition.position==RiskStatisticFixedIncome.position, "
-                                               "FinancialPosition.ticker_symbol==RiskStatisticFixedIncome.ticker_symbol)",
-                                    foreign_keys="[RiskStatisticFixedIncome.position, RiskStatisticFixedIncome.ticker_symbol]", 
-                                    uselist=False, viewonly=True)
-    risk_alternatives = relationship("RiskStatisticAlternatives", 
-                                    primaryjoin="and_(FinancialPosition.position==RiskStatisticAlternatives.position, "
-                                               "FinancialPosition.ticker_symbol==RiskStatisticAlternatives.ticker_symbol)",
-                                    foreign_keys="[RiskStatisticAlternatives.position, RiskStatisticAlternatives.ticker_symbol]", 
-                                    uselist=False, viewonly=True)
 
 class OwnershipMetadata(Base):
     """
-    Stores metadata about the ownership file (first 3 rows)
+    Metadata for ownership tree uploads.
     """
-    __tablename__ = "ownership_metadata"
+    __tablename__ = 'ownership_metadata'
     
-    id = Column(Integer, primary_key=True, index=True)
-    view_name = Column(String, nullable=False)
-    date_range_start = Column(Date, nullable=False)
-    date_range_end = Column(Date, nullable=False)
-    portfolio_coverage = Column(String, nullable=False)
-    upload_date = Column(Date, default=datetime.date.today, nullable=False)
-    is_current = Column(Boolean, default=True, nullable=False)  # Flag to mark the most recent upload
+    id = sa.Column(sa.Integer, primary_key=True)
+    filename = sa.Column(sa.String, nullable=False)
+    upload_date = sa.Column(sa.DateTime, server_default=sa.func.now())
+    row_count = sa.Column(sa.Integer)
+    has_classifications = sa.Column(sa.Boolean, default=False)
+    
+    # Relationships
+    items = relationship("OwnershipItem", back_populates="metadata", cascade="all, delete-orphan")
+
 
 class OwnershipItem(Base):
     """
-    Stores ownership hierarchy data from ownership.xlsx (row 4 onwards)
+    Individual item in the ownership tree.
     """
-    __tablename__ = "ownership_items"
+    __tablename__ = 'ownership_items'
     
-    id = Column(Integer, primary_key=True, index=True)
-    client = Column(String, nullable=False, index=True)
-    entity_id = Column(String, index=True)
-    holding_account_number = Column(String, index=True)
-    portfolio = Column(String, index=True)
-    group_id = Column(String, index=True)
-    data_inception_date = Column(Date)
-    ownership_percentage = Column(Float)
-    grouping_attribute_name = Column(String, nullable=False, index=True)  # Client, Group, or Holding Account
-    upload_date = Column(Date, default=datetime.date.today, nullable=False)
-    metadata_id = Column(Integer, ForeignKey("ownership_metadata.id"), nullable=False, index=True)
-    row_order = Column(Integer, index=True)  # Store original Excel row order for proper hierarchy construction
+    id = sa.Column(sa.Integer, primary_key=True)
+    metadata_id = sa.Column(sa.Integer, sa.ForeignKey('ownership_metadata.id'), nullable=False)
+    parent_id = sa.Column(sa.Integer, sa.ForeignKey('ownership_items.id'), nullable=True)
+    name = sa.Column(sa.String, nullable=False)
+    type = sa.Column(sa.String)  # 'client', 'group', 'account'
+    account_number = sa.Column(sa.String)
+    row_order = sa.Column(sa.Integer)
     
-    # Define additional indexes for common queries
-    __table_args__ = (
-        # Composite index for faster filtering by metadata_id and grouping_attribute_name
-        Index('idx_ownership_metadata_grouping', 'metadata_id', 'grouping_attribute_name'),
-        # Composite index for client/portfolio lookups
-        Index('idx_ownership_client_portfolio', 'client', 'portfolio'),
-        # Composite index for group lookups
-        Index('idx_ownership_portfolio_group', 'portfolio', 'group_id'),
-        # Index for row ordering (critical for rebuilding the hierarchy)
-        Index('idx_ownership_row_order', 'metadata_id', 'row_order'),
-    )
+    # Relationships
+    meta_data = relationship("OwnershipMetadata", back_populates="items")
+    children = relationship("OwnershipItem", 
+                           backref=sa.orm.backref('parent', remote_side=[id]),
+                           cascade="all, delete-orphan")
+
+
+class FinancialPosition(Base):
+    """
+    Represents a financial position from the data dump.
+    Contains all the raw data from the file upload.
+    """
+    __tablename__ = 'financial_positions'
     
-    # Relationship to metadata
-    ownership_metadata = relationship("OwnershipMetadata")
+    id = sa.Column(sa.Integer, primary_key=True)
+    report_date = sa.Column(sa.Date, nullable=False, index=True)
+    position = sa.Column(sa.String, nullable=False)
+    top_level_client = sa.Column(sa.String, nullable=False, index=True)
+    holding_account = sa.Column(sa.String, nullable=False)
+    holding_account_number = sa.Column(sa.String, nullable=False, index=True)
+    portfolio = sa.Column(sa.String, nullable=False, index=True)
+    cusip = sa.Column(sa.String)
+    ticker_symbol = sa.Column(sa.String)
+    asset_class = sa.Column(sa.String, index=True)
+    second_level = sa.Column(sa.String, index=True)
+    third_level = sa.Column(sa.String, index=True)
+    adv_classification = sa.Column(sa.String)
+    liquid_vs_illiquid = sa.Column(sa.String, index=True)
+    adjusted_value = sa.Column(sa.Numeric(20, 2), nullable=False)
+    row_order = sa.Column(sa.Integer, index=True)  # To preserve original order
+    created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
+    updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
+
 
 class FinancialSummary(Base):
     """
-    Stores aggregated financial summary data
+    Pre-calculated summary table for optimized reporting.
+    Stores aggregate data at various levels (client, portfolio, account).
     """
-    __tablename__ = "financial_summary"
+    __tablename__ = 'financial_summary'
     
-    id = Column(Integer, primary_key=True, index=True)
-    level = Column(String, nullable=False, index=True)  # client, group, portfolio, account
-    level_key = Column(String, nullable=False, index=True)  # The name/identifier of the level
-    total_adjusted_value = Column(Float, nullable=False)
-    upload_date = Column(Date, default=datetime.date.today, nullable=False)
-    report_date = Column(Date, nullable=False, index=True)
+    id = sa.Column(sa.Integer, primary_key=True)
+    report_date = sa.Column(sa.Date, nullable=False, index=True)
+    level = sa.Column(sa.String, nullable=False, index=True)  # 'client', 'portfolio', 'account'
+    level_key = sa.Column(sa.String, nullable=False, index=True)
+    
+    # Total values
+    total_adjusted_value = sa.Column(sa.Numeric(20, 2), nullable=False)
+    
+    # Asset class totals
+    equities_pct = sa.Column(sa.Numeric(10, 4))
+    fixed_income_pct = sa.Column(sa.Numeric(10, 4))
+    alternatives_pct = sa.Column(sa.Numeric(10, 4))
+    hard_currency_pct = sa.Column(sa.Numeric(10, 4))
+    uncorrelated_alternatives_pct = sa.Column(sa.Numeric(10, 4))
+    cash_pct = sa.Column(sa.Numeric(10, 4))
+    
+    # Liquidity
+    liquid_assets_pct = sa.Column(sa.Numeric(10, 4))
+    illiquid_assets_pct = sa.Column(sa.Numeric(10, 4))
+    
+    # JSON fields for detailed breakdowns
+    equities_detail = sa.Column(sa.JSON)
+    fixed_income_detail = sa.Column(sa.JSON)
+    hard_currency_detail = sa.Column(sa.JSON)
+    uncorrelated_alternatives_detail = sa.Column(sa.JSON)
+    
+    # Timestamps
+    created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
+    updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
+    
+    __table_args__ = (
+        sa.UniqueConstraint('report_date', 'level', 'level_key', name='uix_summary_date_level_key'),
+    )
+
+
+class OwnershipNode(Base):
+    """
+    Represents a node in the ownership hierarchy tree.
+    Used to build the ownership structure visualization.
+    """
+    __tablename__ = 'ownership_nodes'
+    
+    id = sa.Column(sa.Integer, primary_key=True)
+    parent_id = sa.Column(sa.Integer, sa.ForeignKey('ownership_nodes.id'), nullable=True)
+    name = sa.Column(sa.String, nullable=False)
+    type = sa.Column(sa.String, nullable=False)  # 'client', 'group', 'account'
+    level = sa.Column(sa.Integer, nullable=False)
+    meta = sa.Column(sa.JSON)
+    row_order = sa.Column(sa.Integer)  # To preserve original order
+    
+    # Relationships
+    children = relationship("OwnershipNode", 
+                          backref=sa.orm.backref('parent', remote_side=[id]),
+                          cascade="all, delete-orphan")
+    
+    created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
+    updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
+
+
+class UploadStatus(Base):
+    """
+    Tracks the status of background file uploads and processing.
+    """
+    __tablename__ = 'upload_status'
+    
+    id = sa.Column(sa.Integer, primary_key=True)
+    task_id = sa.Column(sa.String, nullable=False, unique=True)
+    filename = sa.Column(sa.String, nullable=False)
+    status = sa.Column(sa.String, nullable=False)  # 'pending', 'processing', 'completed', 'failed'
+    progress = sa.Column(sa.Integer, default=0)  # 0-100 percentage
+    result = sa.Column(sa.JSON)
+    error = sa.Column(sa.String)
+    created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
+    updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
+
+
+class SecurityRiskStats(Base):
+    """
+    Risk statistics for securities, imported from a separate file.
+    Will be used for enhanced risk metrics and duration calculations.
+    """
+    __tablename__ = 'security_risk_stats'
+    
+    id = sa.Column(sa.Integer, primary_key=True)
+    report_date = sa.Column(sa.Date, nullable=False, index=True)
+    cusip = sa.Column(sa.String, nullable=False, index=True)
+    ticker_symbol = sa.Column(sa.String, index=True)
+    security_name = sa.Column(sa.String)
+    duration = sa.Column(sa.Numeric(10, 4))
+    yield_to_maturity = sa.Column(sa.Numeric(10, 4))
+    beta = sa.Column(sa.Numeric(10, 4))
+    volatility = sa.Column(sa.Numeric(10, 4))
+    sharpe_ratio = sa.Column(sa.Numeric(10, 4))
+    meta = sa.Column(sa.JSON)  # For any additional fields
+    
+    created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
+    updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
+    
+    __table_args__ = (
+        sa.UniqueConstraint('report_date', 'cusip', name='uix_risk_stats_date_cusip'),
+    )
+
 
 class RiskStatisticEquity(Base):
     """
-    Stores risk statistics for equity positions
+    Risk statistics specific to equity securities.
     """
-    __tablename__ = "risk_statistic_equity"
+    __tablename__ = 'risk_statistic_equity'
     
-    id = Column(Integer, primary_key=True, index=True)
-    position = Column(String, nullable=False, index=True)
-    ticker_symbol = Column(String, nullable=False, index=True)
-    vol = Column(Float)
-    beta = Column(Float)
+    id = sa.Column(sa.Integer, primary_key=True)
+    report_date = sa.Column(sa.Date, nullable=False, index=True)
+    security_id = sa.Column(sa.String, nullable=False, index=True)  # CUSIP or internal ID
+    beta = sa.Column(sa.Numeric(10, 4))
+    volatility = sa.Column(sa.Numeric(10, 4))
+    alpha = sa.Column(sa.Numeric(10, 4))
+    sharpe_ratio = sa.Column(sa.Numeric(10, 4))
+    information_ratio = sa.Column(sa.Numeric(10, 4))
+    tracking_error = sa.Column(sa.Numeric(10, 4))
+    max_drawdown = sa.Column(sa.Numeric(10, 4))
+    meta = sa.Column(sa.JSON)  # For any additional fields
+    
+    created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
+    updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
+    
+    __table_args__ = (
+        sa.UniqueConstraint('report_date', 'security_id', name='uix_equity_risk_date_security'),
+    )
+
 
 class RiskStatisticFixedIncome(Base):
     """
-    Stores risk statistics for fixed income positions
+    Risk statistics specific to fixed income securities.
     """
-    __tablename__ = "risk_statistic_fixed_income"
+    __tablename__ = 'risk_statistic_fixed_income'
     
-    id = Column(Integer, primary_key=True, index=True)
-    position = Column(String, nullable=False, index=True)
-    ticker_symbol = Column(String, nullable=False, index=True)
-    vol = Column(Float)
-    duration = Column(Float)
+    id = sa.Column(sa.Integer, primary_key=True)
+    report_date = sa.Column(sa.Date, nullable=False, index=True)
+    security_id = sa.Column(sa.String, nullable=False, index=True)  # CUSIP or internal ID
+    duration = sa.Column(sa.Numeric(10, 4))
+    modified_duration = sa.Column(sa.Numeric(10, 4))
+    convexity = sa.Column(sa.Numeric(10, 4))
+    yield_to_maturity = sa.Column(sa.Numeric(10, 4))
+    yield_to_worst = sa.Column(sa.Numeric(10, 4))
+    option_adjusted_spread = sa.Column(sa.Numeric(10, 4))
+    credit_rating = sa.Column(sa.String)
+    meta = sa.Column(sa.JSON)  # For any additional fields
+    
+    created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
+    updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
+    
+    __table_args__ = (
+        sa.UniqueConstraint('report_date', 'security_id', name='uix_fixed_income_risk_date_security'),
+    )
+
 
 class RiskStatisticAlternatives(Base):
     """
-    Stores risk statistics for alternative investment positions
+    Risk statistics specific to alternative investments.
     """
-    __tablename__ = "risk_statistic_alternatives"
+    __tablename__ = 'risk_statistic_alternatives'
     
-    id = Column(Integer, primary_key=True, index=True)
-    position = Column(String, nullable=False, index=True)
-    ticker_symbol = Column(String, nullable=False, index=True)
-    vol = Column(Float)
-    beta_to_gold = Column(Float)
+    id = sa.Column(sa.Integer, primary_key=True)
+    report_date = sa.Column(sa.Date, nullable=False, index=True)
+    security_id = sa.Column(sa.String, nullable=False, index=True)  # CUSIP or internal ID
+    correlation_equity = sa.Column(sa.Numeric(10, 4))
+    correlation_fixed_income = sa.Column(sa.Numeric(10, 4))
+    beta = sa.Column(sa.Numeric(10, 4))
+    volatility = sa.Column(sa.Numeric(10, 4))
+    max_drawdown = sa.Column(sa.Numeric(10, 4))
+    illiquidity_premium = sa.Column(sa.Numeric(10, 4))
+    meta = sa.Column(sa.JSON)  # For any additional fields
+    
+    created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
+    updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
+    
+    __table_args__ = (
+        sa.UniqueConstraint('report_date', 'security_id', name='uix_alternatives_risk_date_security'),
+    )
+
 
 class ModelPortfolio(Base):
     """
-    Stores model portfolio information (like those in your screenshot)
+    Represents a model portfolio with target allocations.
     """
-    __tablename__ = "model_portfolios"
+    __tablename__ = 'model_portfolios'
     
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False, index=True)
-    description = Column(String)
-    is_active = Column(Boolean, default=True)
-    creation_date = Column(Date, default=datetime.date.today, nullable=False)
-    update_date = Column(Date, default=datetime.date.today, onupdate=datetime.date.today, nullable=False)
+    id = sa.Column(sa.Integer, primary_key=True)
+    name = sa.Column(sa.String, nullable=False, unique=True)
+    description = sa.Column(sa.Text)
     
-    # Relationships
-    allocations = relationship("ModelPortfolioAllocation", back_populates="model_portfolio", cascade="all, delete-orphan")
+    # Target allocations
+    equity_target = sa.Column(sa.Numeric(10, 4))
+    fixed_income_target = sa.Column(sa.Numeric(10, 4))
+    hard_currency_target = sa.Column(sa.Numeric(10, 4))
+    alternatives_target = sa.Column(sa.Numeric(10, 4))
+    cash_target = sa.Column(sa.Numeric(10, 4))
+    
+    # Detailed allocations stored as JSON
+    equity_detail = sa.Column(sa.JSON)
+    fixed_income_detail = sa.Column(sa.JSON)
+    hard_currency_detail = sa.Column(sa.JSON)
+    alternatives_detail = sa.Column(sa.JSON)
+    
+    is_active = sa.Column(sa.Boolean, default=True)
+    created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
+    updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
 
-class ModelPortfolioAllocation(Base):
+
+class PerformanceData(Base):
     """
-    Stores allocation percentages for model portfolios
+    Historical performance data for portfolios, accounts, and clients.
+    Used to calculate performance metrics (1D, MTD, QTD, YTD).
     """
-    __tablename__ = "model_portfolio_allocations"
+    __tablename__ = 'performance_data'
     
-    id = Column(Integer, primary_key=True, index=True)
-    model_portfolio_id = Column(Integer, ForeignKey("model_portfolios.id"), nullable=False, index=True)
-    category = Column(String, nullable=False, index=True)  # e.g., "Equities", "Fixed Income", etc.
-    subcategory = Column(String, index=True)  # e.g., "US Equities", "EM Markets", etc.
-    allocation_percentage = Column(Float, nullable=False)
-    is_model_weight = Column(Boolean, default=True)  # Flag for model vs actual weight
+    id = sa.Column(sa.Integer, primary_key=True)
+    report_date = sa.Column(sa.Date, nullable=False, index=True)
+    level = sa.Column(sa.String, nullable=False, index=True)  # 'client', 'portfolio', 'account'
+    level_key = sa.Column(sa.String, nullable=False, index=True)
     
-    # Relationship back to model portfolio
-    model_portfolio = relationship("ModelPortfolio", back_populates="allocations")
+    # Daily performance values
+    daily_return = sa.Column(sa.Numeric(10, 6))
+    mtd_return = sa.Column(sa.Numeric(10, 6))
+    qtd_return = sa.Column(sa.Numeric(10, 6))
+    ytd_return = sa.Column(sa.Numeric(10, 6))
     
-    # Additional constraints
+    total_value = sa.Column(sa.Numeric(20, 2), nullable=False)
+    previous_day_value = sa.Column(sa.Numeric(20, 2))
+    
+    created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
+    updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
+    
     __table_args__ = (
-        # Composite index for faster filtering
-        Index('idx_model_category', 'model_portfolio_id', 'category', 'subcategory'),
+        sa.UniqueConstraint('report_date', 'level', 'level_key', name='uix_performance_date_level_key'),
     )
-
-class FixedIncomeMetrics(Base):
-    """
-    Stores fixed income metrics for model portfolios (duration, yield, etc.)
-    """
-    __tablename__ = "fixed_income_metrics"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    model_portfolio_id = Column(Integer, ForeignKey("model_portfolios.id"), nullable=False, index=True)
-    metric_name = Column(String, nullable=False, index=True)  # e.g., "Duration", "Yield", etc.
-    metric_subcategory = Column(String, index=True)  # e.g., "Municipal Bonds", "Long Duration", etc.
-    metric_value = Column(Float, nullable=False)
-    
-    # Relationship to model portfolio
-    model_portfolio = relationship("ModelPortfolio")
-
-class CurrencyAllocation(Base):
-    """
-    Stores hard currency allocations for model portfolios
-    """
-    __tablename__ = "currency_allocations"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    model_portfolio_id = Column(Integer, ForeignKey("model_portfolios.id"), nullable=False, index=True)
-    currency_name = Column(String, nullable=False, index=True)  # e.g., "USD", "EUR", etc.
-    allocation_percentage = Column(Float, nullable=False)
-    
-    # Relationship to model portfolio
-    model_portfolio = relationship("ModelPortfolio")
-
-class PerformanceMetric(Base):
-    """
-    Stores performance metrics for model portfolios
-    """
-    __tablename__ = "performance_metrics"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    model_portfolio_id = Column(Integer, ForeignKey("model_portfolios.id"), nullable=False, index=True)
-    period = Column(String, nullable=False, index=True)  # e.g., "1D", "MTD", "QTD", "YTD"
-    performance_percentage = Column(Float, nullable=False)
-    as_of_date = Column(Date, nullable=False, index=True)
-    
-    # Relationship to model portfolio
-    model_portfolio = relationship("ModelPortfolio")

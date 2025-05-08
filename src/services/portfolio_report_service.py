@@ -1,540 +1,555 @@
 """
-Portfolio Report Service
+Portfolio Report Service - Optimized Database Queries
 
-This service handles the calculations and data formatting for portfolio reports.
-It processes financial position data to generate reports in the exact format
-required by the Excel template.
+This service uses direct PostgreSQL queries to efficiently generate portfolio reports
+according to the ANTINORI categorization schema:
+
+- Equity: Uses asset_class='equity' with subcategories from second_level
+- Fixed Income: Uses asset_class='fixed income' with subcategories from second_level
+- Hard Currency: Uses asset_class='alternatives' AND second_level='hard currency' with subcategories from third_level
+- Uncorrelated Alternatives: Uses asset_class='alternatives' BUT NOT second_level='hard currency'
+  with custom subcategory logic (crypto, proficio funds, etc.)
+- Cash: Uses asset_class='cash & cash equivalent'
+- Liquidity: Based on liquid_vs_illiquid field
+- Performance: Generated from historical data (to be integrated)
 """
 
 import logging
 import pandas as pd
 import numpy as np
-from datetime import datetime, date
-from typing import Dict, List, Any, Optional, Tuple
+from datetime import date, datetime, timedelta
+from typing import Dict, List, Optional, Tuple, Union
+
 from sqlalchemy.orm import Session
-from sqlalchemy import text, func
+from sqlalchemy import text, func, distinct
 
-from src.models.models import FinancialPosition, ModelPortfolio
-from src.database import get_db_connection
-
+# Set up logging
 logger = logging.getLogger(__name__)
 
-class PortfolioReportService:
-    """Service for generating portfolio reports"""
+# SQL Queries for direct database access
+SQL_TOTAL_PORTFOLIO_VALUE = """
+    SELECT SUM(adjusted_value) as total_value
+    FROM financial_positions
+    WHERE report_date = :report_date
+    AND {level_filter}
+"""
+
+SQL_ASSET_CLASS_TOTALS = """
+    SELECT
+        asset_class,
+        SUM(adjusted_value) as total_value
+    FROM financial_positions
+    WHERE report_date = :report_date
+    AND {level_filter}
+    GROUP BY asset_class
+"""
+
+SQL_EQUITY_SUBCATEGORIES = """
+    SELECT
+        second_level,
+        SUM(adjusted_value) as total_value
+    FROM financial_positions
+    WHERE report_date = :report_date
+    AND asset_class = 'equity'
+    AND {level_filter}
+    GROUP BY second_level
+"""
+
+SQL_FIXED_INCOME_SUBCATEGORIES = """
+    SELECT
+        second_level,
+        SUM(adjusted_value) as total_value
+    FROM financial_positions
+    WHERE report_date = :report_date
+    AND asset_class = 'fixed income'
+    AND {level_filter}
+    GROUP BY second_level
+"""
+
+SQL_HARD_CURRENCY_SUBCATEGORIES = """
+    SELECT
+        third_level,
+        SUM(adjusted_value) as total_value
+    FROM financial_positions
+    WHERE report_date = :report_date
+    AND asset_class = 'alternatives'
+    AND second_level = 'hard currency'
+    AND {level_filter}
+    GROUP BY third_level
+"""
+
+SQL_UNCORRELATED_ALTERNATIVES = """
+    SELECT
+        position,
+        third_level,
+        adjusted_value
+    FROM financial_positions
+    WHERE report_date = :report_date
+    AND asset_class = 'alternatives'
+    AND second_level != 'hard currency'
+    AND {level_filter}
+"""
+
+SQL_LIQUIDITY = """
+    SELECT
+        liquid_vs_illiquid,
+        SUM(adjusted_value) as total_value
+    FROM financial_positions
+    WHERE report_date = :report_date
+    AND {level_filter}
+    GROUP BY liquid_vs_illiquid
+"""
+
+def get_level_filter(level: str, level_key: str) -> str:
+    """
+    Generate the appropriate SQL filter based on level and level_key.
     
-    def __init__(self):
-        self.report_date = None
-        self.level = None
-        self.level_key = None
+    Args:
+        level: The hierarchy level ('client', 'portfolio', 'account')
+        level_key: The identifier for the specified level
         
-    def generate_report(self, report_date: date, level: str, level_key: str) -> Dict[str, Any]:
-        """
-        Generate a complete portfolio report for the specified date, level, and level key.
-        
-        Args:
-            report_date: The date for the report
-            level: The level (client, portfolio, account)
-            level_key: The key for the specified level
-            
-        Returns:
-            Dictionary containing the complete portfolio report data
-        """
-        self.report_date = report_date
-        self.level = level
-        self.level_key = level_key
-        
-        with get_db_connection() as db:
-            try:
-                # Get all positions for this portfolio/client/account
-                positions = self._get_positions(db)
-                
-                if positions is None or (isinstance(positions, pd.DataFrame) and positions.empty):
-                    logger.warning(f"No positions found for {level}={level_key} on {report_date}")
-                    return self._generate_empty_report()
-                
-                # Calculate total adjusted value
-                total_adjusted_value = self._calculate_total_value(positions)
-                
-                # Generate each section of the report
-                equities_data = self._calculate_equities(positions, total_adjusted_value)
-                fixed_income_data = self._calculate_fixed_income(positions, total_adjusted_value)
-                hard_currency_data = self._calculate_hard_currency(positions, total_adjusted_value)
-                uncorrelated_alts_data = self._calculate_uncorrelated_alternatives(positions, total_adjusted_value)
-                cash_data = self._calculate_cash(positions, total_adjusted_value)
-                liquidity_data = self._calculate_liquidity(positions)
-                performance_data = self._calculate_performance(level, level_key)
-                
-                # Combine all data into the final report
-                report_data = {
-                    "report_date": report_date.strftime("%m/%d/%Y"),
-                    "portfolio": level_key,
-                    "level": level,
-                    "total_adjusted_value": total_adjusted_value,
-                    "equities": equities_data,
-                    "fixed_income": fixed_income_data,
-                    "hard_currency": hard_currency_data,
-                    "uncorrelated_alternatives": uncorrelated_alts_data,
-                    "cash": cash_data,
-                    "liquidity": liquidity_data,
-                    "performance": performance_data
-                }
-                
-                return report_data
-                
-            except Exception as e:
-                logger.error(f"Error generating portfolio report: {str(e)}")
-                raise
+    Returns:
+        SQL string for filtering
+    """
+    if level == 'client':
+        return f"top_level_client = '{level_key}'"
+    elif level == 'portfolio':
+        return f"portfolio = '{level_key}'"
+    elif level == 'account':
+        return f"holding_account_number = '{level_key}'"
+    else:
+        raise ValueError(f"Invalid level: {level}")
+
+
+def get_total_adjusted_value(db: Session, report_date: date, level: str, level_key: str) -> float:
+    """
+    Get the total adjusted value for the portfolio.
     
-    def _get_positions(self, db: Session) -> pd.DataFrame:
-        """
-        Get all positions for the specified level and level key
+    Args:
+        db: Database session
+        report_date: The report date
+        level: The hierarchy level ('client', 'portfolio', 'account')
+        level_key: The identifier for the specified level
         
-        Args:
-            db: Database session
-            
-        Returns:
-            DataFrame with all relevant positions
-        """
-        try:
-            query_params = {"date": self.report_date}
-            
-            if self.level == 'client':
-                where_clause = "top_level_client = :level_key"
-                query_params["level_key"] = self.level_key
-            elif self.level == 'portfolio':
-                where_clause = "portfolio = :level_key"
-                query_params["level_key"] = self.level_key
-            elif self.level == 'account':
-                where_clause = "holding_account = :level_key"
-                query_params["level_key"] = self.level_key
-            else:
-                raise ValueError(f"Invalid level: {self.level}")
-            
-            query = text(f"""
-            SELECT 
-                position,
-                top_level_client,
-                holding_account,
-                holding_account_number,
-                portfolio,
-                cusip,
-                ticker_symbol,
-                asset_class,
-                second_level,
-                third_level,
-                adv_classification,
-                liquid_vs_illiquid,
-                CASE 
-                    WHEN adjusted_value LIKE 'ENC:%' THEN SUBSTRING(adjusted_value, 5)
-                    ELSE adjusted_value 
-                END AS adjusted_value,
-                date
-            FROM financial_positions
-            WHERE date = :date AND {where_clause}
-            """)
-            
-            result = db.execute(query, query_params)
-            columns = result.keys()
-            positions_data = [dict(zip(columns, row)) for row in result.fetchall()]
-            
-            if not positions_data:
-                return pd.DataFrame()
-            
-            # Convert to DataFrame for easier analysis
-            df = pd.DataFrame(positions_data)
-            
-            # Convert adjusted_value to float for calculations
-            df['adjusted_value'] = df['adjusted_value'].astype(float)
-            
-            return df
-            
-        except Exception as e:
-            logger.error(f"Error getting positions: {str(e)}")
-            raise
+    Returns:
+        Total adjusted value
+    """
+    level_filter = get_level_filter(level, level_key)
+    sql = SQL_TOTAL_PORTFOLIO_VALUE.format(level_filter=level_filter)
     
-    def _calculate_total_value(self, positions: pd.DataFrame) -> float:
-        """
-        Calculate the total adjusted value of all positions
-        
-        Args:
-            positions: DataFrame containing all positions
-            
-        Returns:
-            Total adjusted value as a float
-        """
-        return positions['adjusted_value'].sum()
+    result = db.execute(text(sql), {'report_date': report_date}).first()
+    return float(result.total_value) if result and result.total_value else 0.0
+
+
+def get_asset_class_breakdowns(db: Session, report_date: date, level: str, level_key: str, 
+                               total_value: float) -> Dict:
+    """
+    Get breakdown of asset classes.
     
-    def _calculate_equities(self, positions: pd.DataFrame, total_value: float) -> Dict[str, Any]:
-        """
-        Calculate equity allocations and metrics
+    Args:
+        db: Database session
+        report_date: The report date
+        level: The hierarchy level ('client', 'portfolio', 'account')
+        level_key: The identifier for the specified level
+        total_value: Total adjusted value for percentage calculations
         
-        Args:
-            positions: DataFrame containing all positions
-            total_value: Total adjusted value of the portfolio
-            
-        Returns:
-            Dictionary with equity data structured for the report
-        """
-        # Filter for equity positions
-        equity_positions = positions[positions['asset_class'].str.lower() == 'equity']
-        
-        # Calculate total equity value
-        equity_value = equity_positions['adjusted_value'].sum()
-        equity_pct = (equity_value / total_value) * 100 if total_value > 0 else 0
-        
-        # Initialize subcategories
-        subcategories = [
-            "US Markets", "Global Markets", "Emerging Markets", "Commodities", 
-            "Real Estate", "Private Equity", "High Yield", "Venture Capital", 
-            "Low Beta Alpha", "Equity Derivatives", "Income Notes"
-        ]
-        
-        # Calculate subcategory allocations
-        subcategory_data = {}
-        for subcategory in subcategories:
-            subcategory_positions = equity_positions[
-                equity_positions['second_level'].str.lower() == subcategory.lower()
-            ] if not equity_positions.empty else pd.DataFrame()
-            
-            subcategory_value = subcategory_positions['adjusted_value'].sum() if not subcategory_positions.empty else 0
-            subcategory_pct = (subcategory_value / total_value) * 100 if total_value > 0 else 0
-            subcategory_data[subcategory.replace(" ", "_").lower()] = subcategory_pct
-        
-        # Get vol and beta from risk stats (if available)
-        # For now, we'll leave these blank as mentioned
-        vol = None
-        beta = None
-        beta_adjusted = None
-        
-        return {
-            "total_pct": equity_pct,
-            "vol": vol,
-            "beta": beta,
-            "beta_adjusted": beta_adjusted,
-            "subcategories": subcategory_data
-        }
+    Returns:
+        Dict of asset class breakdowns with percentages
+    """
+    level_filter = get_level_filter(level, level_key)
+    sql = SQL_ASSET_CLASS_TOTALS.format(level_filter=level_filter)
     
-    def _calculate_fixed_income(self, positions: pd.DataFrame, total_value: float) -> Dict[str, Any]:
-        """
-        Calculate fixed income allocations and metrics
-        
-        Args:
-            positions: DataFrame containing all positions
-            total_value: Total adjusted value of the portfolio
-            
-        Returns:
-            Dictionary with fixed income data structured for the report
-        """
-        # Filter for fixed income positions
-        fixed_income_positions = positions[
-            positions['asset_class'].str.lower().str.contains('fixed income')
-        ]
-        
-        # Calculate total fixed income value
-        fixed_income_value = fixed_income_positions['adjusted_value'].sum()
-        fixed_income_pct = (fixed_income_value / total_value) * 100 if total_value > 0 else 0
-        
-        # Fixed income subcategories
-        subcategories = {
-            "municipal_bonds": "Municipal Bonds",
-            "investment_grade": "Investment Grade",
-            "government_bonds": "Government Bonds",
-            "fixed_income_derivatives": "Fixed Income Derivatives"
-        }
-        
-        # Calculate subcategory allocations
-        subcategory_data = {}
-        for key, subcategory in subcategories.items():
-            subcategory_positions = fixed_income_positions[
-                fixed_income_positions['second_level'].str.lower() == subcategory.lower()
-            ] if not fixed_income_positions.empty else pd.DataFrame()
-            
-            subcategory_value = subcategory_positions['adjusted_value'].sum() if not subcategory_positions.empty else 0
-            subcategory_pct = (subcategory_value / total_value) * 100 if total_value > 0 else 0
-            
-            subcategory_data[key] = {
-                "total_pct": subcategory_pct,
-            }
-            
-            # For each subcategory, add the duration breakdowns
-            if key in ["municipal_bonds", "investment_grade", "government_bonds"]:
-                duration_types = ["Short Duration", "Market Duration", "Long Duration"]
-                for duration_type in duration_types:
-                    duration_positions = subcategory_positions[
-                        subcategory_positions['third_level'].str.lower() == duration_type.lower()
-                    ] if not subcategory_positions.empty else pd.DataFrame()
-                    
-                    duration_value = duration_positions['adjusted_value'].sum() if not duration_positions.empty else 0
-                    duration_pct = (duration_value / total_value) * 100 if total_value > 0 else 0
-                    
-                    # Convert the duration type key to snake_case
-                    duration_key = duration_type.lower().replace(" ", "_")
-                    subcategory_data[key][duration_key] = duration_pct
-        
-        # Get average duration (if available)
-        # For now, we'll leave this blank as mentioned
-        duration = None
-        
-        return {
-            "total_pct": fixed_income_pct,
-            "duration": duration,
-            "subcategories": subcategory_data
-        }
+    results = db.execute(text(sql), {'report_date': report_date}).fetchall()
     
-    def _calculate_hard_currency(self, positions: pd.DataFrame, total_value: float) -> Dict[str, Any]:
-        """
-        Calculate hard currency allocations
-        
-        Args:
-            positions: DataFrame containing all positions
-            total_value: Total adjusted value of the portfolio
-            
-        Returns:
-            Dictionary with hard currency data structured for the report
-        """
-        # Filter for alternative positions with "Precious Metals" as second level
-        hard_currency_positions = positions[
-            (positions['asset_class'].str.lower() == 'alternatives') & 
-            (positions['second_level'].str.lower() == 'precious metals')
-        ]
-        
-        # Calculate total hard currency value
-        hard_currency_value = hard_currency_positions['adjusted_value'].sum()
-        hard_currency_pct = (hard_currency_value / total_value) * 100 if total_value > 0 else 0
-        
-        # Hard currency subcategories
-        subcategories = ["Gold", "Silver", "Gold Miners", "Silver Miners", "Industrial Metals", 
-                         "Hard Currency Physical Investment", "Precious Metals Derivatives"]
-        
-        subcategory_data = {}
-        for subcategory in subcategories:
-            subcategory_positions = hard_currency_positions[
-                hard_currency_positions['third_level'].str.lower() == subcategory.lower()
-            ] if not hard_currency_positions.empty else pd.DataFrame()
-            
-            subcategory_value = subcategory_positions['adjusted_value'].sum() if not subcategory_positions.empty else 0
-            subcategory_pct = (subcategory_value / total_value) * 100 if total_value > 0 else 0
-            
-            subcategory_key = subcategory.lower().replace(" ", "_")
-            subcategory_data[subcategory_key] = subcategory_pct
-        
-        return {
-            "total_pct": hard_currency_pct,
-            "subcategories": subcategory_data
-        }
+    # Initialize default values
+    breakdowns = {
+        'equities': {'total_pct': 0.0, 'subcategories': {}},
+        'fixed_income': {'total_pct': 0.0, 'subcategories': {}},
+        'hard_currency': {'total_pct': 0.0, 'subcategories': {}},
+        'uncorrelated_alternatives': {'total_pct': 0.0, 'subcategories': {}},
+        'cash': {'total_pct': 0.0}
+    }
     
-    def _calculate_uncorrelated_alternatives(self, positions: pd.DataFrame, total_value: float) -> Dict[str, Any]:
-        """
-        Calculate uncorrelated alternatives allocations
+    for row in results:
+        asset_class = row.asset_class.lower() if row.asset_class else 'unknown'
+        value = float(row.total_value) if row.total_value else 0.0
+        percentage = (value / total_value * 100) if total_value > 0 else 0.0
         
-        Args:
-            positions: DataFrame containing all positions
-            total_value: Total adjusted value of the portfolio
-            
-        Returns:
-            Dictionary with uncorrelated alternatives data structured for the report
-        """
-        # Filter for alternative positions that are NOT "Precious Metals"
-        uncorrelated_alt_positions = positions[
-            (positions['asset_class'].str.lower() == 'alternatives') & 
-            ((positions['second_level'].str.lower() != 'precious metals') | 
-             (positions['second_level'].isnull()))
-        ]
-        
-        # Calculate total uncorrelated alternatives value
-        uncorrelated_alt_value = uncorrelated_alt_positions['adjusted_value'].sum()
-        uncorrelated_alt_pct = (uncorrelated_alt_value / total_value) * 100 if total_value > 0 else 0
-        
-        # Uncorrelated alternatives subcategories
-        subcategories = ["Crypto", "CTAs"]
-        proficio_categories = {
-            "proficio_short_term_alt_fund": "Proficio Short Term Alts",
-            "proficio_long_term_alt_fund": "Proficio Long Term Alts"
-        }
-        
-        subcategory_data = {}
-        
-        # Process standard categories
-        for subcategory in subcategories:
-            subcategory_positions = uncorrelated_alt_positions[
-                uncorrelated_alt_positions['third_level'].str.lower() == subcategory.lower()
-            ] if not uncorrelated_alt_positions.empty else pd.DataFrame()
-            
-            subcategory_value = subcategory_positions['adjusted_value'].sum() if not subcategory_positions.empty else 0
-            subcategory_pct = (subcategory_value / total_value) * 100 if total_value > 0 else 0
-            
-            subcategory_key = subcategory.lower().replace(" ", "_")
-            subcategory_data[subcategory_key] = subcategory_pct
-        
-        # Process Proficio funds by using substring matching
-        for key, term in proficio_categories.items():
-            # Find positions containing the term as substring in the position name
-            if not positions.empty:
-                proficio_positions = positions[
-                    positions['position'].str.contains(term, case=False, na=False)
-                ]
-                
-                proficio_value = proficio_positions['adjusted_value'].sum() if not proficio_positions.empty else 0
-                proficio_pct = (proficio_value / total_value) * 100 if total_value > 0 else 0
-            else:
-                proficio_pct = 0
-                
-            subcategory_data[key] = proficio_pct
-        
-        return {
-            "total_pct": uncorrelated_alt_pct,
-            "subcategories": subcategory_data
-        }
+        if asset_class == 'equity':
+            breakdowns['equities']['total_pct'] = percentage
+        elif asset_class == 'fixed income':
+            breakdowns['fixed_income']['total_pct'] = percentage
+        elif asset_class == 'cash & cash equivalent':
+            breakdowns['cash']['total_pct'] = percentage
     
-    def _calculate_cash(self, positions: pd.DataFrame, total_value: float) -> Dict[str, Any]:
-        """
-        Calculate cash allocations
-        
-        Args:
-            positions: DataFrame containing all positions
-            total_value: Total adjusted value of the portfolio
-            
-        Returns:
-            Dictionary with cash data structured for the report
-        """
-        # Filter for cash positions
-        cash_positions = positions[
-            positions['asset_class'].str.lower() == 'cash & cash equivalent'
-        ]
-        
-        # Calculate total cash value
-        cash_value = cash_positions['adjusted_value'].sum()
-        cash_pct = (cash_value / total_value) * 100 if total_value > 0 else 0
-        
-        return {
-            "total_pct": cash_pct
-        }
+    # Hard Currency and Uncorrelated Alternatives will be calculated separately
+    # since they both come from the 'alternatives' asset class
     
-    def _calculate_liquidity(self, positions: pd.DataFrame) -> Dict[str, float]:
-        """
-        Calculate liquidity metrics
-        
-        Args:
-            positions: DataFrame containing all positions
-            
-        Returns:
-            Dictionary with liquidity data
-        """
-        if isinstance(positions, pd.DataFrame) and positions.empty:
-            return {
-                "liquid_assets": 0,
-                "illiquid_assets": 0
-            }
-        
-        # Get total value
-        total_value = positions['adjusted_value'].sum()
-        
-        # Calculate liquid vs illiquid
-        liquid_positions = positions[
-            positions['liquid_vs_illiquid'].str.lower() == 'liquid'
-        ]
-        illiquid_positions = positions[
-            positions['liquid_vs_illiquid'].str.lower() == 'illiquid'
-        ]
-        
-        liquid_value = liquid_positions['adjusted_value'].sum() if not liquid_positions.empty else 0
-        illiquid_value = illiquid_positions['adjusted_value'].sum() if not illiquid_positions.empty else 0
-        
-        liquid_pct = (liquid_value / total_value) * 100 if total_value > 0 else 0
-        illiquid_pct = (illiquid_value / total_value) * 100 if total_value > 0 else 0
-        
-        return {
-            "liquid_assets": liquid_pct,
-            "illiquid_assets": illiquid_pct
-        }
+    return breakdowns
+
+
+def get_equity_breakdown(db: Session, report_date: date, level: str, level_key: str, 
+                         total_value: float) -> Dict:
+    """
+    Get detailed breakdown of equity positions.
     
-    def _calculate_performance(self, level: str, level_key: str) -> Dict[str, float]:
-        """
-        Calculate performance metrics
+    Args:
+        db: Database session
+        report_date: The report date
+        level: The hierarchy level ('client', 'portfolio', 'account')
+        level_key: The identifier for the specified level
+        total_value: Total adjusted value for percentage calculations
         
-        Args:
-            level: The level (client, portfolio, account)
-            level_key: The key for the specified level
-            
-        Returns:
-            Dictionary with performance data
-        """
-        # In a real implementation, this would pull from historical data
-        # For now, we'll return placeholder data
-        return {
-            "1D": 0.0,
-            "MTD": 0.0,
-            "QTD": 0.0,
-            "YTD": 0.0
-        }
+    Returns:
+        Dict of equity subcategories with percentages
+    """
+    level_filter = get_level_filter(level, level_key)
+    sql = SQL_EQUITY_SUBCATEGORIES.format(level_filter=level_filter)
     
-    def _generate_empty_report(self) -> Dict[str, Any]:
-        """
-        Generate an empty report when no data is available
+    results = db.execute(text(sql), {'report_date': report_date}).fetchall()
+    
+    # Initialize all equity subcategories with zero
+    subcategories = {
+        'us_markets': 0.0,
+        'global_markets': 0.0,
+        'emerging_markets': 0.0,
+        'real_estate': 0.0,
+        'private_equity': 0.0,
+        'venture_capital': 0.0,
+        'equity_derivatives': 0.0,
+        'commodities': 0.0,
+        'high_yield': 0.0,
+        'income_notes': 0.0,
+        'low_beta_alpha': 0.0
+    }
+    
+    for row in results:
+        second_level = row.second_level.lower() if row.second_level else 'unknown'
+        value = float(row.total_value) if row.total_value else 0.0
+        percentage = (value / total_value * 100) if total_value > 0 else 0.0
         
-        Returns:
-            Empty report structure with zeros
-        """
-        equity_subcategories = [
-            "us_markets", "global_markets", "emerging_markets", "commodities", 
-            "real_estate", "private_equity", "high_yield", "venture_capital", 
-            "low_beta_alpha", "equity_derivatives", "income_notes"
-        ]
+        # Map the second_level to our expected subcategories
+        if second_level == 'us markets':
+            subcategories['us_markets'] = percentage
+        elif second_level == 'global markets':
+            subcategories['global_markets'] = percentage
+        elif second_level == 'emerging markets':
+            subcategories['emerging_markets'] = percentage
+        elif second_level == 'real estate':
+            subcategories['real_estate'] = percentage
+        elif second_level == 'private equity':
+            subcategories['private_equity'] = percentage
+        elif second_level == 'venture capital':
+            subcategories['venture_capital'] = percentage
+        elif second_level == 'equity derivatives':
+            subcategories['equity_derivatives'] = percentage
+        elif second_level == 'commodities':
+            subcategories['commodities'] = percentage
+        elif second_level == 'high yield':
+            subcategories['high_yield'] = percentage
+        elif second_level == 'income notes':
+            subcategories['income_notes'] = percentage
+        elif second_level == 'low beta alpha':
+            subcategories['low_beta_alpha'] = percentage
+        # Add any missing mappings as needed
+    
+    return subcategories
+
+
+def get_fixed_income_breakdown(db: Session, report_date: date, level: str, level_key: str, 
+                               total_value: float) -> Dict:
+    """
+    Get detailed breakdown of fixed income positions.
+    
+    Args:
+        db: Database session
+        report_date: The report date
+        level: The hierarchy level ('client', 'portfolio', 'account')
+        level_key: The identifier for the specified level
+        total_value: Total adjusted value for percentage calculations
         
-        fixed_income_subcategories = ["municipal_bonds", "investment_grade", "government_bonds", "fixed_income_derivatives"]
-        fixed_income_duration_types = ["short_duration", "market_duration", "long_duration"]
+    Returns:
+        Dict of fixed income subcategories with percentages
+    """
+    level_filter = get_level_filter(level, level_key)
+    sql = SQL_FIXED_INCOME_SUBCATEGORIES.format(level_filter=level_filter)
+    
+    results = db.execute(text(sql), {'report_date': report_date}).fetchall()
+    
+    # Initialize fixed income subcategories with default structures
+    subcategories = {
+        'municipal_bonds': {'long_duration': 0.0, 'market_duration': 0.0, 'short_duration': 0.0, 'total_pct': 0.0},
+        'government_bonds': {'long_duration': 0.0, 'market_duration': 0.0, 'short_duration': 0.0, 'total_pct': 0.0},
+        'investment_grade': {'long_duration': 0.0, 'market_duration': 0.0, 'short_duration': 0.0, 'total_pct': 0.0},
+        'fixed_income_derivatives': {'total_pct': 0.0}
+    }
+    
+    for row in results:
+        second_level = row.second_level.lower() if row.second_level else 'unknown'
+        value = float(row.total_value) if row.total_value else 0.0
+        percentage = (value / total_value * 100) if total_value > 0 else 0.0
         
-        hard_currency_subcategories = [
-            "gold", "silver", "gold_miners", "silver_miners", "industrial_metals", 
-            "hard_currency_physical_investment", "precious_metals_derivatives"
-        ]
+        # Map the second_level to our expected subcategories
+        if second_level == 'municipal bonds':
+            subcategories['municipal_bonds']['total_pct'] = percentage
+        elif second_level == 'government bonds':
+            subcategories['government_bonds']['total_pct'] = percentage
+        elif second_level == 'investment grade':
+            subcategories['investment_grade']['total_pct'] = percentage
+        elif second_level == 'corporate bonds':  # Map corporate bonds to investment grade for now
+            subcategories['investment_grade']['total_pct'] += percentage
+        elif second_level == 'fixed income derivatives':
+            subcategories['fixed_income_derivatives']['total_pct'] = percentage
+        # Add any missing mappings as needed
+    
+    # Duration breakdowns will be populated later when risk stats are integrated
+    
+    return subcategories
+
+
+def get_hard_currency_breakdown(db: Session, report_date: date, level: str, level_key: str, 
+                                total_value: float) -> Tuple[float, Dict]:
+    """
+    Get detailed breakdown of hard currency positions.
+    
+    Args:
+        db: Database session
+        report_date: The report date
+        level: The hierarchy level ('client', 'portfolio', 'account')
+        level_key: The identifier for the specified level
+        total_value: Total adjusted value for percentage calculations
         
-        uncorrelated_alt_subcategories = [
-            "crypto", "ctas", "proficio_short_term_alt_fund", "proficio_long_term_alt_fund"
-        ]
+    Returns:
+        Tuple of (total hard currency percentage, dict of hard currency subcategories with percentages)
+    """
+    level_filter = get_level_filter(level, level_key)
+    sql = SQL_HARD_CURRENCY_SUBCATEGORIES.format(level_filter=level_filter)
+    
+    results = db.execute(text(sql), {'report_date': report_date}).fetchall()
+    
+    # Initialize hard currency subcategories
+    subcategories = {
+        'gold': 0.0,
+        'gold_miners': 0.0,
+        'silver': 0.0,
+        'silver_miners': 0.0,
+        'industrial_metals': 0.0,
+        'precious_metals_derivatives': 0.0,
+        'hard_currency_physical_investment': 0.0
+    }
+    
+    total_hard_currency_value = 0.0
+    
+    for row in results:
+        third_level = row.third_level.lower() if row.third_level else 'unknown'
+        value = float(row.total_value) if row.total_value else 0.0
+        percentage = (value / total_value * 100) if total_value > 0 else 0.0
         
-        return {
-            "report_date": self.report_date.strftime("%m/%d/%Y") if self.report_date else None,
-            "portfolio": self.level_key,
-            "level": self.level,
-            "total_adjusted_value": 0,
-            "equities": {
-                "total_pct": 0,
-                "vol": None,
-                "beta": None,
-                "beta_adjusted": None,
-                "subcategories": {subcategory: 0 for subcategory in equity_subcategories}
-            },
-            "fixed_income": {
-                "total_pct": 0,
-                "duration": None,
-                "subcategories": {
-                    subcategory: {
-                        "total_pct": 0,
-                        **{duration_type: 0 for duration_type in fixed_income_duration_types}
-                    } if subcategory != "fixed_income_derivatives" else {"total_pct": 0}
-                    for subcategory in fixed_income_subcategories
-                }
-            },
-            "hard_currency": {
-                "total_pct": 0,
-                "subcategories": {subcategory: 0 for subcategory in hard_currency_subcategories}
-            },
-            "uncorrelated_alternatives": {
-                "total_pct": 0,
-                "subcategories": {subcategory: 0 for subcategory in uncorrelated_alt_subcategories}
-            },
-            "cash": {
-                "total_pct": 0
-            },
-            "liquidity": {
-                "liquid_assets": 0,
-                "illiquid_assets": 0
-            },
-            "performance": {
-                "1D": 0.0,
-                "MTD": 0.0,
-                "QTD": 0.0,
-                "YTD": 0.0
-            }
-        }
+        total_hard_currency_value += value
+        
+        # Map the third_level to our expected subcategories
+        if third_level == 'gold':
+            subcategories['gold'] = percentage
+        elif third_level == 'gold miners':
+            subcategories['gold_miners'] = percentage
+        elif third_level == 'silver':
+            subcategories['silver'] = percentage
+        elif third_level == 'silver miners':
+            subcategories['silver_miners'] = percentage
+        elif third_level == 'industrial metals':
+            subcategories['industrial_metals'] = percentage
+        elif third_level == 'precious metals derivatives':
+            subcategories['precious_metals_derivatives'] = percentage
+        elif third_level == 'hard currency physical investment':
+            subcategories['hard_currency_physical_investment'] = percentage
+        # Add any missing mappings as needed
+    
+    total_hard_currency_pct = (total_hard_currency_value / total_value * 100) if total_value > 0 else 0.0
+    
+    return total_hard_currency_pct, subcategories
+
+
+def get_uncorrelated_alternatives_breakdown(db: Session, report_date: date, level: str, level_key: str, 
+                                            total_value: float) -> Tuple[float, Dict]:
+    """
+    Get detailed breakdown of uncorrelated alternatives positions.
+    
+    Args:
+        db: Database session
+        report_date: The report date
+        level: The hierarchy level ('client', 'portfolio', 'account')
+        level_key: The identifier for the specified level
+        total_value: Total adjusted value for percentage calculations
+        
+    Returns:
+        Tuple of (total alternatives percentage, dict of alternatives subcategories with percentages)
+    """
+    level_filter = get_level_filter(level, level_key)
+    sql = SQL_UNCORRELATED_ALTERNATIVES.format(level_filter=level_filter)
+    
+    results = db.execute(text(sql), {'report_date': report_date}).fetchall()
+    
+    # Initialize alternatives subcategories
+    subcategories = {
+        'crypto': 0.0,
+        'proficio_short_term': 0.0,
+        'proficio_long_term': 0.0,
+        'other': 0.0
+    }
+    
+    total_alternatives_value = 0.0
+    
+    for row in results:
+        position = row.position.lower() if row.position else ''
+        third_level = row.third_level.lower() if row.third_level else ''
+        value = float(row.adjusted_value) if row.adjusted_value else 0.0
+        percentage = (value / total_value * 100) if total_value > 0 else 0.0
+        
+        total_alternatives_value += value
+        
+        # Categorize based on the rules
+        if third_level == 'crypto':
+            subcategories['crypto'] += percentage
+        elif 'proficio short term alts fund' in position:
+            subcategories['proficio_short_term'] += percentage
+        elif 'proficio long term alts fund' in position:
+            subcategories['proficio_long_term'] += percentage
+        else:
+            subcategories['other'] += percentage
+    
+    total_alternatives_pct = (total_alternatives_value / total_value * 100) if total_value > 0 else 0.0
+    
+    return total_alternatives_pct, subcategories
+
+
+def get_liquidity_breakdown(db: Session, report_date: date, level: str, level_key: str) -> Dict:
+    """
+    Get liquidity breakdown.
+    
+    Args:
+        db: Database session
+        report_date: The report date
+        level: The hierarchy level ('client', 'portfolio', 'account')
+        level_key: The identifier for the specified level
+        
+    Returns:
+        Dict with liquid and illiquid percentages
+    """
+    level_filter = get_level_filter(level, level_key)
+    sql = SQL_LIQUIDITY.format(level_filter=level_filter)
+    
+    results = db.execute(text(sql), {'report_date': report_date}).fetchall()
+    
+    total_value = 0.0
+    liquid_value = 0.0
+    illiquid_value = 0.0
+    
+    for row in results:
+        liquidity = row.liquid_vs_illiquid.lower() if row.liquid_vs_illiquid else 'unknown'
+        value = float(row.total_value) if row.total_value else 0.0
+        
+        total_value += value
+        
+        if liquidity == 'liquid':
+            liquid_value = value
+        elif liquidity == 'illiquid':
+            illiquid_value = value
+    
+    # Calculate percentages
+    liquid_pct = (liquid_value / total_value * 100) if total_value > 0 else 0.0
+    illiquid_pct = (illiquid_value / total_value * 100) if total_value > 0 else 0.0
+    
+    return {
+        'liquid_assets': liquid_pct,
+        'illiquid_assets': illiquid_pct
+    }
+
+
+def get_performance_data(db: Session, report_date: date, level: str, level_key: str) -> Dict:
+    """
+    Get performance data. This is a placeholder until we implement the proper calculation.
+    
+    Args:
+        db: Database session
+        report_date: The report date
+        level: The hierarchy level ('client', 'portfolio', 'account')
+        level_key: The identifier for the specified level
+        
+    Returns:
+        Dict with performance percentages for different time periods
+    """
+    # Placeholder - will be implemented when historical data is available
+    return {
+        '1D': 0.0,
+        'MTD': 0.0,
+        'QTD': 0.0,
+        'YTD': 0.0
+    }
+
+
+def generate_portfolio_report(db: Session, report_date: date, level: str, level_key: str) -> Dict:
+    """
+    Generate a comprehensive portfolio report.
+    
+    Args:
+        db: Database session
+        report_date: The report date
+        level: The hierarchy level ('client', 'portfolio', 'account')
+        level_key: The identifier for the specified level
+        
+    Returns:
+        Dict with complete portfolio report data
+    """
+    logger.info(f"Generating portfolio report for {level}={level_key} on date {report_date}")
+    
+    # Get total portfolio value
+    total_value = get_total_adjusted_value(db, report_date, level, level_key)
+    
+    # Get main asset class breakdowns
+    report_data = get_asset_class_breakdowns(db, report_date, level, level_key, total_value)
+    
+    # Get equity subcategories
+    report_data['equities']['subcategories'] = get_equity_breakdown(
+        db, report_date, level, level_key, total_value
+    )
+    
+    # Get fixed income subcategories
+    report_data['fixed_income']['subcategories'] = get_fixed_income_breakdown(
+        db, report_date, level, level_key, total_value
+    )
+    
+    # Get hard currency data
+    hard_currency_pct, hard_currency_subcategories = get_hard_currency_breakdown(
+        db, report_date, level, level_key, total_value
+    )
+    report_data['hard_currency']['total_pct'] = hard_currency_pct
+    report_data['hard_currency']['subcategories'] = hard_currency_subcategories
+    
+    # Get uncorrelated alternatives data
+    alternatives_pct, alternatives_subcategories = get_uncorrelated_alternatives_breakdown(
+        db, report_date, level, level_key, total_value
+    )
+    report_data['uncorrelated_alternatives']['total_pct'] = alternatives_pct
+    report_data['uncorrelated_alternatives']['subcategories'] = alternatives_subcategories
+    
+    # Get liquidity breakdown
+    report_data['liquidity'] = get_liquidity_breakdown(db, report_date, level, level_key)
+    
+    # Get performance data
+    report_data['performance'] = get_performance_data(db, report_date, level, level_key)
+    
+    # Add metadata
+    report_data['level'] = level
+    report_data['level_key'] = level_key
+    report_data['report_date'] = report_date.strftime('%Y-%m-%d')
+    report_data['total_adjusted_value'] = total_value
+    
+    # Map level_key to portfolio name for display
+    if level == 'portfolio':
+        report_data['portfolio'] = level_key
+    elif level == 'client':
+        report_data['client'] = level_key
+    elif level == 'account':
+        report_data['account'] = level_key
+    
+    return report_data

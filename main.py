@@ -78,6 +78,122 @@ def api_root():
 def health():
     return jsonify({"status": "healthy"})
 
+# Portfolio Report API Endpoint
+@app.route("/api/portfolio-report", methods=["GET"])
+def portfolio_report():
+    """
+    Generate a portfolio report from the database.
+    
+    Query parameters:
+    - date: Report date in YYYY-MM-DD format (required)
+    - level: Level of detail - 'client', 'portfolio', or 'account' (required)
+    - level_key: The identifier for the level (e.g., client name, portfolio name, account number) (required)
+    - format: Response format - 'json' (default) or 'percent' or 'dollar'
+    
+    Returns:
+        JSON with portfolio report data
+    """
+    # Get request parameters
+    report_date_str = request.args.get('date')
+    level = request.args.get('level')
+    level_key = request.args.get('level_key')
+    report_format = request.args.get('format', 'percent')  # Default to percent
+    
+    # Validate required parameters
+    if not report_date_str:
+        return jsonify({"error": "Missing required parameter: date"}), 400
+    if not level:
+        return jsonify({"error": "Missing required parameter: level"}), 400
+    if not level_key:
+        return jsonify({"error": "Missing required parameter: level_key"}), 400
+    
+    # Validate level parameter
+    if level not in ['client', 'portfolio', 'account']:
+        return jsonify({"error": f"Invalid level: {level}. Must be one of: client, portfolio, account"}), 400
+    
+    # Validate and parse date
+    try:
+        report_date = datetime.strptime(report_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({"error": f"Invalid date format: {report_date_str}. Use YYYY-MM-DD"}), 400
+    
+    try:
+        # Get portfolio report data from the service
+        from src.services.portfolio_report_service import generate_portfolio_report
+        
+        with get_db_connection() as db:
+            # Get the report data
+            report_data = generate_portfolio_report(db, report_date, level, level_key)
+            
+            # Convert percentage values to dollar values if requested
+            if report_format == 'dollar':
+                total_value = report_data.get('total_adjusted_value', 0)
+                
+                # Convert equities
+                if 'equities' in report_data:
+                    equities = report_data['equities']
+                    equities['total_value'] = (equities['total_pct'] / 100) * total_value
+                    
+                    if 'subcategories' in equities:
+                        for key, pct in equities['subcategories'].items():
+                            equities['subcategories'][key] = (pct / 100) * total_value
+                
+                # Convert fixed income
+                if 'fixed_income' in report_data:
+                    fixed_income = report_data['fixed_income']
+                    fixed_income['total_value'] = (fixed_income['total_pct'] / 100) * total_value
+                    
+                    if 'subcategories' in fixed_income:
+                        for key, category in fixed_income['subcategories'].items():
+                            if isinstance(category, dict) and 'total_pct' in category:
+                                category['total_value'] = (category['total_pct'] / 100) * total_value
+                            else:
+                                fixed_income['subcategories'][key] = (category / 100) * total_value
+                
+                # Convert hard currency
+                if 'hard_currency' in report_data:
+                    hard_currency = report_data['hard_currency']
+                    hard_currency['total_value'] = (hard_currency['total_pct'] / 100) * total_value
+                    
+                    if 'subcategories' in hard_currency:
+                        for key, pct in hard_currency['subcategories'].items():
+                            hard_currency['subcategories'][key] = (pct / 100) * total_value
+                
+                # Convert uncorrelated alternatives
+                if 'uncorrelated_alternatives' in report_data:
+                    alternatives = report_data['uncorrelated_alternatives']
+                    alternatives['total_value'] = (alternatives['total_pct'] / 100) * total_value
+                    
+                    if 'subcategories' in alternatives:
+                        for key, pct in alternatives['subcategories'].items():
+                            alternatives['subcategories'][key] = (pct / 100) * total_value
+                
+                # Convert cash
+                if 'cash' in report_data:
+                    cash = report_data['cash']
+                    cash['total_value'] = (cash['total_pct'] / 100) * total_value
+                
+                # Convert liquidity
+                if 'liquidity' in report_data:
+                    liquidity = report_data['liquidity']
+                    for key, pct in liquidity.items():
+                        liquidity[key] = (pct / 100) * total_value
+                
+                # Add format info to the response
+                report_data['display_format'] = 'dollar'
+            else:
+                # Default to percentage format
+                report_data['display_format'] = 'percent'
+            
+            return jsonify(report_data)
+            
+    except Exception as e:
+        logger.exception(f"Error generating portfolio report: {str(e)}")
+        return jsonify({
+            "error": "Failed to generate portfolio report",
+            "details": str(e)
+        }), 500
+
 def generate_financial_summary(db, report_date):
     """
     Generate financial summary data by aggregating financial positions.
