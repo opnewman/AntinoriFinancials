@@ -274,34 +274,36 @@ def process_equity_sheet(file_path, sheet_name, import_date, db):
                 success_count = 0
                 for risk_stat in batch_records:
                     try:
-                        # Use a raw SQL INSERT with ON CONFLICT DO NOTHING to handle duplicates gracefully
-                        sql = text("""
-                            INSERT INTO egnyte_risk_stats 
-                            (import_date, position, ticker_symbol, cusip, asset_class, second_level, bloomberg_id, 
-                             volatility, beta, duration, notes, amended_id, source_file, source_tab, source_row)
-                            VALUES 
-                            (:import_date, :position, :ticker_symbol, :cusip, :asset_class, :second_level, :bloomberg_id,
-                             :volatility, :beta, :duration, :notes, :amended_id, :source_file, :source_tab, :source_row)
-                            ON CONFLICT (import_date, position, asset_class) DO NOTHING
-                        """)
+                        # Sanitize strings to prevent encoding issues
+                        safe_position = risk_stat.position[:255] if risk_stat.position else None
+                        safe_ticker = risk_stat.ticker_symbol[:50] if risk_stat.ticker_symbol else None
+                        safe_cusip = risk_stat.cusip[:50] if risk_stat.cusip else None
+                        safe_asset_class = risk_stat.asset_class[:50] if risk_stat.asset_class else None
+                        safe_second_level = risk_stat.second_level[:100] if risk_stat.second_level else None
+                        safe_bloomberg_id = risk_stat.bloomberg_id[:100] if risk_stat.bloomberg_id else None
+                        safe_notes = risk_stat.notes[:500] if risk_stat.notes else None
+                        safe_amended_id = risk_stat.amended_id[:100] if risk_stat.amended_id else None
                         
-                        db.execute(sql, {
-                            "import_date": risk_stat.import_date,
-                            "position": risk_stat.position,
-                            "ticker_symbol": risk_stat.ticker_symbol,
-                            "cusip": risk_stat.cusip,
-                            "asset_class": risk_stat.asset_class,
-                            "second_level": risk_stat.second_level,
-                            "bloomberg_id": risk_stat.bloomberg_id,
-                            "volatility": risk_stat.volatility,
-                            "beta": risk_stat.beta,
-                            "duration": None,  # Not used for equity
-                            "notes": risk_stat.notes,
-                            "amended_id": risk_stat.amended_id,
-                            "source_file": risk_stat.source_file,
-                            "source_tab": risk_stat.source_tab,
-                            "source_row": risk_stat.source_row
-                        })
+                        # Create a new clean instance
+                        clean_risk_stat = EgnyteRiskStat(
+                            import_date=risk_stat.import_date,
+                            position=safe_position,
+                            ticker_symbol=safe_ticker,
+                            cusip=safe_cusip,
+                            asset_class=safe_asset_class,
+                            second_level=safe_second_level,
+                            bloomberg_id=safe_bloomberg_id,
+                            volatility=risk_stat.volatility,
+                            beta=risk_stat.beta,
+                            notes=safe_notes,
+                            amended_id=safe_amended_id,
+                            source_file=os.path.basename(file_path),
+                            source_tab=sheet_name,
+                            source_row=risk_stat.source_row
+                        )
+                        
+                        # Try simple add with merge strategy
+                        db.merge(clean_risk_stat)
                         db.commit()
                         success_count += 1
                     except Exception as inner_e:
@@ -436,34 +438,37 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
                 success_count = 0
                 for risk_stat in batch_records:
                     try:
-                        # Use a raw SQL INSERT with ON CONFLICT DO NOTHING to handle duplicates gracefully
-                        sql = text("""
-                            INSERT INTO egnyte_risk_stats 
-                            (import_date, position, ticker_symbol, cusip, asset_class, second_level, bloomberg_id, 
-                             volatility, beta, duration, notes, amended_id, source_file, source_tab, source_row)
-                            VALUES 
-                            (:import_date, :position, :ticker_symbol, :cusip, :asset_class, :second_level, :bloomberg_id,
-                             :volatility, :beta, :duration, :notes, :amended_id, :source_file, :source_tab, :source_row)
-                            ON CONFLICT (import_date, position, asset_class) DO NOTHING
-                        """)
+                        # Sanitize strings to prevent encoding issues
+                        safe_position = risk_stat.position[:255] if risk_stat.position else None
+                        safe_ticker = risk_stat.ticker_symbol[:50] if risk_stat.ticker_symbol else None
+                        safe_cusip = risk_stat.cusip[:50] if risk_stat.cusip else None
+                        safe_asset_class = risk_stat.asset_class[:50] if risk_stat.asset_class else None
+                        safe_second_level = risk_stat.second_level[:100] if risk_stat.second_level else None
+                        safe_bloomberg_id = risk_stat.bloomberg_id[:100] if risk_stat.bloomberg_id else None
+                        safe_notes = risk_stat.notes[:500] if risk_stat.notes else None
+                        safe_amended_id = risk_stat.amended_id[:100] if risk_stat.amended_id else None
                         
-                        db.execute(sql, {
-                            "import_date": risk_stat.import_date,
-                            "position": risk_stat.position,
-                            "ticker_symbol": risk_stat.ticker_symbol,
-                            "cusip": risk_stat.cusip,
-                            "asset_class": risk_stat.asset_class,
-                            "second_level": risk_stat.second_level,
-                            "bloomberg_id": risk_stat.bloomberg_id,
-                            "volatility": None,  # Not used for fixed income
-                            "beta": None,  # Not used for fixed income
-                            "duration": risk_stat.duration,
-                            "notes": risk_stat.notes,
-                            "amended_id": risk_stat.amended_id,
-                            "source_file": risk_stat.source_file,
-                            "source_tab": risk_stat.source_tab,
-                            "source_row": risk_stat.source_row
-                        })
+                        # Create a new clean instance
+                        clean_risk_stat = EgnyteRiskStat(
+                            import_date=risk_stat.import_date,
+                            position=safe_position,
+                            ticker_symbol=safe_ticker,
+                            cusip=safe_cusip,
+                            asset_class=safe_asset_class,
+                            second_level=safe_second_level,
+                            bloomberg_id=safe_bloomberg_id,
+                            volatility=None,  # Not used for fixed income
+                            beta=None,  # Not used for fixed income
+                            duration=risk_stat.duration,
+                            notes=safe_notes,
+                            amended_id=safe_amended_id,
+                            source_file=os.path.basename(file_path),
+                            source_tab=sheet_name,
+                            source_row=risk_stat.source_row
+                        )
+                        
+                        # Try simple add with merge strategy
+                        db.merge(clean_risk_stat)
                         db.commit()
                         success_count += 1
                     except Exception as inner_e:
@@ -598,34 +603,37 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db):
                 success_count = 0
                 for risk_stat in batch_records:
                     try:
-                        # Use a raw SQL INSERT with ON CONFLICT DO NOTHING to handle duplicates gracefully
-                        sql = text("""
-                            INSERT INTO egnyte_risk_stats 
-                            (import_date, position, ticker_symbol, cusip, asset_class, second_level, bloomberg_id, 
-                             volatility, beta, duration, notes, amended_id, source_file, source_tab, source_row)
-                            VALUES 
-                            (:import_date, :position, :ticker_symbol, :cusip, :asset_class, :second_level, :bloomberg_id,
-                             :volatility, :beta, :duration, :notes, :amended_id, :source_file, :source_tab, :source_row)
-                            ON CONFLICT (import_date, position, asset_class) DO NOTHING
-                        """)
+                        # Sanitize strings to prevent encoding issues
+                        safe_position = risk_stat.position[:255] if risk_stat.position else None
+                        safe_ticker = risk_stat.ticker_symbol[:50] if risk_stat.ticker_symbol else None
+                        safe_cusip = risk_stat.cusip[:50] if risk_stat.cusip else None
+                        safe_asset_class = risk_stat.asset_class[:50] if risk_stat.asset_class else None
+                        safe_second_level = risk_stat.second_level[:100] if risk_stat.second_level else None
+                        safe_bloomberg_id = risk_stat.bloomberg_id[:100] if risk_stat.bloomberg_id else None
+                        safe_notes = risk_stat.notes[:500] if risk_stat.notes else None
+                        safe_amended_id = risk_stat.amended_id[:100] if risk_stat.amended_id else None
                         
-                        db.execute(sql, {
-                            "import_date": risk_stat.import_date,
-                            "position": risk_stat.position,
-                            "ticker_symbol": risk_stat.ticker_symbol,
-                            "cusip": risk_stat.cusip,
-                            "asset_class": risk_stat.asset_class,
-                            "second_level": risk_stat.second_level,
-                            "bloomberg_id": risk_stat.bloomberg_id,
-                            "volatility": None,  # Not used for alternatives
-                            "beta": risk_stat.beta,
-                            "duration": None,  # Not used for alternatives
-                            "notes": risk_stat.notes,
-                            "amended_id": risk_stat.amended_id,
-                            "source_file": risk_stat.source_file,
-                            "source_tab": risk_stat.source_tab,
-                            "source_row": risk_stat.source_row
-                        })
+                        # Create a new clean instance
+                        clean_risk_stat = EgnyteRiskStat(
+                            import_date=risk_stat.import_date,
+                            position=safe_position,
+                            ticker_symbol=safe_ticker,
+                            cusip=safe_cusip,
+                            asset_class=safe_asset_class,
+                            second_level=safe_second_level,
+                            bloomberg_id=safe_bloomberg_id,
+                            volatility=None,  # Not used for alternatives
+                            beta=risk_stat.beta,
+                            duration=None,  # Not used for alternatives
+                            notes=safe_notes,
+                            amended_id=safe_amended_id,
+                            source_file=os.path.basename(file_path),
+                            source_tab=sheet_name,
+                            source_row=risk_stat.source_row
+                        )
+                        
+                        # Try simple add with merge strategy
+                        db.merge(clean_risk_stat)
                         db.commit()
                         success_count += 1
                     except Exception as inner_e:
