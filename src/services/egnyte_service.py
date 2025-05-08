@@ -479,39 +479,74 @@ def fetch_and_process_risk_stats(db: Session):
         # Set the import date
         import_date = date.today()
         
-        # Delete any existing records for today's date to prevent unique constraint violations
+        # Download the file first to avoid cleaning records if there's no file to process
         try:
+            file_path = download_risk_stats_file()
+            logger.info(f"Successfully downloaded risk stats file to {file_path}")
+        except Exception as download_error:
+            logger.error(f"Failed to download risk stats file: {download_error}")
+            return {
+                "success": False,
+                "error": f"Failed to download risk statistics: {str(download_error)}"
+            }
+        
+        # Now delete any existing records for today's date to prevent unique constraint violations
+        try:
+            # Get count for logging
             existing_count = db.query(EgnyteRiskStat).filter(
                 EgnyteRiskStat.import_date == import_date
             ).count()
             
-            if existing_count > 0:
-                logger.info(f"Deleting {existing_count} existing records for import date {import_date}")
-                db.query(EgnyteRiskStat).filter(
-                    EgnyteRiskStat.import_date == import_date
-                ).delete()
-                db.commit()
-        except Exception as e:
-            logger.warning(f"Error deleting existing records: {str(e)}")
-            # Continue with the process regardless
+            # Always do the delete even if count is 0, just to be safe
+            logger.info(f"Cleaning up {existing_count} existing records for import date {import_date}")
+            
+            # Use synchronize_session=False for more efficient bulk delete
+            db.query(EgnyteRiskStat).filter(
+                EgnyteRiskStat.import_date == import_date
+            ).delete(synchronize_session=False)
+            
+            # Commit immediately to ensure clean state
+            db.commit()
+            logger.info("Database cleanup completed successfully")
+            
+        except Exception as db_error:
+            # Roll back on error
+            db.rollback()
+            logger.error(f"Failed to clean up existing records: {db_error}")
+            # In case of database errors, better not to proceed
+            try:
+                os.unlink(file_path)  # Clean up file since we're not using it
+            except:
+                pass
+            return {
+                "success": False,
+                "error": f"Database error during preparation: {str(db_error)}"
+            }
         
-        # Download the file from Egnyte
-        file_path = download_risk_stats_file()
-        
-        # Process the file and insert data into the database
-        stats = process_excel_file(file_path, db)
-        
-        # Clean up the temporary file
+        # Now process the file and insert data into the database
         try:
-            os.unlink(file_path)
-            logger.info(f"Temporary file {file_path} removed")
-        except Exception as e:
-            logger.warning(f"Failed to remove temporary file {file_path}: {e}")
+            stats = process_excel_file(file_path, db)
+            logger.info(f"Successfully processed Excel file with stats: {stats}")
+        except Exception as process_error:
+            db.rollback()  # Roll back any partial changes
+            logger.error(f"Error processing Excel file: {process_error}")
+            return {
+                "success": False,
+                "error": f"Failed to process risk statistics file: {str(process_error)}"
+            }
+        finally:
+            # Always try to clean up the temporary file
+            try:
+                os.unlink(file_path)
+                logger.info(f"Temporary file {file_path} removed")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to remove temporary file {file_path}: {cleanup_error}")
         
         return {
             "success": True,
             "import_date": import_date.isoformat(),
-            "stats": stats
+            "stats": stats,
+            "message": "Risk statistics updated successfully"
         }
     
     except Exception as e:

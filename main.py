@@ -84,20 +84,56 @@ def update_risk_stats():
         JSON with the status and summary of the update
     """
     try:
-        # Ensure we have a valid token
+        # Check for required environment variables
+        egnyte_token = os.environ.get('EGNYTE_ACCESS_TOKEN')
+        if not egnyte_token:
+            logger.error("EGNYTE_ACCESS_TOKEN not found in environment variables")
+            return jsonify({
+                "success": False,
+                "error": "Egnyte API token not configured. Please set the EGNYTE_ACCESS_TOKEN environment variable.",
+                "debug_info": "Missing required environment variable EGNYTE_ACCESS_TOKEN"
+            }), 400
+            
+        # Import the service
         from src.services.egnyte_service import fetch_and_process_risk_stats
         
+        logger.info("Starting risk statistics update process")
         with get_db_connection() as db:
             # Get the risk stats from Egnyte and process them
             result = fetch_and_process_risk_stats(db)
-            return jsonify(result)
+            
+            # Check if operation was successful
+            if result.get("success", False):
+                logger.info(f"Risk statistics update completed successfully: {result}")
+                return jsonify(result)
+            else:
+                # Return the error from the service but with a 400 status
+                logger.error(f"Risk statistics update failed: {result}")
+                return jsonify(result), 400
             
     except Exception as e:
-        logger.exception(f"Error updating risk statistics: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        error_details = str(e)
+        logger.exception(f"Unexpected error updating risk statistics: {error_details}")
+        
+        # Provide helpful message for specific error types
+        if "duplicate key value violates unique constraint" in error_details:
+            return jsonify({
+                "success": False,
+                "error": "Database conflict occurred. Please try again.",
+                "debug_info": error_details
+            }), 500
+        elif "EGNYTE_ACCESS_TOKEN" in error_details:
+            return jsonify({
+                "success": False,
+                "error": "Egnyte API token is missing or invalid. Please check your configuration.",
+                "debug_info": error_details
+            }), 500
+        else:
+            return jsonify({
+                "success": False,
+                "error": "An unexpected error occurred during risk statistics update.",
+                "debug_info": error_details
+            }), 500
 
 @app.route("/api/portfolio/risk-metrics", methods=["GET"])
 def get_portfolio_risk_metrics():
