@@ -206,7 +206,7 @@ def get_equity_breakdown(db: Session, report_date: date, level: str, level_key: 
     level_filter = get_level_filter(level, level_key)
     sql = SQL_EQUITY_SUBCATEGORIES.format(level_filter=level_filter)
     
-    results = db.execute(text(sql), {'report_date': report_date}).fetchall()
+    results = db.execute(text(sql), {'date': report_date}).fetchall()
     
     # Initialize all equity subcategories with zero
     subcategories = {
@@ -274,7 +274,7 @@ def get_fixed_income_breakdown(db: Session, report_date: date, level: str, level
     level_filter = get_level_filter(level, level_key)
     sql = SQL_FIXED_INCOME_SUBCATEGORIES.format(level_filter=level_filter)
     
-    results = db.execute(text(sql), {'report_date': report_date}).fetchall()
+    results = db.execute(text(sql), {'date': report_date}).fetchall()
     
     # Initialize fixed income subcategories with default structures
     subcategories = {
@@ -325,7 +325,7 @@ def get_hard_currency_breakdown(db: Session, report_date: date, level: str, leve
     level_filter = get_level_filter(level, level_key)
     sql = SQL_HARD_CURRENCY_SUBCATEGORIES.format(level_filter=level_filter)
     
-    results = db.execute(text(sql), {'report_date': report_date}).fetchall()
+    results = db.execute(text(sql), {'date': report_date}).fetchall()
     
     # Initialize hard currency subcategories
     subcategories = {
@@ -387,7 +387,7 @@ def get_uncorrelated_alternatives_breakdown(db: Session, report_date: date, leve
     level_filter = get_level_filter(level, level_key)
     sql = SQL_UNCORRELATED_ALTERNATIVES.format(level_filter=level_filter)
     
-    results = db.execute(text(sql), {'report_date': report_date}).fetchall()
+    results = db.execute(text(sql), {'date': report_date}).fetchall()
     
     # Initialize alternatives subcategories
     subcategories = {
@@ -438,7 +438,7 @@ def get_liquidity_breakdown(db: Session, report_date: date, level: str, level_ke
     level_filter = get_level_filter(level, level_key)
     sql = SQL_LIQUIDITY.format(level_filter=level_filter)
     
-    results = db.execute(text(sql), {'report_date': report_date}).fetchall()
+    results = db.execute(text(sql), {'date': report_date}).fetchall()
     
     total_value = 0.0
     liquid_value = 0.0
