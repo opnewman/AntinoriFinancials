@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Import database module
 from src.database import init_db, get_db, get_db_connection
-from src.models.models import OwnershipMetadata, OwnershipItem, FinancialPosition, FinancialSummary
+from src.models.models import OwnershipMetadata, OwnershipItem, FinancialPosition, FinancialSummary, EgnyteRiskStat
 from src.utils.encryption import encryption_service
 
 # Initialize database (create tables)
@@ -40,6 +40,7 @@ def root():
 @app.route('/upload-data')
 @app.route('/reports')
 @app.route('/ownership')
+@app.route('/risk-stats')
 def serve_spa():
     return send_from_directory('frontend', 'index.html')
 
@@ -64,6 +65,174 @@ def api_root():
 @app.route("/health")
 def health():
     return jsonify({"status": "healthy"})
+
+# Risk Stats API Endpoints
+@app.route("/api/risk-stats/update", methods=["POST"])
+def update_risk_stats():
+    """
+    Update risk statistics from Egnyte.
+    
+    This endpoint fetches the risk statistics file from Egnyte and processes it.
+    It requires an Egnyte API token to be set in the environment variables.
+    
+    Returns:
+        JSON with the status and summary of the update
+    """
+    try:
+        # Ensure we have a valid token
+        from src.services.egnyte_service import fetch_and_process_risk_stats
+        
+        with get_db_connection() as db:
+            # Get the risk stats from Egnyte and process them
+            result = fetch_and_process_risk_stats(db)
+            return jsonify(result)
+            
+    except Exception as e:
+        logger.exception(f"Error updating risk statistics: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route("/api/risk-stats", methods=["GET"])
+def get_risk_stats():
+    """
+    Get risk statistics from the database.
+    
+    Query parameters:
+    - asset_class: Filter to specific asset class - 'Equity', 'Fixed Income', or 'Alternatives'
+    - position: Filter to specific position/security
+    - ticker: Filter to specific ticker symbol
+    
+    Returns:
+        JSON with risk statistics data
+    """
+    try:
+        # Get query parameters
+        asset_class = request.args.get('asset_class')
+        position = request.args.get('position')
+        ticker = request.args.get('ticker')
+        
+        with get_db_connection() as db:
+            # Base query
+            query = db.query(EgnyteRiskStat)
+            
+            # Apply filters
+            if asset_class:
+                query = query.filter(EgnyteRiskStat.asset_class == asset_class)
+            
+            if position:
+                query = query.filter(EgnyteRiskStat.position.ilike(f"%{position}%"))
+                
+            if ticker:
+                query = query.filter(EgnyteRiskStat.ticker_symbol.ilike(f"%{ticker}%"))
+            
+            # Get the latest import date
+            latest_date = db.query(func.max(EgnyteRiskStat.import_date)).scalar()
+            
+            if latest_date:
+                query = query.filter(EgnyteRiskStat.import_date == latest_date)
+                
+                # Execute the query
+                risk_stats = query.all()
+                
+                # Convert to JSON
+                result = []
+                for stat in risk_stats:
+                    result.append({
+                        "id": stat.id,
+                        "import_date": stat.import_date.isoformat() if stat.import_date else None,
+                        "position": stat.position,
+                        "ticker_symbol": stat.ticker_symbol,
+                        "cusip": stat.cusip,
+                        "asset_class": stat.asset_class,
+                        "second_level": stat.second_level,
+                        "bloomberg_id": stat.bloomberg_id,
+                        "volatility": float(stat.volatility) if stat.volatility is not None else None,
+                        "beta": float(stat.beta) if stat.beta is not None else None,
+                        "duration": float(stat.duration) if stat.duration is not None else None,
+                        "notes": stat.notes,
+                        "amended_id": stat.amended_id
+                    })
+                
+                return jsonify({
+                    "success": True,
+                    "count": len(result),
+                    "import_date": latest_date.isoformat() if latest_date else None,
+                    "risk_stats": result
+                })
+            else:
+                return jsonify({
+                    "success": True,
+                    "count": 0,
+                    "import_date": None,
+                    "risk_stats": []
+                })
+            
+    except Exception as e:
+        logger.exception(f"Error getting risk statistics: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route("/api/risk-stats/status", methods=["GET"])
+def get_risk_stats_status():
+    """
+    Get the status of risk statistics data.
+    
+    Returns information about when risk stats were last updated and how many records are available.
+    
+    Returns:
+        JSON with the status of risk statistics data
+    """
+    try:
+        with get_db_connection() as db:
+            # Get the latest import date
+            latest_date = db.query(func.max(EgnyteRiskStat.import_date)).scalar()
+            
+            if latest_date:
+                # Count records by asset class
+                equity_count = db.query(EgnyteRiskStat).filter(
+                    EgnyteRiskStat.import_date == latest_date,
+                    EgnyteRiskStat.asset_class == 'Equity'
+                ).count()
+                
+                fixed_income_count = db.query(EgnyteRiskStat).filter(
+                    EgnyteRiskStat.import_date == latest_date,
+                    EgnyteRiskStat.asset_class == 'Fixed Income'
+                ).count()
+                
+                alternatives_count = db.query(EgnyteRiskStat).filter(
+                    EgnyteRiskStat.import_date == latest_date,
+                    EgnyteRiskStat.asset_class == 'Alternatives'
+                ).count()
+                
+                total_count = equity_count + fixed_income_count + alternatives_count
+                
+                return jsonify({
+                    "success": True,
+                    "has_data": True,
+                    "latest_import_date": latest_date.isoformat(),
+                    "total_records": total_count,
+                    "equity_records": equity_count,
+                    "fixed_income_records": fixed_income_count,
+                    "alternatives_records": alternatives_count
+                })
+            else:
+                return jsonify({
+                    "success": True,
+                    "has_data": False,
+                    "latest_import_date": None,
+                    "total_records": 0
+                })
+            
+    except Exception as e:
+        logger.exception(f"Error getting risk statistics status: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 # Portfolio Report API Endpoint
 @app.route("/api/portfolio-report", methods=["GET"])

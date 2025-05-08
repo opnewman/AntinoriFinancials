@@ -315,3 +315,41 @@ class PerformanceData(Base):
     __table_args__ = (
         sa.UniqueConstraint('report_date', 'level', 'level_key', name='uix_performance_date_level_key'),
     )
+
+
+class EgnyteRiskStat(Base):
+    """
+    Risk statistics for securities fetched from Egnyte API.
+    Combines data from Equity, Fixed Income, and Alternatives tabs in the risk stats Excel file.
+    """
+    __tablename__ = 'egnyte_risk_stats'
+    
+    id = sa.Column(sa.Integer, primary_key=True)
+    import_date = sa.Column(sa.Date, nullable=False, index=True)  # Date the data was imported
+    position = sa.Column(sa.String, nullable=False, index=True)   # Security/position name
+    ticker_symbol = sa.Column(sa.String, index=True)              # Ticker symbol if available
+    cusip = sa.Column(sa.String, index=True)                      # CUSIP if available
+    asset_class = sa.Column(sa.String, nullable=False, index=True)  # 'Equity', 'Fixed Income', 'Alternatives'
+    second_level = sa.Column(sa.String, index=True)               # Secondary classification
+    bloomberg_id = sa.Column(sa.String, index=True)               # Bloomberg identifier
+    
+    # Risk metrics
+    volatility = sa.Column(sa.Numeric(10, 6))                     # Volatility (standard deviation)
+    beta = sa.Column(sa.Numeric(10, 6))                           # Beta (compared to benchmark)
+    duration = sa.Column(sa.Numeric(10, 6))                       # Duration (for fixed income)
+    
+    # Additional metadata
+    notes = sa.Column(sa.Text)                                    # Notes about proxy usage etc.
+    amended_id = sa.Column(sa.String, index=True)                 # Alternative identifier
+    
+    # Source tracking
+    source_file = sa.Column(sa.String)                            # Original file path/name
+    source_tab = sa.Column(sa.String)                             # Tab in Excel file
+    source_row = sa.Column(sa.Integer)                            # Row in the Excel file
+    
+    created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
+    updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
+    
+    __table_args__ = (
+        sa.UniqueConstraint('import_date', 'position', 'asset_class', name='uix_egnyte_risk_date_position_asset'),
+    )

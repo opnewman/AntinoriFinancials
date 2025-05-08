@@ -1,0 +1,62 @@
+import requests
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+EGNYTE_DOMAIN = "procapitalpartners.egnyte.com"
+
+def download_file(access_token, file_path, save_path):
+    """Download the Excel file from Egnyte."""
+    url = f"https://{EGNYTE_DOMAIN}/pubapi/v1/fs-content{file_path}"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    with open(save_path, "wb") as f:
+        f.write(response.content)
+    print(f"File downloaded to {save_path}")
+
+
+__________________________________________________________________________________
+
+ Function to ingest Risk Stats from Egnyte
+def ingest_risk_stats():
+     EGNYTE_DOMAIN = os.getenv("EGNYTE_DOMAIN", "procapitalpartners.egnyte.com")
+     EGNYTE_API_TOKEN = os.getenv("EGNYTE_API_TOKEN")
+     FILE_PATH = os.getenv("EGNYTE_RISK_STATS_PATH", "/Shared/Internal Documents/Proficio Capital Partners/Asset Allocation/Portfolio Management/New Portfolio Sheets/Security Risk Stats.xlsx")
+
+     url = f"https://{EGNYTE_DOMAIN}/pubapi/v1/fs-content{FILE_PATH}"
+     headers = {"Authorization": f"Bearer {EGNYTE_API_TOKEN}"}
+     response = requests.get(url, headers=headers)
+
+     if response.status_code != 200:
+          print(f"Failed to fetch Risk Stats from Egnyte: {response.status_code}")
+          return
+
+     with open("RiskStats.xlsx", "wb") as f:
+          f.write(response.content)
+
+     risk_stats_df = pd.read_excel("RiskStats.xlsx")
+     for _, row in risk_stats_df.iterrows():
+          risk_stat = RiskStat(
+               position=row["Position"],
+               ticker_symbol=row.get("Ticker Symbol", ""),
+               asset_class=row["Asset Class"],
+               second_level=row.get("Second Level", ""),
+               amended_id=row.get("Amended ID", ""),
+               volatility=row.get("Vol", 0.0) or 0.0,
+               beta=row.get("BETA", 0.0) or 0.0,
+               notes=row.get("Notes", "")
+          )
+          session.merge(risk_stat)
+
+     session.commit()
+     print("Risk Stats ingestion completed.")
+
+# Manual update function
+def update_data():
+     ingest_risk_stats()  # Trigger Risk Stats update
+     # Add Addepar update logic later (e.g., file upload handling)
+     print("Data update completed.")
+
+if __name__ == "__main__":
+     update_data()  # Run manual update when script is executed
