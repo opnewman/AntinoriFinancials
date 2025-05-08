@@ -54,8 +54,7 @@ class FinancialPosition(Base):
     __tablename__ = 'financial_positions'
     
     id = sa.Column(sa.Integer, primary_key=True)
-    date = sa.Column(sa.Date, nullable=False, index=True)  # This is actually 'date' in the database
-    report_date = sa.Column(sa.Date, nullable=False, index=True)  # Alias for compatibility
+    date = sa.Column(sa.Date, nullable=False, index=True)  # The actual date column in the database
     position = sa.Column(sa.String, nullable=False)
     top_level_client = sa.Column(sa.String, nullable=False, index=True)
     holding_account = sa.Column(sa.String, nullable=False)
@@ -72,6 +71,11 @@ class FinancialPosition(Base):
     row_order = sa.Column(sa.Integer, index=True)  # To preserve original order
     created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
     updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
+    
+    # For compatibility with code that expects 'report_date'
+    @property
+    def report_date(self):
+        return self.date
 
 
 class FinancialSummary(Base):
