@@ -65,19 +65,19 @@ def simple_encrypt(value):
     if value is None:
         return None
     
-    # Convert to string and handle encoding
+    # Return the numeric value directly to store properly in the database
     try:
         if isinstance(value, float):
-            value_str = f"{value:.2f}"
+            return value
         else:
-            value_str = str(value)
-        
-        # For now, just store as a string with a simple prefix
-        # In production, use proper encryption
-        return f"ENC:{value_str}"
+            # Try to convert to float if it's a string
+            try:
+                return float(value)
+            except:
+                return 0.0
     except:
-        logger.error(f"Error encrypting value: {type(value)}")
-        return "ENC:0.00"
+        logger.error(f"Error processing value: {type(value)}")
+        return 0.0
 
 def process_excel_file(file_path):
     """Process an Excel file with financial position data"""

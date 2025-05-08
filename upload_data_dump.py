@@ -66,11 +66,16 @@ def simple_encrypt(value):
     
     try:
         if isinstance(value, float):
-            return f"ENC:{value:.2f}"
+            # Return the numeric value directly without prefixing with ENC:
+            return value
         else:
-            return f"ENC:{str(value)}"
+            # Try to convert to float if it's a string
+            try:
+                return float(value)
+            except:
+                return 0.0
     except:
-        return "ENC:0.00"
+        return 0.0
 
 def process_excel_file(file_path):
     """Process an Excel file with financial position data"""
