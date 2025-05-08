@@ -10,6 +10,7 @@ const NavigationBar = () => {
         { name: 'Upload Files', path: '/upload', icon: 'fa-upload' },
         { name: 'Ownership Tree', path: '/ownership', icon: 'fa-sitemap' },
         { name: 'Reports', path: '/reports', icon: 'fa-file-text' },
+        { name: 'Risk Stats', path: '/risk-stats', icon: 'fa-chart-line' },
         { name: 'Model Portfolios', path: '/model-portfolios', icon: 'fa-balance-scale' }
     ];
     

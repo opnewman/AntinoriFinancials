@@ -362,5 +362,64 @@ window.api = {
             console.error('Error comparing portfolio with model:', error);
             throw error;
         }
+    },
+    
+    /**
+     * Get risk statistics status information
+     * Returns information about the last update and available records
+     */
+    getRiskStatsStatus: async () => {
+        try {
+            const response = await axios.get(`${API_BASE_URL}/api/risk-stats/status`);
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching risk stats status:', error);
+            return {
+                success: false,
+                error: error.message || 'Failed to fetch risk statistics status'
+            };
+        }
+    },
+    
+    /**
+     * Get risk statistics data with optional filters
+     * @param {string} assetClass - Optional filter by asset class (Equity, Fixed Income, Alternatives)
+     * @param {string} secondLevel - Optional filter by second level category
+     * @param {string} position - Optional filter by position/security name
+     * @param {string} ticker - Optional filter by ticker symbol
+     */
+    getRiskStats: async (assetClass = null, secondLevel = null, position = null, ticker = null) => {
+        try {
+            const params = {};
+            if (assetClass) params.asset_class = assetClass;
+            if (secondLevel) params.second_level = secondLevel;
+            if (position) params.position = position;
+            if (ticker) params.ticker = ticker;
+            
+            const response = await axios.get(`${API_BASE_URL}/api/risk-stats`, { params });
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching risk stats:', error);
+            return {
+                success: false,
+                error: error.message || 'Failed to fetch risk statistics'
+            };
+        }
+    },
+    
+    /**
+     * Trigger a manual update of risk statistics from Egnyte
+     */
+    updateRiskStats: async () => {
+        try {
+            const response = await axios.post(`${API_BASE_URL}/api/risk-stats/update`);
+            return response.data;
+        } catch (error) {
+            console.error('Error updating risk stats:', error);
+            return {
+                success: false,
+                error: error.message || 'Failed to update risk statistics'
+            };
+        }
     }
 };

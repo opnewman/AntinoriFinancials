@@ -160,6 +160,7 @@ def get_risk_stats():
     
     Query parameters:
     - asset_class: Filter to specific asset class - 'Equity', 'Fixed Income', or 'Alternatives'
+    - second_level: Filter to specific second level category
     - position: Filter to specific position/security
     - ticker: Filter to specific ticker symbol
     
@@ -169,6 +170,7 @@ def get_risk_stats():
     try:
         # Get query parameters
         asset_class = request.args.get('asset_class')
+        second_level = request.args.get('second_level')
         position = request.args.get('position')
         ticker = request.args.get('ticker')
         
@@ -180,6 +182,9 @@ def get_risk_stats():
             if asset_class:
                 query = query.filter(EgnyteRiskStat.asset_class == asset_class)
             
+            if second_level:
+                query = query.filter(EgnyteRiskStat.second_level == second_level)
+                
             if position:
                 query = query.filter(EgnyteRiskStat.position.ilike(f"%{position}%"))
                 
