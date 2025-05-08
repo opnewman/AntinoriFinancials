@@ -93,7 +93,7 @@ SQL_UNCORRELATED_ALTERNATIVES = """
 SQL_LIQUIDITY = """
     SELECT
         liquid_vs_illiquid,
-        SUM(adjusted_value) as total_value
+        SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
     WHERE report_date = :report_date
     AND {level_filter}
