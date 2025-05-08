@@ -39,7 +39,7 @@ def calculate_portfolio_risk_metrics(
     
     # Get all positions for this portfolio/client/account
     positions_query = db.query(FinancialPosition).filter(
-        FinancialPosition.report_date == report_date
+        FinancialPosition.date == report_date
     )
     
     # Filter by level

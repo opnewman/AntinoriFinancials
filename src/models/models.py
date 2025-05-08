@@ -54,7 +54,8 @@ class FinancialPosition(Base):
     __tablename__ = 'financial_positions'
     
     id = sa.Column(sa.Integer, primary_key=True)
-    report_date = sa.Column(sa.Date, nullable=False, index=True)
+    date = sa.Column(sa.Date, nullable=False, index=True)  # This is actually 'date' in the database
+    report_date = sa.Column(sa.Date, nullable=False, index=True)  # Alias for compatibility
     position = sa.Column(sa.String, nullable=False)
     top_level_client = sa.Column(sa.String, nullable=False, index=True)
     holding_account = sa.Column(sa.String, nullable=False)
