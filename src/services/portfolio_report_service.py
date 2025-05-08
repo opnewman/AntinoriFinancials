@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 SQL_TOTAL_PORTFOLIO_VALUE = """
     SELECT SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
-    WHERE date = :report_date
+    WHERE date = :date
     AND {level_filter}
 """
 
@@ -39,7 +39,7 @@ SQL_ASSET_CLASS_TOTALS = """
         asset_class,
         SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
-    WHERE date = :report_date
+    WHERE date = :date
     AND {level_filter}
     GROUP BY asset_class
 """
@@ -49,7 +49,7 @@ SQL_EQUITY_SUBCATEGORIES = """
         second_level,
         SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
-    WHERE date = :report_date
+    WHERE date = :date
     AND asset_class = 'equity'
     AND {level_filter}
     GROUP BY second_level
@@ -60,7 +60,7 @@ SQL_FIXED_INCOME_SUBCATEGORIES = """
         second_level,
         SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
-    WHERE date = :report_date
+    WHERE date = :date
     AND asset_class = 'fixed income'
     AND {level_filter}
     GROUP BY second_level
@@ -71,7 +71,7 @@ SQL_HARD_CURRENCY_SUBCATEGORIES = """
         third_level,
         SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
-    WHERE date = :report_date
+    WHERE date = :date
     AND asset_class = 'alternatives'
     AND second_level = 'hard currency'
     AND {level_filter}
@@ -84,7 +84,7 @@ SQL_UNCORRELATED_ALTERNATIVES = """
         third_level,
         CAST(adjusted_value AS NUMERIC) as adjusted_value
     FROM financial_positions
-    WHERE date = :report_date
+    WHERE date = :date
     AND asset_class = 'alternatives'
     AND second_level != 'hard currency'
     AND {level_filter}
@@ -95,7 +95,7 @@ SQL_LIQUIDITY = """
         liquid_vs_illiquid,
         SUM(CAST(adjusted_value AS NUMERIC)) as total_value
     FROM financial_positions
-    WHERE date = :report_date
+    WHERE date = :date
     AND {level_filter}
     GROUP BY liquid_vs_illiquid
 """
@@ -137,7 +137,7 @@ def get_total_adjusted_value(db: Session, report_date: date, level: str, level_k
     level_filter = get_level_filter(level, level_key)
     sql = SQL_TOTAL_PORTFOLIO_VALUE.format(level_filter=level_filter)
     
-    result = db.execute(text(sql), {'report_date': report_date}).first()
+    result = db.execute(text(sql), {'date': report_date}).first()
     return float(result.total_value) if result and result.total_value else 0.0
 
 
@@ -159,7 +159,7 @@ def get_asset_class_breakdowns(db: Session, report_date: date, level: str, level
     level_filter = get_level_filter(level, level_key)
     sql = SQL_ASSET_CLASS_TOTALS.format(level_filter=level_filter)
     
-    results = db.execute(text(sql), {'report_date': report_date}).fetchall()
+    results = db.execute(text(sql), {'date': report_date}).fetchall()
     
     # Initialize default values
     breakdowns = {
