@@ -280,6 +280,17 @@ class Dashboard extends React.Component {
         });
     };
     
+    handleDisplayFormatToggle = () => {
+        // Toggle between percent and dollar display formats
+        const newFormat = this.state.displayFormat === 'percent' ? 'dollar' : 'percent';
+        this.setState({ displayFormat: newFormat }, () => {
+            // Regenerate the report if we already have data
+            if (this.state.reportData) {
+                this.generateReport();
+            }
+        });
+    };
+    
     render() {
         const { 
             reportDate, reportLevel, levelKey, levelOptions, error, loading,
@@ -395,18 +406,17 @@ class Dashboard extends React.Component {
                                 <div className="flex items-center">
                                     <h2 className="text-xl font-bold mr-6">Portfolio Overview</h2>
                                     <div className="flex items-center">
-                                        <label htmlFor="displayFormat" className="mr-2 text-sm font-medium text-gray-700">
-                                            Display As:
-                                        </label>
-                                        <select
-                                            id="displayFormat"
-                                            value={displayFormat}
-                                            onChange={this.handleDisplayFormatChange}
-                                            className="px-3 py-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 text-sm"
+                                        <button
+                                            onClick={() => this.handleDisplayFormatToggle()}
+                                            className="flex items-center px-3 py-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 text-sm bg-white hover:bg-gray-50"
                                         >
-                                            <option value="percent">Percentages</option>
-                                            <option value="dollar">Dollar Values</option>
-                                        </select>
+                                            <span className="mr-2">
+                                                {displayFormat === 'percent' ? 'Showing Percentages' : 'Showing Dollar Values'}
+                                            </span>
+                                            <span className="text-xs text-gray-500">
+                                                (Click to toggle)
+                                            </span>
+                                        </button>
                                     </div>
                                 </div>
                                 <div className="text-right">

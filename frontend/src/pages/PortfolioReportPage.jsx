@@ -817,16 +817,24 @@ window.PortfolioReportPage = () => {
                     
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Format
+                            Display Format
                         </label>
-                        <select
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                            value={displayFormat}
-                            onChange={handleDisplayFormatChange}
+                        <button
+                            onClick={() => {
+                                const newFormat = displayFormat === 'percent' ? 'dollar' : 'percent';
+                                setDisplayFormat(newFormat);
+                                if (reportData) {
+                                    // Regenerate report when format changes if we already have data
+                                    setTimeout(generateReport, 0);
+                                }
+                            }}
+                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 bg-white hover:bg-gray-50 text-left"
                         >
-                            <option value="percent">Percentages</option>
-                            <option value="dollar">Dollar Values</option>
-                        </select>
+                            <div className="flex justify-between items-center">
+                                <span>{displayFormat === 'percent' ? 'Showing Percentages' : 'Showing Dollar Values'}</span>
+                                <span className="text-xs text-gray-500">(Click to toggle)</span>
+                            </div>
+                        </button>
                     </div>
                     
                     <div>
