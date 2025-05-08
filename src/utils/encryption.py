@@ -81,7 +81,16 @@ class EncryptionService:
         if encrypted_value is None:
             return None
             
+        # Check if the value actually needs decryption (it should start with 'ENC:')
+        if isinstance(encrypted_value, str) and not encrypted_value.startswith('ENC:'):
+            # It's not encrypted, just return it as is
+            return encrypted_value
+            
         try:
+            # For values with 'ENC:' prefix, remove it before decryption
+            if isinstance(encrypted_value, str) and encrypted_value.startswith('ENC:'):
+                encrypted_value = encrypted_value[4:]  # Remove the 'ENC:' prefix
+                
             # Decrypt the value with proper encoding
             decrypted_value = self.cipher.decrypt(encrypted_value.encode('ascii')).decode('ascii')
             return decrypted_value
