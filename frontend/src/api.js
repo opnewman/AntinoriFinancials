@@ -421,5 +421,22 @@ window.api = {
                 error: error.message || 'Failed to update risk statistics'
             };
         }
+    },
+    
+    /**
+     * Get status information about risk statistics
+     * Returns info about when risk stats were last updated and record counts
+     */
+    getRiskStatsStatus: async () => {
+        try {
+            const response = await axios.get(`${API_BASE_URL}/api/risk-stats/status`);
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching risk stats status:', error);
+            return {
+                success: false,
+                error: error.message || 'Failed to fetch risk statistics status'
+            };
+        }
     }
 };

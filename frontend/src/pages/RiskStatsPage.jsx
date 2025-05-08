@@ -4,6 +4,8 @@
  * Displays risk statistics and provides filtering options by asset class,
  * second level, and other criteria. Includes a manual refresh button.
  */
+const React = window.React;
+const { useState, useEffect } = React;
 const RiskStatsPage = () => {
   // State for risk statistics data and filters
   const [riskStats, setRiskStats] = useState([]);
