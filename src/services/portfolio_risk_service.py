@@ -18,6 +18,38 @@ from src.utils.encryption import encryption_service
 
 logger = logging.getLogger(__name__)
 
+def convert_position_value_to_decimal(position_value: str, position_name: str = "unknown") -> Decimal:
+    """
+    Convert a position value string to Decimal, handling encrypted values.
+    
+    Args:
+        position_value: The position value as a string (may be encrypted or have formatting)
+        position_name: The name of the position (for logging purposes)
+        
+    Returns:
+        Decimal value of the position
+    """
+    if not position_value:
+        return Decimal('0.0')
+        
+    try:
+        # Check if the value is encrypted (starts with "ENC:")
+        if position_value.startswith('ENC:'):
+            # Extract the encrypted part (remove "ENC:" prefix)
+            encrypted_part = position_value[4:]
+            # Decrypt the value and convert to Decimal
+            decrypted_value = encryption_service.decrypt(encrypted_part)
+            if decrypted_value:
+                return Decimal(decrypted_value.replace(',', '').replace('$', ''))
+            else:
+                return Decimal('0.0')
+        else:
+            # Regular non-encrypted value
+            return Decimal(position_value.replace(',', ''))
+    except (ValueError, TypeError, InvalidOperation) as e:
+        logger.warning(f"Could not convert value '{position_value}' to Decimal for position {position_name}. Error: {str(e)}. Using 0.")
+        return Decimal('0.0')
+
 def calculate_portfolio_risk_metrics(
     db: Session,
     level: str,
@@ -98,24 +130,8 @@ def calculate_portfolio_risk_metrics(
         asset_class = position.asset_class.lower() if position.asset_class else ""
         standardized_class = asset_class_map.get(asset_class, "other")
         
-        # Convert adjusted_value from string to Decimal, handle encrypted values
-        try:
-            # Check if the value is encrypted (starts with "ENC:")
-            if position.adjusted_value and position.adjusted_value.startswith('ENC:'):
-                # Extract the encrypted part (remove "ENC:" prefix)
-                encrypted_part = position.adjusted_value[4:]
-                # Decrypt the value and convert to Decimal
-                decrypted_value = encryption_service.decrypt(encrypted_part)
-                if decrypted_value:
-                    adjusted_value_decimal = Decimal(decrypted_value.replace(',', '').replace('$', ''))
-                else:
-                    adjusted_value_decimal = Decimal('0.0')
-            else:
-                # Regular non-encrypted value
-                adjusted_value_decimal = Decimal(position.adjusted_value.replace(',', '')) if position.adjusted_value else Decimal('0.0')
-        except (ValueError, TypeError, InvalidOperation) as e:
-            logger.warning(f"Could not convert adjusted_value '{position.adjusted_value}' to Decimal for position {position.position}. Error: {str(e)}. Using 0.")
-            adjusted_value_decimal = Decimal('0.0')
+        # Convert adjusted_value from string to Decimal using the utility function
+        adjusted_value_decimal = convert_position_value_to_decimal(position.adjusted_value, position.position)
             
         if standardized_class in totals:
             totals[standardized_class] += adjusted_value_decimal
