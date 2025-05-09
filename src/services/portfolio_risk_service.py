@@ -513,7 +513,8 @@ def calculate_portfolio_risk_metrics(
     # and compute beta-adjusted values based on asset class percentages
     finalize_risk_metrics(risk_metrics, percentages)
     
-    return {
+    # Create response with sampling information if applicable
+    response = {
         "success": True,
         "totals": totals,
         "percentages": percentages,
@@ -521,6 +522,25 @@ def calculate_portfolio_risk_metrics(
         "latest_risk_stats_date": latest_risk_stats_date.isoformat(),
         "report_date": report_date.isoformat()
     }
+    
+    # Add sampling information if sampling was used
+    if is_sample:
+        response["is_sampled"] = True
+        response["sample_size"] = sample_size
+        response["total_positions"] = total_positions
+        response["performance_notes"] = f"Results calculated using a sample of {sample_size} positions out of {total_positions} total positions for improved performance."
+    else:
+        response["is_sampled"] = False
+    
+    # Add entity name for display in UI
+    if level == 'client':
+        response["entity_name"] = level_key
+    elif level == 'portfolio':
+        response["entity_name"] = f"Portfolio: {level_key}"
+    elif level == 'account':
+        response["entity_name"] = f"Account: {level_key}"
+    
+    return response
 
 def process_equity_risk(
     db: Session,
