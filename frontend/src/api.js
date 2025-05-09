@@ -427,6 +427,35 @@ window.api = {
             };
         }
     },
+
+    /**
+     * High-performance direct risk statistics update (optimized version)
+     * This function uses the optimized endpoint that completes in 2-3 seconds.
+     * 
+     * @param {boolean} useTestFile - Whether to use a test file instead of downloading from Egnyte
+     * @param {boolean} debugMode - Enable debug mode for detailed logging
+     * @param {number} batchSize - Size of batches for database operations (default: 1000)
+     * @param {number} workers - Number of parallel workers (default: 3)
+     * @returns {Object} Processing results including timing and counts
+     */
+    updateRiskStatsOptimized: async (useTestFile = false, debugMode = false, batchSize = 1000, workers = 3) => {
+        try {
+            const params = {};
+            if (useTestFile) params.use_test_file = 'true';
+            if (debugMode) params.debug = 'true';
+            if (batchSize) params.batch_size = batchSize;
+            if (workers) params.workers = workers;
+            
+            const response = await axios.post(`${API_BASE_URL}/api/risk-stats/update`, null, { params });
+            return response.data;
+        } catch (error) {
+            console.error('Error starting risk stats update:', error);
+            return {
+                success: false,
+                error: error.response?.data?.error || error.message || 'Failed to start risk statistics update'
+            };
+        }
+    },
     
     /**
      * Get the status of a risk statistics update job

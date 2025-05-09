@@ -102,6 +102,89 @@ def update_risk_stats_endpoint():
     # Use the new async implementation
     return update_risk_stats_async()
 
+@app.route("/api/risk-stats/update-optimized", methods=["GET", "POST"])
+def update_risk_stats_optimized_endpoint():
+    """
+    High-performance update of risk statistics from Egnyte.
+    
+    This endpoint directly processes risk statistics using an optimized approach
+    designed to complete in 2-3 seconds rather than minutes.
+    
+    Query parameters:
+    - debug: If set to 'true', enables extended debugging output
+    - use_test_file: If set to 'true', attempts to use a local test file if available
+    - batch_size: Size of batches for database operations (default: 1000)
+    - workers: Number of parallel workers for processing (default: 3)
+    
+    Returns:
+        JSON with processing results and timing information
+    """
+    try:
+        from src.services.optimized_risk_stats_service import process_risk_stats_optimized
+        
+        # Parse query parameters
+        debug_mode = request.args.get('debug', 'false').lower() == 'true'
+        use_test_file = request.args.get('use_test_file', 'false').lower() == 'true'
+        
+        # Get batch size parameter
+        try:
+            batch_size = int(request.args.get('batch_size', '1000'))
+            if batch_size < 10 or batch_size > 5000:
+                batch_size = 1000  # Reset to default if out of reasonable range
+        except ValueError:
+            batch_size = 1000
+            
+        # Get workers parameter
+        try:
+            workers = int(request.args.get('workers', '3'))
+            if workers < 1 or workers > 8:
+                workers = 3  # Reset to default if out of reasonable range
+        except ValueError:
+            workers = 3
+            
+        # Log the request parameters
+        if debug_mode:
+            logger.info("Running optimized risk stats update in DEBUG mode")
+        if use_test_file:
+            logger.info("Using local test file if available")
+            
+        logger.info(f"Optimized processing with batch_size={batch_size}, workers={workers}")
+        
+        # Check for API token if not using test file
+        egnyte_token = os.environ.get('EGNYTE_ACCESS_TOKEN')
+        if not egnyte_token and not use_test_file:
+            logger.error("EGNYTE_ACCESS_TOKEN not found in environment variables")
+            return jsonify({
+                "success": False,
+                "error": "Egnyte API token not configured. Please set the EGNYTE_ACCESS_TOKEN environment variable."
+            }), 400
+        
+        # Record the start time for performance measurement
+        start_time = time.time()
+        
+        # Process risk statistics directly with the optimized implementation
+        with get_db_connection() as db:
+            results = process_risk_stats_optimized(
+                db=db,
+                use_test_file=use_test_file,
+                batch_size=batch_size,
+                max_workers=workers
+            )
+            
+            # Add total API request time
+            total_time = time.time() - start_time
+            results["total_api_time_seconds"] = total_time
+            
+            # Return results directly
+            return jsonify(results)
+            
+    except Exception as e:
+        logger.exception("Error in optimized risk stats update:")
+        return jsonify({
+            "success": False,
+            "error": f"Error processing risk statistics: {str(e)}"
+        }), 500
+
 
 @app.route("/api/risk-stats/jobs/<int:job_id>", methods=["GET"])
 def risk_stats_job_status(job_id):
