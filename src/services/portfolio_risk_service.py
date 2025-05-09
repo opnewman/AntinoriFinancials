@@ -13,7 +13,10 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from src.models.models import FinancialPosition, EgnyteRiskStat, FinancialSummary
+from src.models.models import (
+    FinancialPosition, EgnyteRiskStat, FinancialSummary,
+    RiskStatisticEquity, RiskStatisticFixedIncome, RiskStatisticAlternatives
+)
 from src.utils.encryption import encryption_service
 
 logger = logging.getLogger(__name__)
@@ -208,9 +211,22 @@ def calculate_portfolio_risk_metrics(
         else:
             percentages[asset_class] = Decimal('0.0')
     
-    # Get the latest risk stats import date - always use the most recent available stats
+    # Get the latest risk stats upload date from new tables - always use the most recent available stats
     # instead of trying to match the report date exactly
-    latest_risk_stats_date = db.query(func.max(EgnyteRiskStat.import_date)).scalar()
+    latest_equity_date = db.query(func.max(RiskStatisticEquity.upload_date)).scalar()
+    latest_fixed_income_date = db.query(func.max(RiskStatisticFixedIncome.upload_date)).scalar()
+    latest_alternatives_date = db.query(func.max(RiskStatisticAlternatives.upload_date)).scalar()
+    
+    # Determine the overall latest date from all tables
+    latest_dates = []
+    if latest_equity_date:
+        latest_dates.append(latest_equity_date)
+    if latest_fixed_income_date:
+        latest_dates.append(latest_fixed_income_date)
+    if latest_alternatives_date:
+        latest_dates.append(latest_alternatives_date)
+    
+    latest_risk_stats_date = max(latest_dates) if latest_dates else None
     
     if not latest_risk_stats_date:
         logger.warning("No risk statistics available in the database")
@@ -226,11 +242,23 @@ def calculate_portfolio_risk_metrics(
     if latest_risk_stats_date != report_date:
         logger.info(f"Using risk stats from {latest_risk_stats_date} for report date {report_date}")
         
-    # Get a count of available risk stats for this date to help with debugging
-    risk_stats_count = db.query(EgnyteRiskStat).filter(
-        EgnyteRiskStat.import_date == latest_risk_stats_date
+    # Get counts of available risk stats by asset class for this date
+    equity_count = db.query(RiskStatisticEquity).filter(
+        RiskStatisticEquity.upload_date == latest_risk_stats_date
     ).count()
-    logger.info(f"Found {risk_stats_count} risk statistics for date {latest_risk_stats_date}")
+    
+    fixed_income_count = db.query(RiskStatisticFixedIncome).filter(
+        RiskStatisticFixedIncome.upload_date == latest_risk_stats_date
+    ).count()
+    
+    alternatives_count = db.query(RiskStatisticAlternatives).filter(
+        RiskStatisticAlternatives.upload_date == latest_risk_stats_date
+    ).count()
+    
+    total_risk_stats_count = equity_count + fixed_income_count + alternatives_count
+    
+    logger.info(f"Found {total_risk_stats_count} total risk statistics for date {latest_risk_stats_date}")
+    logger.info(f"Equity: {equity_count}, Fixed Income: {fixed_income_count}, Alternatives: {alternatives_count}")
     
     # Initialize risk metrics
     risk_metrics = {
@@ -758,17 +786,18 @@ def find_matching_risk_stat(
     ticker_symbol: Optional[str],
     asset_class: str,
     latest_date: date,
-    cache: Optional[Dict[str, EgnyteRiskStat]] = None
-) -> Optional[EgnyteRiskStat]:
+    cache: Optional[Dict[str, Any]] = None
+) -> Optional[Any]:
     """
     Find a matching risk statistic for a position using different identifiers.
+    
+    Uses the new table structure with separate tables for each asset class.
     
     Try matching in this order of priority:
     1. Use cache if provided (for optimized lookups)
     2. CUSIP (if provided) - most reliable unique identifier
     3. Ticker symbol (if provided) - good for public securities
-    4. Check for ticker ID in amended_id column (for private securities)
-    5. Position name (exact match only) - less reliable but necessary fallback
+    4. Position name (exact match only) - less reliable but necessary fallback
     
     Args:
         db (Session): Database session
@@ -776,11 +805,11 @@ def find_matching_risk_stat(
         cusip (Optional[str]): CUSIP identifier if available
         ticker_symbol (Optional[str]): Ticker symbol if available
         asset_class (str): Asset class to match ('Equity', 'Fixed Income', 'Alternatives')
-        latest_date (date): Latest date of risk stat import
-        cache (Optional[Dict[str, EgnyteRiskStat]]): Optional cache of risk stats
+        latest_date (date): Latest date of risk stat upload
+        cache (Optional[Dict[str, Any]]): Optional cache of risk stats
         
     Returns:
-        Optional[EgnyteRiskStat]: Matching risk statistic or None
+        Optional[Any]: Matching risk statistic or None
     """
     try:
         # Sanitize inputs to prevent database errors
@@ -788,112 +817,112 @@ def find_matching_risk_stat(
         safe_cusip = cusip.strip() if cusip and isinstance(cusip, str) else ""
         safe_ticker_symbol = ticker_symbol.strip() if ticker_symbol and isinstance(ticker_symbol, str) else ""
         
+        # Determine which model class to use based on asset class
+        if asset_class == 'Equity':
+            model_class = RiskStatisticEquity
+        elif asset_class == 'Fixed Income':
+            model_class = RiskStatisticFixedIncome
+        elif asset_class == 'Alternatives':
+            model_class = RiskStatisticAlternatives
+        elif asset_class == 'Hard Currency':
+            # Hard currency is tracked in the Alternatives table
+            model_class = RiskStatisticAlternatives
+        else:
+            logger.warning(f"Unsupported asset class: {asset_class}")
+            return None
+        
+        # Cache key prefix for better organization 
+        cache_prefix = asset_class.lower().replace(' ', '_')
+        
         # Check cache first if provided (most efficient)
         if cache is not None:
             # Try CUSIP cache
             if safe_cusip:
-                cache_key = f"cusip:{safe_cusip}:{asset_class}"
+                cache_key = f"{cache_prefix}:cusip:{safe_cusip}"
                 if cache_key in cache:
                     return cache[cache_key]
                     
             # Try ticker cache
             if safe_ticker_symbol:
-                cache_key = f"ticker:{safe_ticker_symbol}:{asset_class}"
+                cache_key = f"{cache_prefix}:ticker:{safe_ticker_symbol}"
                 if cache_key in cache:
                     return cache[cache_key]
                     
-                # Try amended_id cache
-                cache_key = f"amended:{safe_ticker_symbol}:{asset_class}"
+            # Try position name cache
+            if safe_position_name:
+                cache_key = f"{cache_prefix}:position:{safe_position_name}"
                 if cache_key in cache:
                     return cache[cache_key]
         
         # Try matching by CUSIP first (most reliable)
         if safe_cusip:
             try:
-                risk_stat = db.query(EgnyteRiskStat).filter(
-                    EgnyteRiskStat.cusip == safe_cusip,
-                    EgnyteRiskStat.asset_class == asset_class,
-                    EgnyteRiskStat.import_date == latest_date
+                risk_stat = db.query(model_class).filter(
+                    model_class.cusip == safe_cusip,
+                    model_class.upload_date == latest_date
                 ).first()
                 
                 if risk_stat:
                     # Add to cache if provided
                     if cache is not None:
-                        cache[f"cusip:{safe_cusip}:{asset_class}"] = risk_stat
+                        cache[f"{cache_prefix}:cusip:{safe_cusip}"] = risk_stat
                     return risk_stat
             except Exception as e:
-                logger.warning(f"Error matching by CUSIP: {str(e)}")
+                logger.warning(f"Error matching by CUSIP for {asset_class}: {str(e)}")
         
         # Try matching by ticker symbol
         if safe_ticker_symbol:
             try:
-                risk_stat = db.query(EgnyteRiskStat).filter(
-                    EgnyteRiskStat.ticker_symbol == safe_ticker_symbol,
-                    EgnyteRiskStat.asset_class == asset_class,
-                    EgnyteRiskStat.import_date == latest_date
+                risk_stat = db.query(model_class).filter(
+                    model_class.ticker_symbol == safe_ticker_symbol,
+                    model_class.upload_date == latest_date
                 ).first()
                 
                 if risk_stat:
                     # Add to cache if provided
                     if cache is not None:
-                        cache[f"ticker:{safe_ticker_symbol}:{asset_class}"] = risk_stat
-                    return risk_stat
-                
-                # Also try matching by amended_id (could contain ticker ID for private securities)
-                risk_stat = db.query(EgnyteRiskStat).filter(
-                    EgnyteRiskStat.amended_id == safe_ticker_symbol,
-                    EgnyteRiskStat.asset_class == asset_class,
-                    EgnyteRiskStat.import_date == latest_date
-                ).first()
-                
-                if risk_stat:
-                    # Add to cache if provided
-                    if cache is not None:
-                        cache[f"amended:{safe_ticker_symbol}:{asset_class}"] = risk_stat
+                        cache[f"{cache_prefix}:ticker:{safe_ticker_symbol}"] = risk_stat
                     return risk_stat
             except Exception as e:
-                logger.warning(f"Error matching by ticker: {str(e)}")
+                logger.warning(f"Error matching by ticker for {asset_class}: {str(e)}")
         
         # Finally, try matching by position name (exact match only for performance)
         if safe_position_name:
             try:
                 # Try exact match only for large portfolios (indicated by cache being provided)
-                risk_stat = db.query(EgnyteRiskStat).filter(
-                    func.lower(EgnyteRiskStat.position) == func.lower(safe_position_name),
-                    EgnyteRiskStat.asset_class == asset_class,
-                    EgnyteRiskStat.import_date == latest_date
+                risk_stat = db.query(model_class).filter(
+                    func.lower(model_class.position) == func.lower(safe_position_name),
+                    model_class.upload_date == latest_date
                 ).first()
                 
                 if risk_stat:
                     # Add to cache if provided
                     if cache is not None:
-                        cache[f"position:{safe_position_name}:{asset_class}"] = risk_stat
+                        cache[f"{cache_prefix}:position:{safe_position_name}"] = risk_stat
                     return risk_stat
                 
                 # Only try partial matches for non-cached, smaller portfolios
-                if cache is None and len(safe_position_name) < 50:
-                    # Try contains match 
-                    risk_stat = db.query(EgnyteRiskStat).filter(
-                        func.lower(EgnyteRiskStat.position).contains(func.lower(safe_position_name)),
-                        EgnyteRiskStat.asset_class == asset_class,
-                        EgnyteRiskStat.import_date == latest_date
+                if cache is None and len(safe_position_name) > 3 and len(safe_position_name) < 50:
+                    # Try contains match (only if position name is substantial enough)
+                    risk_stat = db.query(model_class).filter(
+                        func.lower(model_class.position).contains(func.lower(safe_position_name)),
+                        model_class.upload_date == latest_date
                     ).first()
                     
                     if risk_stat:
                         return risk_stat
                     
-                    # Try LIKE pattern match as last resort
+                    # Try LIKE pattern match as last resort (only for smaller portfolios)
                     safe_pattern = f"%{safe_position_name.lower()}%"
-                    risk_stat = db.query(EgnyteRiskStat).filter(
-                        func.lower(EgnyteRiskStat.position).like(safe_pattern),
-                        EgnyteRiskStat.asset_class == asset_class,
-                        EgnyteRiskStat.import_date == latest_date
+                    risk_stat = db.query(model_class).filter(
+                        func.lower(model_class.position).like(safe_pattern),
+                        model_class.upload_date == latest_date
                     ).first()
                     
                     if risk_stat:
                         return risk_stat
             except Exception as e:
-                logger.warning(f"Error matching by position name: {str(e)}")
+                logger.warning(f"Error matching by position name for {asset_class}: {str(e)}")
         
         # No match found
         return None
