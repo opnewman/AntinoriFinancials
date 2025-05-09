@@ -1215,12 +1215,15 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db):
     return records_succeeded
 
 
-def fetch_and_process_risk_stats(db: Session, use_test_file=False):
+def fetch_and_process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retries=3):
     """
     Main function to fetch and process risk statistics from Egnyte.
     
     Args:
         db (Session): Database session
+        use_test_file (bool): Whether to use a test file instead of downloading from Egnyte
+        batch_size (int): Size of batches for database operations
+        max_retries (int): Maximum number of retry attempts for database operations
         
     Returns:
         dict: Summary of the import process
@@ -1342,7 +1345,7 @@ def fetch_and_process_risk_stats(db: Session, use_test_file=False):
         
         # Now process the file and insert data into the database
         try:
-            stats = process_excel_file(file_path, db)
+            stats = process_excel_file(file_path, db, batch_size=batch_size, max_retries=max_retries)
             logger.info(f"Successfully processed Excel file with stats: {stats}")
             
             # We don't need to commit here as each processing function manages its own transactions

@@ -32,7 +32,7 @@ logging.basicConfig(
     ]
 )
 
-from src.database import get_db, close_db
+from src.database import get_db
 from src.services.egnyte_service import fetch_and_process_risk_stats
 from sqlalchemy import text
 from src.models.models import EgnyteRiskStat
@@ -178,8 +178,9 @@ def main():
         logger.error(traceback.format_exc())
         return 1
     finally:
-        # Close the session
-        close_db()
+        # Close the session (no explicit close needed with context manager)
+        if db:
+            db.close()
 
 if __name__ == '__main__':
     sys.exit(main())
