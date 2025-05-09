@@ -96,26 +96,44 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                 alt_sheet = None
                 fi_durations_sheet = None
                 
-                # Try to identify sheets by name
+                # Try to identify sheets by name - only care about specific sheets
                 logger.info("Identifying sheet types based on sheet names")
+                
+                # Define specific patterns for sheets we care about
+                equity_patterns = ['equity']
+                fixed_income_patterns = ['fixed income']
+                alternatives_patterns = ['alt', 'alternatives']
+                durations_patterns = ['duration']
+                
+                # Skip common generic sheet names that we know aren't useful
+                skip_patterns = ['sheet1', 'sheet2', 'sheet3', 'sheet4', 'summary', 'contents', 'index']
+                
                 for sheet in sheet_names:
                     sheet_lower = sheet.lower()
+                    
+                    # Skip checking sheets with generic names
+                    if any(skip in sheet_lower for skip in skip_patterns):
+                        logger.info(f"  - Skipping generic sheet: '{sheet}'")
+                        continue
+                    
                     logger.info(f"Examining sheet: '{sheet}' (lowercase: '{sheet_lower}')")
                     
-                    if 'equity' in sheet_lower:
+                    # Prioritize specific identification in order of importance
+                    if any(pattern in sheet_lower for pattern in equity_patterns):
                         logger.info(f"  - Identified as EQUITY sheet: '{sheet}'")
                         equity_sheet = sheet
-                    elif 'fixed income' in sheet_lower and 'duration' not in sheet_lower:
+                    elif any(pattern in sheet_lower for pattern in fixed_income_patterns) and not any(pattern in sheet_lower for pattern in durations_patterns):
                         logger.info(f"  - Identified as FIXED INCOME sheet: '{sheet}'")
                         fi_sheet = sheet
-                    elif 'duration' in sheet_lower:
+                    elif any(pattern in sheet_lower for pattern in durations_patterns):
                         logger.info(f"  - Identified as FIXED INCOME DURATIONS sheet: '{sheet}'")
                         fi_durations_sheet = sheet
-                    elif any(alt in sheet_lower for alt in ['alt', 'alternatives']):
+                    elif any(pattern in sheet_lower for pattern in alternatives_patterns):
                         logger.info(f"  - Identified as ALTERNATIVES sheet: '{sheet}'")
                         alt_sheet = sheet
                     else:
                         logger.info(f"  - Unrecognized sheet type: '{sheet}'")
+                        # Don't waste resources processing unneeded sheets
                 
                 # Log detailed Excel file structure for debugging
                 logger.info("DEBUG: Excel File Structure Details:")
@@ -187,6 +205,28 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                                     ticker = str(row.get(ticker_col)).strip() if ticker_col and not pd.isna(row.get(ticker_col)) else None
                                     cusip = str(row.get(cusip_col)).strip() if cusip_col and not pd.isna(row.get(cusip_col)) else None
                                     
+                                    # Handle volatility and beta, properly accounting for invalid values
+                                    vol_value = None
+                                    beta_value = None
+                                    
+                                    if vol_col and not pd.isna(row.get(vol_col)):
+                                        try:
+                                            vol_str = str(row.get(vol_col)).strip()
+                                            if vol_str.lower() != '#n/a invalid security' and vol_str.lower() != 'n/a':
+                                                vol_value = float(vol_str)
+                                        except (ValueError, TypeError):
+                                            # Just leave as None if we can't convert
+                                            pass
+                                    
+                                    if beta_col and not pd.isna(row.get(beta_col)):
+                                        try:
+                                            beta_str = str(row.get(beta_col)).strip()
+                                            if beta_str.lower() != '#n/a invalid security' and beta_str.lower() != 'n/a':
+                                                beta_value = float(beta_str)
+                                        except (ValueError, TypeError):
+                                            # Just leave as None if we can't convert
+                                            pass
+                                    
                                     # Create record
                                     record = EgnyteRiskStat(
                                         import_date=import_date,
@@ -195,8 +235,8 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                                         cusip=cusip,
                                         asset_class='Equity',
                                         second_level=str(row.get(second_level_col)).strip() if second_level_col and not pd.isna(row.get(second_level_col)) else None,
-                                        volatility=float(row.get(vol_col)) if vol_col and not pd.isna(row.get(vol_col)) else None,
-                                        beta=float(row.get(beta_col)) if beta_col and not pd.isna(row.get(beta_col)) else None,
+                                        volatility=vol_value,
+                                        beta=beta_value,
                                         notes=str(row.get(notes_col)).strip() if notes_col and not pd.isna(row.get(notes_col)) else None,
                                         amended_id=str(row.get(amended_id_col)).strip() if amended_id_col and not pd.isna(row.get(amended_id_col)) else None,
                                         source_file=os.path.basename(file_path),
@@ -294,9 +334,37 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                                     # Get duration from either the row or the durations lookup
                                     duration = None
                                     if duration_col and not pd.isna(row.get(duration_col)):
-                                        duration = float(row.get(duration_col))
+                                        try:
+                                            dur_str = str(row.get(duration_col)).strip()
+                                            if dur_str.lower() != '#n/a invalid security' and dur_str.lower() != 'n/a':
+                                                duration = float(dur_str)
+                                        except (ValueError, TypeError):
+                                            pass
                                     elif ticker and ticker in durations_data:
-                                        duration = float(durations_data[ticker])
+                                        try:
+                                            duration = float(durations_data[ticker])
+                                        except (ValueError, TypeError):
+                                            pass
+                                    
+                                    # Also look for volatility or beta values in fixed income
+                                    vol_value = None
+                                    beta_value = None
+                                    
+                                    if vol_col and not pd.isna(row.get(vol_col)):
+                                        try:
+                                            vol_str = str(row.get(vol_col)).strip()
+                                            if vol_str.lower() != '#n/a invalid security' and vol_str.lower() != 'n/a':
+                                                vol_value = float(vol_str)
+                                        except (ValueError, TypeError):
+                                            pass
+                                    
+                                    if beta_col and not pd.isna(row.get(beta_col)):
+                                        try:
+                                            beta_str = str(row.get(beta_col)).strip()
+                                            if beta_str.lower() != '#n/a invalid security' and beta_str.lower() != 'n/a':
+                                                beta_value = float(beta_str)
+                                        except (ValueError, TypeError):
+                                            pass
                                     
                                     # Create record
                                     record = EgnyteRiskStat(
@@ -307,6 +375,8 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                                         asset_class='Fixed Income',
                                         second_level=str(row.get(second_level_col)).strip() if second_level_col and not pd.isna(row.get(second_level_col)) else None,
                                         duration=duration,
+                                        volatility=vol_value,
+                                        beta=beta_value,
                                         notes=str(row.get(notes_col)).strip() if notes_col and not pd.isna(row.get(notes_col)) else None,
                                         amended_id=str(row.get(amended_id_col)).strip() if amended_id_col and not pd.isna(row.get(amended_id_col)) else None,
                                         source_file=os.path.basename(file_path),
@@ -385,6 +455,17 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                                     ticker = str(row.get(ticker_col)).strip() if ticker_col and not pd.isna(row.get(ticker_col)) else None
                                     cusip = str(row.get(cusip_col)).strip() if cusip_col and not pd.isna(row.get(cusip_col)) else None
                                     
+                                    # Handle volatility properly, accounting for invalid values
+                                    vol_value = None
+                                    if vol_col and not pd.isna(row.get(vol_col)):
+                                        try:
+                                            vol_str = str(row.get(vol_col)).strip()
+                                            if vol_str.lower() != '#n/a invalid security' and vol_str.lower() != 'n/a':
+                                                vol_value = float(vol_str)
+                                        except (ValueError, TypeError):
+                                            # Just leave as None if we can't convert
+                                            pass
+                                    
                                     # Create record
                                     record = EgnyteRiskStat(
                                         import_date=import_date,
@@ -393,7 +474,7 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                                         cusip=cusip,
                                         asset_class='Alternatives',
                                         second_level=str(row.get(second_level_col)).strip() if second_level_col and not pd.isna(row.get(second_level_col)) else None,
-                                        volatility=float(row.get(vol_col)) if vol_col and not pd.isna(row.get(vol_col)) else None,
+                                        volatility=vol_value,
                                         notes=str(row.get(notes_col)).strip() if notes_col and not pd.isna(row.get(notes_col)) else None,
                                         amended_id=str(row.get(amended_id_col)).strip() if amended_id_col and not pd.isna(row.get(amended_id_col)) else None,
                                         source_file=os.path.basename(file_path),

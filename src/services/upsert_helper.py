@@ -196,7 +196,9 @@ def clean_risk_stats_date(db: Session, import_date):
         for asset_class in ['Equity', 'Fixed Income', 'Alternatives']:
             sql = text("DELETE FROM egnyte_risk_stats WHERE import_date = :date AND asset_class = :asset_class")
             result = db.execute(sql, {"date": import_date, "asset_class": asset_class})
-            logger.info(f"Deleted {result.rowcount} {asset_class} records for {import_date}")
+            # Safe access to rowcount (may not be available in some SQLAlchemy versions)
+            deleted_count = getattr(result, 'rowcount', 0)
+            logger.info(f"Deleted {deleted_count} {asset_class} records for {import_date}")
             db.commit()
         
         # Final check to make sure all records are gone
@@ -207,7 +209,9 @@ def clean_risk_stats_date(db: Session, import_date):
             # One more attempt with a direct delete
             sql = text("DELETE FROM egnyte_risk_stats WHERE import_date = :date")
             result = db.execute(sql, {"date": import_date})
-            logger.info(f"Final cleanup: deleted {result.rowcount} remaining records")
+            # Safe access to rowcount
+            deleted_count = getattr(result, 'rowcount', 0)
+            logger.info(f"Final cleanup: deleted {deleted_count} remaining records")
             db.commit()
         
         return True
