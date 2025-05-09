@@ -132,29 +132,50 @@ def process_excel_file(file_path, db):
         lower_sheet = sheet.lower()
         if "equity" in lower_sheet:
             equity_sheet = sheet
+            logger.info(f"Identified '{sheet}' as the Equity sheet")
         elif any(term in lower_sheet for term in ["fixed", "fixed income", "fi ", "fixed inc", "duration"]):
             fixed_income_sheet = sheet
+            logger.info(f"Identified '{sheet}' as the Fixed Income sheet")
         elif any(term in lower_sheet for term in ["alternative", "alt", "alts"]):
             alternatives_sheet = sheet
+            logger.info(f"Identified '{sheet}' as the Alternatives sheet")
     
     # Process the Equity sheet if found
     if equity_sheet:
         logger.info(f"Found Equity sheet: {equity_sheet}")
-        stats["equity_records"] = process_equity_sheet(file_path, equity_sheet, import_date, db)
+        try:
+            stats["equity_records"] = process_equity_sheet(file_path, equity_sheet, import_date, db)
+            logger.info(f"Successfully processed Equity sheet with {stats['equity_records']} records")
+        except Exception as e:
+            logger.error(f"Error processing Equity sheet: {e}")
+            # Don't fail the entire process - continue to other sheets
+            stats["equity_records"] = 0
     else:
         logger.warning("No Equity sheet found in the Excel file")
     
     # Process the Fixed Income sheet if found
     if fixed_income_sheet:
         logger.info(f"Found Fixed Income sheet: {fixed_income_sheet}")
-        stats["fixed_income_records"] = process_fixed_income_sheet(file_path, fixed_income_sheet, import_date, db)
+        try:
+            stats["fixed_income_records"] = process_fixed_income_sheet(file_path, fixed_income_sheet, import_date, db)
+            logger.info(f"Successfully processed Fixed Income sheet with {stats['fixed_income_records']} records")
+        except Exception as e:
+            logger.error(f"Error processing Fixed Income sheet: {e}")
+            # Don't fail the entire process - continue to other sheets
+            stats["fixed_income_records"] = 0
     else:
         logger.warning("No Fixed Income sheet found in the Excel file")
     
     # Process the Alternatives sheet if found
     if alternatives_sheet:
         logger.info(f"Found Alternatives sheet: {alternatives_sheet}")
-        stats["alternatives_records"] = process_alternatives_sheet(file_path, alternatives_sheet, import_date, db)
+        try:
+            stats["alternatives_records"] = process_alternatives_sheet(file_path, alternatives_sheet, import_date, db)
+            logger.info(f"Successfully processed Alternatives sheet with {stats['alternatives_records']} records")
+        except Exception as e:
+            logger.error(f"Error processing Alternatives sheet: {e}")
+            # Don't fail the entire process - continue to other sheets
+            stats["alternatives_records"] = 0
     else:
         logger.warning("No Alternatives sheet found in the Excel file")
     
@@ -419,61 +440,118 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
     if file_size_mb > 100:
         logger.info(f"Large file detected ({file_size_mb:.2f} MB): Using optimized reading for Fixed Income sheet")
         
-        # Excel reader object
-        xl = pd.ExcelFile(file_path)
-        
-        # Get information about the sheet
-        sheet_data = xl.book.sheet_by_name(sheet_name)
-        total_rows = sheet_data.nrows
-        
-        # Process in manageable chunks (not using chunksize as pandas doesn't support it for Excel)
-        chunk_size = 1000
-        chunks_processed = 0
-        df = pd.DataFrame()
-        
-        for start_row in range(0, total_rows, chunk_size):
-            chunks_processed += 1
-            end_row = min(start_row + chunk_size, total_rows)
+        try:
+            # Excel reader object
+            xl = pd.ExcelFile(file_path)
             
-            # Read a specific range of rows
-            # First row (usually row 0) contains headers
-            if start_row == 0:
-                # First chunk includes headers
-                temp_df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=end_row)
-            else:
-                # Subsequent chunks need headers for proper column names and then skip the header row
-                temp_df = pd.read_excel(file_path, sheet_name=sheet_name, 
-                                       skiprows=start_row-1, nrows=end_row-start_row+1)
+            # Get information about the sheet
+            logger.info(f"Attempting to access sheet '{sheet_name}'")
+            sheet_data = xl.book.sheet_by_name(sheet_name)
+            total_rows = sheet_data.nrows
+            logger.info(f"Fixed Income sheet has {total_rows} total rows in Excel file")
+            
+            # Process in manageable chunks (not using chunksize as pandas doesn't support it for Excel)
+            chunk_size = 1000
+            chunks_processed = 0
+            df = pd.DataFrame()
+            
+            for start_row in range(0, total_rows, chunk_size):
+                chunks_processed += 1
+                end_row = min(start_row + chunk_size, total_rows)
                 
-                # Drop the header row which is now the first row
-                if len(temp_df) > 0:
-                    temp_df = temp_df.iloc[1:]
+                logger.info(f"Reading Fixed Income rows {start_row}-{end_row} (chunk {chunks_processed})")
+                
+                # Read a specific range of rows
+                # First row (usually row 0) contains headers
+                if start_row == 0:
+                    # First chunk includes headers
+                    temp_df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=end_row)
+                    logger.info(f"Read first chunk with headers. Shape: {temp_df.shape}")
+                else:
+                    # Subsequent chunks need headers for proper column names and then skip the header row
+                    temp_df = pd.read_excel(file_path, sheet_name=sheet_name, 
+                                           skiprows=start_row-1, nrows=end_row-start_row+1)
+                    logger.info(f"Read subsequent chunk. Shape before header drop: {temp_df.shape}")
+                    
+                    # Drop the header row which is now the first row
+                    if len(temp_df) > 0:
+                        temp_df = temp_df.iloc[1:]
+                        logger.info(f"Shape after header drop: {temp_df.shape}")
+                
+                # Clean up column names
+                temp_df.columns = [col.strip() if isinstance(col, str) else col for col in temp_df.columns]
+                
+                # Check if Position column exists
+                if 'Position' not in temp_df.columns:
+                    available_columns = temp_df.columns.tolist()
+                    logger.error(f"Position column not found in Fixed Income sheet. Available columns: {available_columns}")
+                    # Try to find an alternative column if possible
+                    position_like_columns = [col for col in available_columns if 'name' in str(col).lower() or 'security' in str(col).lower()]
+                    if position_like_columns:
+                        position_col = position_like_columns[0]
+                        logger.info(f"Using alternative column for Position: {position_col}")
+                        temp_df['Position'] = temp_df[position_col]
+                    else:
+                        logger.error("No suitable alternative for Position column found. Skipping chunk.")
+                        continue
+                
+                # Drop rows with no Position
+                original_count = len(temp_df)
+                temp_df = temp_df.dropna(subset=['Position'], how='all')
+                logger.info(f"Dropped {original_count - len(temp_df)} rows with missing Position values")
+                
+                # Append to our main dataframe
+                if not temp_df.empty:
+                    df = pd.concat([df, temp_df])
+                    logger.info(f"Appended chunk data. Total rows so far: {len(df)}")
+                else:
+                    logger.warning(f"Chunk {chunks_processed} contains no valid data after filtering")
+                
+                # If we've read enough rows to handle a large dataset, stop
+                if len(df) > 30000:  # Limit to 30,000 rows as a safety valve
+                    logger.warning(f"Reached maximum row limit of 30,000 for Fixed Income sheet, stopping read process")
+                    break
             
-            # Clean up column names
-            temp_df.columns = [col.strip() if isinstance(col, str) else col for col in temp_df.columns]
-            
-            # Drop rows with no Position
-            temp_df = temp_df.dropna(subset=['Position'], how='all')
-            
-            # Append to our main dataframe
-            if not temp_df.empty:
-                df = pd.concat([df, temp_df])
-            
-            logger.info(f"Processed Fixed Income chunk {chunks_processed} ({start_row}-{end_row}), got {len(temp_df)} valid rows, total rows: {len(df)}")
-            
-            # If we've read enough rows to handle a large dataset, stop
-            if len(df) > 30000:  # Limit to 30,000 rows as a safety valve
-                logger.warning(f"Reached maximum row limit of 30,000 for Fixed Income sheet, stopping read process")
-                break
-        
-        # Close the Excel file
-        xl.close()
+            # Close the Excel file
+            xl.close()
+            logger.info(f"Finished reading Fixed Income sheet. Total valid rows: {len(df)}")
+        except Exception as read_error:
+            logger.error(f"Error reading Fixed Income sheet: {read_error}")
+            # Create an empty DataFrame with proper columns to avoid further errors
+            df = pd.DataFrame(columns=['Position', 'Ticker Symbol', 'CUSIP', 'Bloomberg ID', 'Second Level', 'Duration', 'Amended ID', 'Notes'])
+            logger.info("Created empty DataFrame for Fixed Income due to read error")
     else:
         # For smaller files, read the entire sheet at once
-        df = pd.read_excel(file_path, sheet_name=sheet_name)
-        # Clean up column names and drop empty rows
-        df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
-        df = df.dropna(subset=['Position'], how='all')
+        try:
+            logger.info(f"Reading entire Fixed Income sheet at once (file size: {file_size_mb:.2f} MB)")
+            df = pd.read_excel(file_path, sheet_name=sheet_name)
+            logger.info(f"Read Fixed Income sheet successfully. Shape: {df.shape}")
+            
+            # Clean up column names and drop empty rows
+            df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
+            
+            # Check if Position column exists
+            if 'Position' not in df.columns:
+                available_columns = df.columns.tolist()
+                logger.error(f"Position column not found in Fixed Income sheet. Available columns: {available_columns}")
+                # Try to find an alternative column if possible
+                position_like_columns = [col for col in available_columns if 'name' in str(col).lower() or 'security' in str(col).lower()]
+                if position_like_columns:
+                    position_col = position_like_columns[0]
+                    logger.info(f"Using alternative column for Position: {position_col}")
+                    df['Position'] = df[position_col]
+                else:
+                    logger.error("No suitable alternative for Position column found. Cannot process Fixed Income sheet.")
+                    return 0
+            
+            original_count = len(df)
+            df = df.dropna(subset=['Position'], how='all')
+            logger.info(f"Dropped {original_count - len(df)} rows with missing Position values")
+        except Exception as read_error:
+            logger.error(f"Error reading Fixed Income sheet: {read_error}")
+            # Create an empty DataFrame with proper columns to avoid further errors
+            df = pd.DataFrame(columns=['Position', 'Ticker Symbol', 'CUSIP', 'Bloomberg ID', 'Second Level', 'Duration', 'Amended ID', 'Notes'])
+            logger.info("Created empty DataFrame for Fixed Income due to read error")
     
     # Keep track of records processed
     records_processed = 0
@@ -485,7 +563,11 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
     
     # Log the sheet structure
     logger.info(f"Fixed Income sheet columns: {df.columns.tolist()}")
-    logger.info(f"Fixed Income sheet has {len(df)} rows")
+    logger.info(f"Fixed Income sheet has {len(df)} rows ready for processing")
+    
+    if len(df) == 0:
+        logger.warning("No valid rows found in Fixed Income sheet after filtering. Skipping processing.")
+        return 0
     
     # Check for duplicate positions in the input file
     try:
@@ -512,7 +594,16 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
             try:
                 position = str(row.get('Position', '')).strip()
                 if not position:
+                    logger.debug(f"Skipping row {index} with empty Position value")
                     continue
+                
+                # Extract and log a sample of the row data for debugging
+                if records_processed < 5 or records_processed % 500 == 0:
+                    sample_data = {}
+                    for col in ['Position', 'Ticker Symbol', 'CUSIP', 'Bloomberg ID', 'Second Level', 'Duration']:
+                        if col in row:
+                            sample_data[col] = row[col]
+                    logger.info(f"Sample row {index} data: {sample_data}")
                     
                 ticker_symbol = str(row.get('Ticker Symbol', '')).strip() if 'Ticker Symbol' in row and not pd.isna(row.get('Ticker Symbol')) else None
                 cusip = str(row.get('CUSIP', '')).strip() if 'CUSIP' in row and not pd.isna(row.get('CUSIP')) else None
@@ -528,7 +619,8 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
                 else:
                     try:
                         duration = float(duration)
-                    except (ValueError, TypeError):
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Could not convert Duration value '{duration}' to float for position '{position}': {e}")
                         duration = None
                 
                 # Create a new risk stat record
@@ -553,6 +645,15 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
                 
             except Exception as e:
                 logger.error(f"Error processing fixed income row {index}: {e}")
+                # If we're getting a lot of errors, log more details about the problematic row
+                try:
+                    if 'Position' in row:
+                        pos_val = row['Position']
+                        logger.error(f"Problem row had Position value: {pos_val}")
+                    logger.error(f"Row data keys: {list(row.keys())}")
+                    logger.error(f"Row data (first few items): {dict(list(row.items())[:5])}")
+                except Exception as inner_e:
+                    logger.error(f"Could not extract detailed error info: {inner_e}")
         
         # Insert the batch of records
         try:
@@ -649,61 +750,118 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db):
     if file_size_mb > 100:
         logger.info(f"Large file detected ({file_size_mb:.2f} MB): Using optimized reading for Alternatives sheet")
         
-        # Excel reader object
-        xl = pd.ExcelFile(file_path)
-        
-        # Get information about the sheet
-        sheet_data = xl.book.sheet_by_name(sheet_name)
-        total_rows = sheet_data.nrows
-        
-        # Process in manageable chunks (not using chunksize as pandas doesn't support it for Excel)
-        chunk_size = 1000
-        chunks_processed = 0
-        df = pd.DataFrame()
-        
-        for start_row in range(0, total_rows, chunk_size):
-            chunks_processed += 1
-            end_row = min(start_row + chunk_size, total_rows)
+        try:
+            # Excel reader object
+            xl = pd.ExcelFile(file_path)
             
-            # Read a specific range of rows
-            # First row (usually row 0) contains headers
-            if start_row == 0:
-                # First chunk includes headers
-                temp_df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=end_row)
-            else:
-                # Subsequent chunks need headers for proper column names and then skip the header row
-                temp_df = pd.read_excel(file_path, sheet_name=sheet_name, 
-                                       skiprows=start_row-1, nrows=end_row-start_row+1)
+            # Get information about the sheet
+            logger.info(f"Attempting to access sheet '{sheet_name}'")
+            sheet_data = xl.book.sheet_by_name(sheet_name)
+            total_rows = sheet_data.nrows
+            logger.info(f"Alternatives sheet has {total_rows} total rows in Excel file")
+            
+            # Process in manageable chunks (not using chunksize as pandas doesn't support it for Excel)
+            chunk_size = 1000
+            chunks_processed = 0
+            df = pd.DataFrame()
+            
+            for start_row in range(0, total_rows, chunk_size):
+                chunks_processed += 1
+                end_row = min(start_row + chunk_size, total_rows)
                 
-                # Drop the header row which is now the first row
-                if len(temp_df) > 0:
-                    temp_df = temp_df.iloc[1:]
+                logger.info(f"Reading Alternatives rows {start_row}-{end_row} (chunk {chunks_processed})")
+                
+                # Read a specific range of rows
+                # First row (usually row 0) contains headers
+                if start_row == 0:
+                    # First chunk includes headers
+                    temp_df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=end_row)
+                    logger.info(f"Read first chunk with headers. Shape: {temp_df.shape}")
+                else:
+                    # Subsequent chunks need headers for proper column names and then skip the header row
+                    temp_df = pd.read_excel(file_path, sheet_name=sheet_name, 
+                                           skiprows=start_row-1, nrows=end_row-start_row+1)
+                    logger.info(f"Read subsequent chunk. Shape before header drop: {temp_df.shape}")
+                    
+                    # Drop the header row which is now the first row
+                    if len(temp_df) > 0:
+                        temp_df = temp_df.iloc[1:]
+                        logger.info(f"Shape after header drop: {temp_df.shape}")
+                
+                # Clean up column names
+                temp_df.columns = [col.strip() if isinstance(col, str) else col for col in temp_df.columns]
+                
+                # Check if Position column exists
+                if 'Position' not in temp_df.columns:
+                    available_columns = temp_df.columns.tolist()
+                    logger.error(f"Position column not found in Alternatives sheet. Available columns: {available_columns}")
+                    # Try to find an alternative column if possible
+                    position_like_columns = [col for col in available_columns if 'name' in str(col).lower() or 'security' in str(col).lower()]
+                    if position_like_columns:
+                        position_col = position_like_columns[0]
+                        logger.info(f"Using alternative column for Position: {position_col}")
+                        temp_df['Position'] = temp_df[position_col]
+                    else:
+                        logger.error("No suitable alternative for Position column found. Skipping chunk.")
+                        continue
+                
+                # Drop rows with no Position
+                original_count = len(temp_df)
+                temp_df = temp_df.dropna(subset=['Position'], how='all')
+                logger.info(f"Dropped {original_count - len(temp_df)} rows with missing Position values")
+                
+                # Append to our main dataframe
+                if not temp_df.empty:
+                    df = pd.concat([df, temp_df])
+                    logger.info(f"Appended chunk data. Total rows so far: {len(df)}")
+                else:
+                    logger.warning(f"Chunk {chunks_processed} contains no valid data after filtering")
+                
+                # If we've read enough rows to handle a large dataset, stop
+                if len(df) > 30000:  # Limit to 30,000 rows as a safety valve
+                    logger.warning(f"Reached maximum row limit of 30,000 for Alternatives sheet, stopping read process")
+                    break
             
-            # Clean up column names
-            temp_df.columns = [col.strip() if isinstance(col, str) else col for col in temp_df.columns]
-            
-            # Drop rows with no Position
-            temp_df = temp_df.dropna(subset=['Position'], how='all')
-            
-            # Append to our main dataframe
-            if not temp_df.empty:
-                df = pd.concat([df, temp_df])
-            
-            logger.info(f"Processed Alternatives chunk {chunks_processed} ({start_row}-{end_row}), got {len(temp_df)} valid rows, total rows: {len(df)}")
-            
-            # If we've read enough rows to handle a large dataset, stop
-            if len(df) > 30000:  # Limit to 30,000 rows as a safety valve
-                logger.warning(f"Reached maximum row limit of 30,000 for Alternatives sheet, stopping read process")
-                break
-        
-        # Close the Excel file
-        xl.close()
+            # Close the Excel file
+            xl.close()
+            logger.info(f"Finished reading Alternatives sheet. Total valid rows: {len(df)}")
+        except Exception as read_error:
+            logger.error(f"Error reading Alternatives sheet: {read_error}")
+            # Create an empty DataFrame with proper columns to avoid further errors
+            df = pd.DataFrame(columns=['Position', 'Ticker Symbol', 'CUSIP', 'Bloomberg ID', 'Second Level', 'BETA', 'Amended ID', 'Notes'])
+            logger.info("Created empty DataFrame for Alternatives due to read error")
     else:
         # For smaller files, read the entire sheet at once
-        df = pd.read_excel(file_path, sheet_name=sheet_name)
-        # Clean up column names and drop empty rows
-        df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
-        df = df.dropna(subset=['Position'], how='all')
+        try:
+            logger.info(f"Reading entire Alternatives sheet at once (file size: {file_size_mb:.2f} MB)")
+            df = pd.read_excel(file_path, sheet_name=sheet_name)
+            logger.info(f"Read Alternatives sheet successfully. Shape: {df.shape}")
+            
+            # Clean up column names and drop empty rows
+            df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
+            
+            # Check if Position column exists
+            if 'Position' not in df.columns:
+                available_columns = df.columns.tolist()
+                logger.error(f"Position column not found in Alternatives sheet. Available columns: {available_columns}")
+                # Try to find an alternative column if possible
+                position_like_columns = [col for col in available_columns if 'name' in str(col).lower() or 'security' in str(col).lower()]
+                if position_like_columns:
+                    position_col = position_like_columns[0]
+                    logger.info(f"Using alternative column for Position: {position_col}")
+                    df['Position'] = df[position_col]
+                else:
+                    logger.error("No suitable alternative for Position column found. Cannot process Alternatives sheet.")
+                    return 0
+            
+            original_count = len(df)
+            df = df.dropna(subset=['Position'], how='all')
+            logger.info(f"Dropped {original_count - len(df)} rows with missing Position values")
+        except Exception as read_error:
+            logger.error(f"Error reading Alternatives sheet: {read_error}")
+            # Create an empty DataFrame with proper columns to avoid further errors
+            df = pd.DataFrame(columns=['Position', 'Ticker Symbol', 'CUSIP', 'Bloomberg ID', 'Second Level', 'BETA', 'Amended ID', 'Notes'])
+            logger.info("Created empty DataFrame for Alternatives due to read error")
     
     # Keep track of records processed
     records_processed = 0
@@ -715,7 +873,11 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db):
     
     # Log the sheet structure
     logger.info(f"Alternatives sheet columns: {df.columns.tolist()}")
-    logger.info(f"Alternatives sheet has {len(df)} rows")
+    logger.info(f"Alternatives sheet has {len(df)} rows ready for processing")
+    
+    if len(df) == 0:
+        logger.warning("No valid rows found in Alternatives sheet after filtering. Skipping processing.")
+        return 0
     
     # Check for duplicate positions in the input file
     try:
@@ -742,7 +904,16 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db):
             try:
                 position = str(row.get('Position', '')).strip()
                 if not position:
+                    logger.debug(f"Skipping row {index} with empty Position value")
                     continue
+                
+                # Extract and log a sample of the row data for debugging
+                if records_processed < 5 or records_processed % 500 == 0:
+                    sample_data = {}
+                    for col in ['Position', 'Ticker Symbol', 'CUSIP', 'Bloomberg ID', 'Second Level', 'BETA']:
+                        if col in row:
+                            sample_data[col] = row[col]
+                    logger.info(f"Sample row {index} data: {sample_data}")
                     
                 ticker_symbol = str(row.get('Ticker Symbol', '')).strip() if 'Ticker Symbol' in row and not pd.isna(row.get('Ticker Symbol')) else None
                 cusip = str(row.get('CUSIP', '')).strip() if 'CUSIP' in row and not pd.isna(row.get('CUSIP')) else None
@@ -751,14 +922,23 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db):
                 amended_id = str(row.get('Amended ID', '')).strip() if 'Amended ID' in row and not pd.isna(row.get('Amended ID')) else None
                 notes = str(row.get('Notes', '')).strip() if 'Notes' in row and not pd.isna(row.get('Notes')) else None
                 
-                # Alternatives typically only have beta
-                beta = row.get('BETA', None)
+                # Check for 'BETA' column and possible alternatives
+                beta = None
+                beta_candidates = ['BETA', 'Beta', 'beta']
+                
+                for beta_col in beta_candidates:
+                    if beta_col in row:
+                        beta = row.get(beta_col, None)
+                        logger.debug(f"Found beta value {beta} in column {beta_col}")
+                        break
+                
                 if pd.isna(beta):
                     beta = None
                 else:
                     try:
                         beta = float(beta)
-                    except (ValueError, TypeError):
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Could not convert Beta value '{beta}' to float for position '{position}': {e}")
                         beta = None
                 
                 # Create a new risk stat record
@@ -783,6 +963,15 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db):
                 
             except Exception as e:
                 logger.error(f"Error processing alternatives row {index}: {e}")
+                # If we're getting a lot of errors, log more details about the problematic row
+                try:
+                    if 'Position' in row:
+                        pos_val = row['Position']
+                        logger.error(f"Problem row had Position value: {pos_val}")
+                    logger.error(f"Row data keys: {list(row.keys())}")
+                    logger.error(f"Row data (first few items): {dict(list(row.items())[:5])}")
+                except Exception as inner_e:
+                    logger.error(f"Could not extract detailed error info: {inner_e}")
         
         # Insert the batch of records
         try:
