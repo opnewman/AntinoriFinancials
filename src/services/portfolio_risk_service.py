@@ -135,8 +135,21 @@ def calculate_portfolio_risk_metrics(
         if is_large_portfolio:
             logger.info(f"Using optimized approach with caching for large portfolio with {position_count} positions")
         
-        # Now load the actual positions
-        positions = positions_query.all()
+        # Apply sampling for large position sets if max_positions is specified
+        if max_positions and position_count > max_positions:
+            logger.info(f"Using sampling: selecting {max_positions} positions out of {position_count}")
+            # Use random sampling for statistical representation
+            positions = positions_query.order_by(func.random()).limit(max_positions).all()
+            # Flag that we're using a sample
+            is_sample = True
+            sample_size = max_positions
+            total_positions = position_count
+        else:
+            # Load all positions (no sampling)
+            positions = positions_query.all()
+            is_sample = False
+            sample_size = None
+            total_positions = position_count
     except Exception as e:
         logger.exception(f"Error querying positions: {str(e)}")
         return {
