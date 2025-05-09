@@ -295,6 +295,9 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                     ticker_col = 'Ticker Symbol' if 'Ticker Symbol' in columns else None
                     cusip_col = 'CUSIP' if 'CUSIP' in columns else None
                     duration_col = 'Duration' if 'Duration' in columns else None
+                    # These columns might not be in all sheets, so define them but they might be None
+                    vol_col = 'Vol' if 'Vol' in columns else None  
+                    beta_col = 'BETA' if 'BETA' in columns else None
                     second_level_col = 'Second Level' if 'Second Level' in columns else None
                     amended_id_col = 'Amended ID' if 'Amended ID' in columns else None
                     notes_col = 'Notes' if 'Notes' in columns else None

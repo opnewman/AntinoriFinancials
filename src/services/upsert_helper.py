@@ -156,7 +156,40 @@ def batch_upsert_risk_stats(db: Session, records, batch_size=100, max_retries=3)
                                 "source_row": record.source_row
                             }
                             
-                            db.execute(upsert_stmt, params)
+                            # Re-defining the statement here to avoid "upsert_stmt is possibly unbound" error
+                            individual_upsert_stmt = text("""
+                            INSERT INTO egnyte_risk_stats 
+                            (import_date, position, ticker_symbol, cusip, asset_class, second_level, 
+                            bloomberg_id, volatility, beta, duration, notes, amended_id, 
+                            source_file, source_tab, source_row, created_at)
+                            VALUES 
+                            (:import_date, :position, :ticker, :cusip, :asset_class, :second_level, 
+                            :bloomberg_id, :volatility, :beta, :duration, :notes, :amended_id, 
+                            :source_file, :source_tab, :source_row, NOW())
+                            ON CONFLICT (import_date, position, asset_class) 
+                            DO UPDATE SET
+                              ticker_symbol = EXCLUDED.ticker_symbol,
+                              cusip = EXCLUDED.cusip,
+                              second_level = EXCLUDED.second_level,
+                              bloomberg_id = EXCLUDED.bloomberg_id,
+                              volatility = EXCLUDED.volatility,
+                              beta = EXCLUDED.beta,
+                              duration = EXCLUDED.duration,
+                              notes = EXCLUDED.notes,
+                              amended_id = EXCLUDED.amended_id,
+                              updated_at = NOW()
+                            WHERE egnyte_risk_stats.ticker_symbol IS DISTINCT FROM EXCLUDED.ticker_symbol
+                               OR egnyte_risk_stats.cusip IS DISTINCT FROM EXCLUDED.cusip
+                               OR egnyte_risk_stats.second_level IS DISTINCT FROM EXCLUDED.second_level
+                               OR egnyte_risk_stats.bloomberg_id IS DISTINCT FROM EXCLUDED.bloomberg_id
+                               OR egnyte_risk_stats.volatility IS DISTINCT FROM EXCLUDED.volatility
+                               OR egnyte_risk_stats.beta IS DISTINCT FROM EXCLUDED.beta
+                               OR egnyte_risk_stats.duration IS DISTINCT FROM EXCLUDED.duration
+                               OR egnyte_risk_stats.notes IS DISTINCT FROM EXCLUDED.notes
+                               OR egnyte_risk_stats.amended_id IS DISTINCT FROM EXCLUDED.amended_id
+                            """)
+                            
+                            db.execute(individual_upsert_stmt, params)
                             db.commit()
                             
                             batch_success += 1
