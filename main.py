@@ -105,22 +105,25 @@ def update_risk_stats_endpoint():
 @app.route("/api/risk-stats/update-optimized", methods=["GET", "POST"])
 def update_risk_stats_optimized_endpoint():
     """
-    High-performance update of risk statistics from Egnyte.
+    High-performance update of risk statistics from Egnyte using the improved direct method.
     
     This endpoint directly processes risk statistics using an optimized approach
     designed to complete in 2-3 seconds rather than minutes.
+    
+    The implementation now uses improved file processing, better database handling,
+    and separate tables for each asset class for maximum performance.
     
     Query parameters:
     - debug: If set to 'true', enables extended debugging output
     - use_test_file: If set to 'true', attempts to use a local test file if available
     - batch_size: Size of batches for database operations (default: 500)
-    - workers: Number of parallel workers for processing (default: 3)
     
     Returns:
         JSON with processing results and timing information
     """
     try:
-        from src.services.optimized_risk_stats_service import process_risk_stats_optimized
+        # Import the direct implementation that uses separate tables
+        from src.services.risk_stats_direct_service import process_risk_stats_direct
         import traceback
         
         # Parse query parameters
@@ -131,8 +134,8 @@ def update_risk_stats_optimized_endpoint():
         debug_mode = True
         logger.setLevel(logging.DEBUG)
         
-        # Configure logging for the services
-        risk_logger = logging.getLogger('src.services.optimized_risk_stats_service')
+        # Configure service logging
+        risk_logger = logging.getLogger('src.services.risk_stats_direct_service')
         risk_logger.setLevel(logging.DEBUG)
         
         # Get batch size parameter with smaller default for better performance
@@ -143,20 +146,11 @@ def update_risk_stats_optimized_endpoint():
         except ValueError:
             batch_size = 500
             
-        # Get workers parameter
-        try:
-            workers = int(request.args.get('workers', '3'))
-            if workers < 1 or workers > 8:
-                workers = 3  # Reset to default if out of reasonable range
-        except ValueError:
-            workers = 3
-            
         # Log the request parameters with extensive debug info
-        logger.info("====== STARTING RISK STATS UPDATE WITH EXTENSIVE DEBUGGING ======")
+        logger.info("====== STARTING DIRECT RISK STATS UPDATE ======")
         logger.info(f"DEBUG: Debug mode: {debug_mode}")
         logger.info(f"DEBUG: Use test file: {use_test_file}")
         logger.info(f"DEBUG: Batch size: {batch_size}")
-        logger.info(f"DEBUG: Workers: {workers}")
         
         # Check for API token if not using test file
         egnyte_token = os.environ.get('EGNYTE_ACCESS_TOKEN')
@@ -170,134 +164,42 @@ def update_risk_stats_optimized_endpoint():
         # Record the start time for performance measurement
         start_time = time.time()
         
-        # Process risk statistics directly with the optimized implementation
-        # Create a fresh database connection with longer timeouts for this operation
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-        from src.database import connection_args
-        
-        # Use our engine configuration but with extended timeout and best practices
-        extended_args = connection_args.copy() if connection_args else {}
-        
-        # Ensure connect_args is initialized
-        if 'connect_args' not in extended_args:
-            extended_args['connect_args'] = {}
-            
-        # Add PostgreSQL statement timeout (10 minutes)
-        extended_args['connect_args']['options'] = '-c statement_timeout=600000'
-        
-        # Add parameters to improve stability for long-running operations
-        extended_args.update({
-            'pool_timeout': 60,  # Longer pool timeout
-            'pool_size': 10,     # Larger connection pool
-            'max_overflow': 20,  # Allow more overflow connections
-            'pool_recycle': 300, # Recycle connections every 5 minutes
-            'pool_pre_ping': True # Check connection before using from pool
-        })
+        # Get a database session
+        from src.database import get_db
+        db = next(get_db())
         
         try:
-            # Create a dedicated engine for this operation with very explicit error tracking
-            database_url = os.environ.get('DATABASE_URL')
-            if not database_url:
-                logger.error("DATABASE_URL not found in environment variables")
-                return jsonify({
-                    "success": False,
-                    "error": "Database URL not configured"
-                }), 500
+            # Execute the direct processing with extensive error tracking
+            logger.info(f"DEBUG: Starting direct processing with batch_size={batch_size}")
+            
+            # Process risk statistics directly
+            results = process_risk_stats_direct(
+                db=db,
+                use_test_file=use_test_file,
+                batch_size=batch_size,
+                debug=debug_mode
+            )
+            
+            # Track total API request time
+            total_time = time.time() - start_time
+            results["total_api_time_seconds"] = total_time
+            
+            # Return results directly
+            logger.info(f"DEBUG: Returning successful results, total execution time: {total_time:.2f} seconds")
+            return jsonify(results)
                 
-            logger.info(f"DEBUG: Using database URL pattern: {database_url[:10]}...{database_url[-10:] if len(database_url) > 20 else ''}")
-            logger.info(f"DEBUG: Connection arguments: {extended_args}")
+        except Exception as processing_error:
+            error_time = time.time() - start_time
+            logger.error(f"DEBUG: Error during risk stats processing after {error_time:.2f} seconds: {type(processing_error).__name__}: {str(processing_error)}")
+            logger.error(f"DEBUG: Error processing traceback: {traceback.format_exc()}")
             
-            engine = create_engine(database_url, **extended_args)
-            Session = sessionmaker(bind=engine)
-            
-            # Test the database connection first with detailed error tracking
-            try:
-                with engine.connect() as conn:
-                    # Verify connection works and can execute queries
-                    logger.info("DEBUG: Testing database connection...")
-                    result = conn.execute(text("SELECT 1"))
-                    first_row = result.fetchone()
-                    logger.info(f"DEBUG: Database connection test successful: {first_row}")
-                    
-                    # Test table access with a simple count query 
-                    try:
-                        result = conn.execute(text("SELECT COUNT(*) FROM egnyte_risk_stats"))
-                        count_result = result.fetchone()
-                        logger.info(f"DEBUG: Current risk stats count: {count_result[0]}")
-                    except Exception as count_error:
-                        logger.error(f"DEBUG: Count query failed (likely table doesn't exist yet): {str(count_error)}")
-                        # This is not a fatal error, the table might not exist yet
-            except Exception as db_test_error:
-                logger.error(f"DEBUG: Database connection test FAILED: {type(db_test_error).__name__}: {str(db_test_error)}")
-                logger.error(f"DEBUG: Database connection traceback: {traceback.format_exc()}")
-                return jsonify({
-                    "success": False, 
-                    "error": f"Database connection failed: {str(db_test_error)}",
-                    "error_type": type(db_test_error).__name__,
-                    "traceback": traceback.format_exc()
-                }), 500
-            
-            # Process risk statistics with a fresh session and explicit error handling
-            with Session() as db:
-                logger.info(f"DEBUG: Created new database session, starting processing with batch_size={batch_size}, max_workers={workers}")
-                
-                try:
-                    # Track when processing actually starts
-                    processing_start = time.time()
-                    
-                    # Execute the optimized processing with extensive error tracking
-                    results = process_risk_stats_optimized(
-                        db=db,
-                        use_test_file=use_test_file,
-                        batch_size=batch_size,
-                        max_workers=workers
-                    )
-                    
-                    # Track when processing ends
-                    processing_end = time.time() 
-                    processing_time = processing_end - processing_start
-                    
-                    logger.info(f"DEBUG: Processing completed in {processing_time:.2f} seconds")
-                    logger.info(f"DEBUG: Results summary: {results}")
-                    
-                    # Add total API request time
-                    total_time = time.time() - start_time
-                    results["total_api_time_seconds"] = total_time
-                    results["processing_time_seconds"] = processing_time
-                    
-                    # Return results directly with detailed timing info
-                    logger.info(f"DEBUG: Returning successful results, total execution time: {total_time:.2f} seconds")
-                    return jsonify(results)
-                    
-                except Exception as processing_error:
-                    error_time = time.time() - start_time
-                    logger.error(f"DEBUG: Error during risk stats processing after {error_time:.2f} seconds: {type(processing_error).__name__}: {str(processing_error)}")
-                    logger.error(f"DEBUG: Error processing traceback: {traceback.format_exc()}")
-                    
-                    # Try to get some insight into the database state
-                    try:
-                        result = db.execute(text("SELECT COUNT(*) FROM egnyte_risk_stats"))
-                        record_count = result.fetchone()[0]
-                        logger.info(f"DEBUG: Current record count despite error: {record_count}")
-                    except Exception as count_error:
-                        logger.error(f"DEBUG: Could not check record count: {str(count_error)}")
-                    
-                    return jsonify({
-                        "success": False,
-                        "error": f"Processing error: {str(processing_error)}",
-                        "error_type": type(processing_error).__name__,
-                        "execution_time_seconds": error_time,
-                        "traceback": traceback.format_exc()
-                    }), 500
-        finally:
-            # Make sure to dispose of the engine
-            if 'engine' in locals():
-                try:
-                    engine.dispose()
-                    logger.info("DEBUG: Successfully disposed of database engine")
-                except Exception as dispose_error:
-                    logger.error(f"DEBUG: Error disposing database engine: {str(dispose_error)}")
+            return jsonify({
+                "success": False,
+                "error": f"Processing error: {str(processing_error)}",
+                "error_type": type(processing_error).__name__,
+                "execution_time_seconds": error_time,
+                "traceback": traceback.format_exc()
+            }), 500
             
     except Exception as e:
         logger.exception("Error in optimized risk stats update:")
