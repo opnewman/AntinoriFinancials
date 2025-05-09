@@ -191,7 +191,7 @@ def update_risk_stats_optimized_endpoint():
             try:
                 with engine.connect() as conn:
                     logger.info("DEBUG: Database connection test successful")
-                    result = conn.execute("SELECT 1")
+                    result = conn.execute(text("SELECT 1"))
                     logger.info(f"DEBUG: Database connection test result: {result.fetchone()}")
             except Exception as db_test_error:
                 logger.error(f"DEBUG: Database connection test failed: {str(db_test_error)}")
