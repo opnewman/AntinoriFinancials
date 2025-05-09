@@ -405,6 +405,51 @@ window.api = {
      * Get risk statistics status information
      * Returns information about the last update and available records
      */
+    /**
+     * Start an asynchronous risk statistics update job
+     * @param {boolean} useTestFile - Whether to use a test file instead of downloading from Egnyte
+     * @param {boolean} debugMode - Enable debug mode for detailed logging
+     * @returns {Object} Job information including the job ID and status
+     */
+    updateRiskStats: async (useTestFile = false, debugMode = false) => {
+        try {
+            const params = {};
+            if (useTestFile) params.use_test_file = 'true';
+            if (debugMode) params.debug = 'true';
+            
+            const response = await axios.post(`${API_BASE_URL}/api/risk-stats/update`, null, { params });
+            return response.data;
+        } catch (error) {
+            console.error('Error starting risk stats update:', error);
+            return {
+                success: false,
+                error: error.response?.data?.error || error.message || 'Failed to start risk statistics update'
+            };
+        }
+    },
+    
+    /**
+     * Get the status of a risk statistics update job
+     * @param {number} jobId - The ID of the job to check
+     * @returns {Object} Job status and details
+     */
+    getRiskStatsJobStatus: async (jobId) => {
+        try {
+            const response = await axios.get(`${API_BASE_URL}/api/risk-stats/jobs/${jobId}`);
+            return response.data;
+        } catch (error) {
+            console.error(`Error getting risk stats job status (ID: ${jobId}):`, error);
+            return {
+                success: false,
+                error: error.response?.data?.error || error.message || 'Failed to get job status'
+            };
+        }
+    },
+    
+    /**
+     * Get risk statistics status information
+     * Returns information about the last update and available records
+     */
     getRiskStatsStatus: async () => {
         try {
             const response = await axios.get(`${API_BASE_URL}/api/risk-stats/status`);
@@ -444,21 +489,7 @@ window.api = {
         }
     },
     
-    /**
-     * Trigger a manual update of risk statistics from Egnyte
-     */
-    updateRiskStats: async () => {
-        try {
-            const response = await axios.post(`${API_BASE_URL}/api/risk-stats/update`);
-            return response.data;
-        } catch (error) {
-            console.error('Error updating risk stats:', error);
-            return {
-                success: false,
-                error: error.message || 'Failed to update risk statistics'
-            };
-        }
-    },
+    // Legacy updateRiskStats function replaced by the implementation above
     
     /**
      * Get metadata options for entity classifications, etc.
