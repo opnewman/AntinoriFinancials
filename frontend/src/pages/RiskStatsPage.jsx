@@ -161,169 +161,178 @@ const RiskStatsPage = () => {
   };
   
   return (
-    <Container maxW="container.xl" py={5}>
-      <Heading mb={4}>Risk Statistics</Heading>
-      <Text mb={6}>
+    <div className="container mx-auto px-4 py-5">
+      <h2 className="text-2xl font-bold mb-4">Risk Statistics</h2>
+      <p className="text-gray-600 mb-6">
         Manage and view security risk metrics including volatility, beta, and duration data.
-      </Text>
+      </p>
       
-      <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={6} mb={6}>
-        <Box>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div>
           <RiskStatsJobManager />
-        </Box>
+        </div>
         
-        <Card>
-          <CardHeader>
-            <Heading size="md">Filter Risk Statistics</Heading>
-          </CardHeader>
-          <CardBody>
-            <Stack spacing={4}>
-              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                <FormControl>
-                  <FormLabel>Asset Class</FormLabel>
-                  <Select 
+        <div className="bg-white rounded-lg shadow-md">
+          <div className="border-b pb-2 mb-3 p-4">
+            <h2 className="font-bold text-xl">Filter Risk Statistics</h2>
+          </div>
+          <div className="p-4">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Asset Class</label>
+                  <select 
                     name="assetClass"
                     value={filters.assetClass}
                     onChange={handleFilterChange}
-                    placeholder="All Asset Classes"
+                    className="border border-gray-300 rounded p-2 w-full"
                   >
+                    <option value="">All Asset Classes</option>
                     <option value="Equity">Equity</option>
                     <option value="Fixed Income">Fixed Income</option>
                     <option value="Alternatives">Alternatives</option>
-                  </Select>
-                </FormControl>
+                  </select>
+                </div>
                 
-                <FormControl>
-                  <FormLabel>Second Level</FormLabel>
-                  <Input
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Second Level</label>
+                  <input
+                    type="text"
                     name="secondLevel"
                     value={filters.secondLevel}
                     onChange={handleFilterChange}
                     placeholder="Filter by second level classification"
+                    className="border border-gray-300 rounded p-2 w-full"
                   />
-                </FormControl>
-              </SimpleGrid>
+                </div>
+              </div>
               
-              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                <FormControl>
-                  <FormLabel>Position/Security</FormLabel>
-                  <Input
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Position/Security</label>
+                  <input
+                    type="text"
                     name="position"
                     value={filters.position}
                     onChange={handleFilterChange}
                     placeholder="Filter by security name"
+                    className="border border-gray-300 rounded p-2 w-full"
                   />
-                </FormControl>
+                </div>
                 
-                <FormControl>
-                  <FormLabel>Ticker Symbol</FormLabel>
-                  <Input
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ticker Symbol</label>
+                  <input
+                    type="text"
                     name="ticker"
                     value={filters.ticker}
                     onChange={handleFilterChange}
                     placeholder="Filter by ticker symbol"
+                    className="border border-gray-300 rounded p-2 w-full"
                   />
-                </FormControl>
-              </SimpleGrid>
+                </div>
+              </div>
               
-              <Button 
-                colorScheme="blue" 
-                onClick={() => fetchRiskStats()} 
-                isLoading={loading}
+              <button 
+                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded font-semibold"
+                onClick={() => fetchRiskStats()}
+                disabled={loading}
               >
-                Apply Filters
-              </Button>
-            </Stack>
-          </CardBody>
-        </Card>
-      </SimpleGrid>
+                {loading ? (
+                  <span>
+                    <span className="inline-block w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    Loading...
+                  </span>
+                ) : 'Apply Filters'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
       
       {error && (
-        <Alert status="error" mb={4}>
-          <AlertIcon />
-          {error}
-        </Alert>
+        <div className="rounded-md p-4 border bg-red-100 text-red-800 border-red-200 mb-4">
+          ⚠️ {error}
+        </div>
       )}
       
-      <Card variant="outline">
-        <Box overflowX="auto">
-          <Table variant="simple">
-            <Thead>
-              <Tr>
-                <Th>Position</Th>
-                <Th>Ticker</Th>
-                <Th>Asset Class</Th>
-                <Th>Second Level</Th>
-                <Th>Beta</Th>
-                <Th>Volatility</Th>
-                <Th>Duration</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
+      <div className="bg-white rounded-lg shadow-md border">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Position</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticker</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asset Class</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Second Level</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Beta</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Volatility</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
               {loading ? (
-                <Tr>
-                  <Td colSpan={7} textAlign="center" py={10}>
-                    <Spinner />
-                  </Td>
-                </Tr>
+                <tr>
+                  <td colSpan={7} className="px-6 py-4 whitespace-nowrap text-center py-10">
+                    <div className="inline-block w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+                  </td>
+                </tr>
               ) : riskStats.length === 0 ? (
-                <Tr>
-                  <Td colSpan={7} textAlign="center" py={10}>
+                <tr>
+                  <td colSpan={7} className="px-6 py-4 whitespace-nowrap text-center py-10">
                     No risk statistics found matching your filters
-                  </Td>
-                </Tr>
+                  </td>
+                </tr>
               ) : (
                 riskStats.map(stat => (
-                  <Tr key={stat.id}>
-                    <Td>{stat.position}</Td>
-                    <Td>{stat.ticker_symbol || '-'}</Td>
-                    <Td>
-                      <Badge 
-                        colorScheme={
-                          stat.asset_class === 'Equity' ? 'blue' : 
-                          stat.asset_class === 'Fixed Income' ? 'red' : 
-                          stat.asset_class === 'Alternatives' ? 'orange' : 
-                          'gray'
-                        }
-                      >
+                  <tr key={stat.id}>
+                    <td className="px-6 py-4 whitespace-nowrap">{stat.position}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{stat.ticker_symbol || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${
+                        stat.asset_class === 'Equity' ? 'bg-blue-100 text-blue-800' : 
+                        stat.asset_class === 'Fixed Income' ? 'bg-red-100 text-red-800' : 
+                        stat.asset_class === 'Alternatives' ? 'bg-orange-100 text-orange-800' : 
+                        'bg-gray-100 text-gray-800'
+                      }`}>
                         {stat.asset_class}
-                      </Badge>
-                    </Td>
-                    <Td>{stat.second_level || '-'}</Td>
-                    <Td>{formatValue(stat.beta, 'decimal')}</Td>
-                    <Td>{formatValue(stat.volatility, 'decimal')}</Td>
-                    <Td>{formatValue(stat.duration, 'decimal')}</Td>
-                  </Tr>
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">{stat.second_level || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{formatValue(stat.beta, 'decimal')}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{formatValue(stat.volatility, 'decimal')}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">{formatValue(stat.duration, 'decimal')}</td>
+                  </tr>
                 ))
               )}
-            </Tbody>
-          </Table>
-        </Box>
-      </Card>
+            </tbody>
+          </table>
+        </div>
+      </div>
       
       {/* Pagination controls */}
-      <Flex justify="space-between" mt={4}>
-        <Text>
+      <div className="flex justify-between mt-4">
+        <p className="text-gray-600">
           Showing {pagination.offset + 1} - {Math.min(pagination.offset + riskStats.length, pagination.count)} of {pagination.count} records
-        </Text>
-        <HStack>
-          <Button
+        </p>
+        <div className="flex space-x-4">
+          <button
             onClick={handlePrevPage}
-            isDisabled={pagination.offset === 0 || loading}
-            size="sm"
+            disabled={pagination.offset === 0 || loading}
+            className="px-2 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Previous
-          </Button>
-          <Button
+          </button>
+          <button
             onClick={handleNextPage}
-            isDisabled={!pagination.hasMore || loading}
-            size="sm"
+            disabled={!pagination.hasMore || loading}
+            className="px-2 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Next
-          </Button>
-        </HStack>
-      </Flex>
-    </Container>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
 

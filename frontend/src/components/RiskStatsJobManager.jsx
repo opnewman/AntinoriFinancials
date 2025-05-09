@@ -189,128 +189,177 @@ const RiskStatsJobManager = () => {
   
   const { isLoading, currentJob, error, statsStatus } = jobState;
   
+  // Create simple tailwind-based replacements for missing ChakraUI components
+  const Stat = ({children}) => (
+    <div className="flex flex-col py-2 px-3">
+      {children}
+    </div>
+  );
+  
+  const StatLabel = ({children}) => (
+    <div className="text-xs text-gray-600 font-semibold uppercase">
+      {children}
+    </div>
+  );
+  
+  const StatNumber = ({children}) => (
+    <div className="text-lg font-bold">
+      {children}
+    </div>
+  );
+  
+  const VStack = ({children, spacing, align}) => (
+    <div className={`flex flex-col space-y-${spacing || 4} ${align === 'stretch' ? 'w-full' : ''}`}>
+      {children}
+    </div>
+  );
+  
+  const Divider = () => (
+    <hr className="border-t border-gray-200 my-2" />
+  );
+  
+  const Progress = ({value, isIndeterminate, colorScheme, size}) => {
+    const colors = {
+      'yellow': 'bg-yellow-500',
+      'blue': 'bg-blue-500',
+      'green': 'bg-green-500',
+      'red': 'bg-red-500',
+      'gray': 'bg-gray-500'
+    };
+    
+    return (
+      <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
+        <div 
+          className={`h-2.5 rounded-full ${colors[colorScheme] || colors.blue} ${isIndeterminate ? 'progress-bar-striped progress-bar-animated' : ''}`}
+          style={{width: `${value}%`}}
+        ></div>
+      </div>
+    );
+  };
+
   return (
-    <Card p={4}>
-      <VStack spacing={4} align="stretch">
-        <Heading size="md">Risk Statistics Management</Heading>
-        <Divider />
+    <div className="bg-white rounded-lg shadow-md p-4">
+      <div className="flex flex-col space-y-4 w-full">
+        <h2 className="font-bold text-xl">Risk Statistics Management</h2>
+        <hr className="border-t border-gray-200 my-2" />
         
         {/* Current stats info */}
         {statsStatus && statsStatus.has_data && (
-          <Box p={3} bg="gray.50" borderRadius="md">
-            <HStack justify="space-between" wrap="wrap">
+          <div className="p-3 bg-gray-50 rounded-md">
+            <div className="flex flex-wrap justify-between">
               <Stat>
                 <StatLabel>Last Updated</StatLabel>
-                <StatNumber fontSize="md">{new Date(statsStatus.latest_import_date).toLocaleDateString()}</StatNumber>
+                <StatNumber>{new Date(statsStatus.latest_import_date).toLocaleDateString()}</StatNumber>
               </Stat>
               
               <Stat>
                 <StatLabel>Total Records</StatLabel>
-                <StatNumber fontSize="md">{statsStatus.total_records.toLocaleString()}</StatNumber>
+                <StatNumber>{statsStatus.total_records.toLocaleString()}</StatNumber>
               </Stat>
               
               <Stat>
                 <StatLabel>Equity</StatLabel>
-                <StatNumber fontSize="md">{statsStatus.equity_records.toLocaleString()}</StatNumber>
+                <StatNumber>{statsStatus.equity_records.toLocaleString()}</StatNumber>
               </Stat>
               
               <Stat>
                 <StatLabel>Fixed Income</StatLabel>
-                <StatNumber fontSize="md">{statsStatus.fixed_income_records.toLocaleString()}</StatNumber>
+                <StatNumber>{statsStatus.fixed_income_records.toLocaleString()}</StatNumber>
               </Stat>
               
               <Stat>
                 <StatLabel>Alternatives</StatLabel>
-                <StatNumber fontSize="md">{statsStatus.alternatives_records.toLocaleString()}</StatNumber>
+                <StatNumber>{statsStatus.alternatives_records.toLocaleString()}</StatNumber>
               </Stat>
-            </HStack>
+            </div>
             
             {statsStatus.job_completed_at && (
-              <Text mt={2} fontSize="sm" color="gray.600">
+              <p className="mt-2 text-sm text-gray-600">
                 Last job completed at {new Date(statsStatus.job_completed_at).toLocaleString()}
                 {statsStatus.job_duration_seconds && ` (${statsStatus.job_duration_seconds.toFixed(2)}s)`}
-              </Text>
+              </p>
             )}
-          </Box>
+          </div>
         )}
         
         {/* Error alert */}
         {error && (
-          <Alert status="error">{error}</Alert>
+          <div className="rounded-md p-4 border bg-red-100 text-red-800 border-red-200">
+            {error}
+          </div>
         )}
         
         {/* Current job status */}
         {currentJob && (
-          <Box p={4} borderWidth="1px" borderRadius="md">
-            <HStack justify="space-between" mb={2}>
-              <Text fontWeight="bold">Job #{currentJob.job_id}</Text>
-              <Badge colorScheme={getStatusColor(currentJob.status)}>
+          <div className="p-4 border rounded-md">
+            <div className="flex justify-between mb-2">
+              <p className="font-bold">Job #{currentJob.job_id}</p>
+              <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full bg-${getStatusColor(currentJob.status)}-100 text-${getStatusColor(currentJob.status)}-800`}>
                 {currentJob.status.toUpperCase()}
-              </Badge>
-            </HStack>
+              </span>
+            </div>
             
             <Progress 
               value={calculateProgress(currentJob)} 
-              size="sm" 
               colorScheme={getStatusColor(currentJob.status)}
               isIndeterminate={['pending', 'running'].includes(currentJob.status)}
-              mb={2}
             />
             
-            <Stack direction={{ base: 'column', md: 'row' }} spacing={4} mt={3}>
+            <div className="flex flex-wrap mt-3 space-x-4">
               {currentJob.total_records > 0 && (
-                <Stat size="sm">
+                <Stat>
                   <StatLabel>Records</StatLabel>
-                  <StatNumber fontSize="sm">{currentJob.total_records}</StatNumber>
+                  <StatNumber>{currentJob.total_records}</StatNumber>
                 </Stat>
               )}
               
               {currentJob.duration_seconds && (
-                <Stat size="sm">
+                <Stat>
                   <StatLabel>Duration</StatLabel>
-                  <StatNumber fontSize="sm">{currentJob.duration_seconds.toFixed(2)}s</StatNumber>
+                  <StatNumber>{currentJob.duration_seconds.toFixed(2)}s</StatNumber>
                 </Stat>
               )}
               
               {currentJob.memory_usage_mb && (
-                <Stat size="sm">
+                <Stat>
                   <StatLabel>Memory</StatLabel>
-                  <StatNumber fontSize="sm">{currentJob.memory_usage_mb.toFixed(1)} MB</StatNumber>
+                  <StatNumber>{currentJob.memory_usage_mb.toFixed(1)} MB</StatNumber>
                 </Stat>
               )}
-            </Stack>
+            </div>
             
             {currentJob.error_message && (
-              <Alert status="error" mt={2} size="sm">
+              <div className="rounded-md p-4 border bg-red-100 text-red-800 border-red-200 mt-2">
                 {currentJob.error_message}
-              </Alert>
+              </div>
             )}
-          </Box>
+          </div>
         )}
         
         {/* Action buttons */}
-        <HStack justify="flex-end" spacing={4} mt={2}>
-          <Button 
+        <div className="flex justify-end space-x-4 mt-2">
+          <button 
             onClick={fetchRiskStatsStatus} 
-            colorScheme="blue" 
-            variant="outline" 
-            size="sm"
+            className="px-2 py-1 text-sm border border-blue-500 text-blue-500 rounded font-semibold hover:bg-blue-50"
           >
             Refresh Status
-          </Button>
+          </button>
           
-          <Button 
+          <button 
             onClick={startRiskStatsJob} 
-            colorScheme="green" 
-            isLoading={isLoading}
-            isDisabled={currentJob && ['pending', 'running'].includes(currentJob.status)}
-            size="sm"
+            className="px-2 py-1 text-sm bg-green-500 hover:bg-green-600 text-white rounded font-semibold"
+            disabled={isLoading || (currentJob && ['pending', 'running'].includes(currentJob.status))}
           >
-            Update Risk Stats
-          </Button>
-        </HStack>
-      </VStack>
-    </Card>
+            {isLoading ? (
+              <span>
+                <span className="inline-block w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                Loading...
+              </span>
+            ) : 'Update Risk Stats'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
 

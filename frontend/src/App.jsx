@@ -3,7 +3,8 @@ const { BrowserRouter, Switch, Route, Redirect } = ReactRouterDOM;
 // All components are loaded via script tags in index.html
 // and globally available in the browser environment
 
-const App = () => {
+// Define App component globally
+window.App = () => {
     const [loading, setLoading] = React.useState(true);
     const [isApiAvailable, setIsApiAvailable] = React.useState(true);
     
