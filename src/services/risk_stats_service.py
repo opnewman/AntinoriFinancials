@@ -118,11 +118,15 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                     
                     # Read sheet in chunks to avoid memory issues
                     chunk_size = 1000
-                    sheet_obj = xls.book.sheet_by_name(equity_sheet)
-                    total_rows = sheet_obj.nrows - 1  # Subtract header row
+                    
+                    # Use pandas to get sheet info instead of xlrd methods
+                    # Get total rows by reading the sheet
+                    logger.info(f"Reading sheet for row count: {equity_sheet}")
+                    df_preview = pd.read_excel(xls, sheet_name=equity_sheet)
+                    total_rows = len(df_preview) - 1  # Subtract header row
                     
                     # Get column headers
-                    columns = pd.read_excel(xls, sheet_name=equity_sheet, nrows=1).columns.tolist()
+                    columns = df_preview.columns.tolist()
                     logger.info(f"Equity sheet has {total_rows} rows and columns: {columns}")
                     
                     # Define column mappings based on what we find
