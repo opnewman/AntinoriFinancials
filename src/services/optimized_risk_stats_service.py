@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 def process_risk_stats_optimized(
     db: Session, 
     use_test_file: bool = False, 
-    batch_size: int = 500,  # Reduced batch size for better stability
+    batch_size: int = 200,  # Further reduced batch size for better stability
     max_workers: int = 3
 ) -> Dict[str, Any]:
     """
@@ -209,23 +209,53 @@ def process_risk_stats_optimized(
                             batch_size_mb = sum(sys.getsizeof(r) for r in batch) / (1024 * 1024)
                             logger.info(f"Inserting batch {i//batch_size + 1} with {len(batch)} records (~{batch_size_mb:.2f} MB)")
                             
-                            # Using PostgreSQL-specific UPSERT for maximum efficiency
-                            stmt = insert(EgnyteRiskStat.__table__)
-                            # ON CONFLICT DO UPDATE clause for handling duplicates
-                            stmt = stmt.on_conflict_do_update(
-                                index_elements=['import_date', 'position', 'asset_class'],
-                                set_={
-                                    'ticker_symbol': stmt.excluded.ticker_symbol,
-                                    'cusip': stmt.excluded.cusip,
-                                    'second_level': stmt.excluded.second_level,
-                                    'volatility': stmt.excluded.volatility,
-                                    'beta': stmt.excluded.beta,
-                                    'duration': stmt.excluded.duration,
-                                    'notes': stmt.excluded.notes,
-                                    'amended_id': stmt.excluded.amended_id,
-                                    'updated_at': text('NOW()')
+                            # Using a direct SQL approach instead of SQLAlchemy's ORM for maximum efficiency
+                            # This avoids the CardinalityViolation error that can occur with the on_conflict_do_update method
+                            # when there are complex constraints
+                            
+                            # Handle each batch record individually to overcome the 500 error
+                            # This is a more conservative approach but will be more stable
+                            records_to_insert = []
+                            
+                            for r in batch:
+                                # Ensure all values have proper types
+                                params = {
+                                    'import_date': r.get('import_date'),
+                                    'position': str(r.get('position', '')),
+                                    'ticker_symbol': str(r.get('ticker_symbol', '')) if r.get('ticker_symbol') else None,
+                                    'cusip': str(r.get('cusip', '')) if r.get('cusip') else None,
+                                    'asset_class': str(r.get('asset_class', '')),
+                                    'second_level': str(r.get('second_level', '')) if r.get('second_level') else None,
+                                    'volatility': float(r.get('volatility')) if r.get('volatility') is not None else None,
+                                    'beta': float(r.get('beta')) if r.get('beta') is not None else None,
+                                    'duration': float(r.get('duration')) if r.get('duration') is not None else None,
+                                    'notes': str(r.get('notes', '')) if r.get('notes') else None,
+                                    'amended_id': str(r.get('amended_id', '')) if r.get('amended_id') else None
                                 }
+                                records_to_insert.append(params)
+                                
+                            insert_sql = """
+                            INSERT INTO egnyte_risk_stats (
+                                import_date, position, ticker_symbol, cusip, asset_class, second_level,
+                                volatility, beta, duration, notes, amended_id, updated_at
+                            ) 
+                            VALUES (
+                                :import_date, :position, :ticker_symbol, :cusip, :asset_class, :second_level,
+                                :volatility, :beta, :duration, :notes, :amended_id, NOW()
                             )
+                            ON CONFLICT (import_date, position, asset_class) 
+                            DO UPDATE SET
+                                ticker_symbol = EXCLUDED.ticker_symbol,
+                                cusip = EXCLUDED.cusip,
+                                second_level = EXCLUDED.second_level,
+                                volatility = EXCLUDED.volatility,
+                                beta = EXCLUDED.beta,
+                                duration = EXCLUDED.duration,
+                                notes = EXCLUDED.notes,
+                                amended_id = EXCLUDED.amended_id,
+                                updated_at = NOW()
+                            """
+                            stmt = text(insert_sql)
                             
                             # Implement retry logic with fresh connections for resilience
                             retry_count = 0
@@ -234,7 +264,9 @@ def process_risk_stats_optimized(
                             while retry_count < max_retries and not success:
                                 try:
                                     # Execute with a per-batch transaction
-                                    db.execute(stmt, batch)
+                                    # Use the preprocessed records with proper types
+                                    for record in records_to_insert:
+                                        db.execute(stmt, record)
                                     db.commit()
                                     success = True
                                     logger.info(f"Successfully inserted batch {i//batch_size + 1}")
