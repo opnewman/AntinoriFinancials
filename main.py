@@ -326,12 +326,63 @@ def get_risk_stats_status_endpoint():
     Get the status of risk statistics data.
     
     Returns information about when risk stats were last updated and how many records are available.
+    This now uses the new implementation with separate tables for each asset class.
     
     Returns:
         JSON with the status of risk statistics data
     """
-    # Use the optimized implementation
-    return get_risk_stats_status()
+    try:
+        from src.database import get_db_connection
+        
+        # Create a basic implementation for risk stats status
+        with get_db_connection() as db:
+            # Get record counts
+            from src.models.models import RiskStatisticEquity, RiskStatisticFixedIncome, RiskStatisticAlternatives
+            from sqlalchemy import func
+            
+            # Get record counts
+            equity_count = db.query(RiskStatisticEquity).count()
+            fixed_income_count = db.query(RiskStatisticFixedIncome).count()
+            alternatives_count = db.query(RiskStatisticAlternatives).count()
+            total_count = equity_count + fixed_income_count + alternatives_count
+            
+            # Get latest update date
+            latest_equity_date = db.query(func.max(RiskStatisticEquity.upload_date)).scalar()
+            latest_fixed_income_date = db.query(func.max(RiskStatisticFixedIncome.upload_date)).scalar()
+            latest_alternatives_date = db.query(func.max(RiskStatisticAlternatives.upload_date)).scalar()
+            
+            # Determine the overall latest date
+            latest_dates = []
+            if latest_equity_date:
+                latest_dates.append(latest_equity_date)
+            if latest_fixed_income_date:
+                latest_dates.append(latest_fixed_income_date)
+            if latest_alternatives_date:
+                latest_dates.append(latest_alternatives_date)
+                
+            latest_date = max(latest_dates) if latest_dates else None
+            
+            # Return status information
+            return jsonify({
+                "success": True,
+                "total_records": total_count,
+                "equity_records": equity_count,
+                "fixed_income_records": fixed_income_count,
+                "alternatives_records": alternatives_count,
+                "last_updated": latest_date.isoformat() if latest_date else None,
+                "has_data": total_count > 0
+            })
+    except Exception as e:
+        import logging
+        import traceback
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error getting risk stats status: {e}")
+        logger.error(f"Error details: {traceback.format_exc()}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
 
 @app.route("/api/risk-stats/update-direct", methods=["GET", "POST"])
 def risk_stats_direct_update_endpoint():
