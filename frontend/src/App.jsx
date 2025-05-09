@@ -1,7 +1,9 @@
 const { BrowserRouter, Switch, Route, Redirect } = ReactRouterDOM;
 
-// No imports needed as components are loaded via script tags in index.html
+// Most components are loaded via script tags in index.html
 // and globally available in the browser environment
+// Import any additional components needed
+import RiskStatsPage from './pages/RiskStatsPage.jsx';
 
 const App = () => {
     const [loading, setLoading] = React.useState(true);
