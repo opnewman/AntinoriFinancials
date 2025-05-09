@@ -5,6 +5,7 @@ import os
 import re
 import logging
 import tempfile
+import time
 from datetime import datetime, date
 import pandas as pd
 import requests
@@ -497,16 +498,28 @@ def process_equity_sheet(file_path, sheet_name, import_date, db, batch_size=50, 
             # Process records individually using merge to handle duplicates gracefully (upsert)
             success_count = 0
             for risk_stat in batch_records:
-                try:
-                    # Use merge strategy to handle duplicates
-                    db.merge(risk_stat)
-                    # Commit after each record to ensure partial progress
-                    db.commit()
-                    success_count += 1
-                except Exception as inner_e:
-                    db.rollback()
-                    inner_msg = str(inner_e)
-                    logger.error(f"Error adding individual equity record for position {risk_stat.position}: {inner_e}")
+                # Implement retry logic using max_retries parameter
+                retry_count = 0
+                while retry_count <= max_retries:
+                    try:
+                        # Use merge strategy to handle duplicates
+                        db.merge(risk_stat)
+                        # Commit after each record to ensure partial progress
+                        db.commit()
+                        success_count += 1
+                        # Success, break out of retry loop
+                        break
+                    except Exception as inner_e:
+                        retry_count += 1
+                        db.rollback()
+                        inner_msg = str(inner_e)
+                        
+                        if retry_count <= max_retries:
+                            logger.warning(f"Retrying equity record for position {risk_stat.position} (attempt {retry_count}/{max_retries}): {inner_e}")
+                            # Wait briefly before retrying to allow any transient issues to resolve
+                            time.sleep(0.5)
+                        else:
+                            logger.error(f"Failed to add equity record for position {risk_stat.position} after {max_retries} attempts: {inner_e}")
             
             logger.info(f"Successfully processed equity batch {batch_count}: {success_count}/{len(batch_records)} records merged")
             records_succeeded += success_count
@@ -829,16 +842,28 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db, batch_siz
             # Process records individually using merge to handle duplicates gracefully (upsert)
             success_count = 0
             for risk_stat in batch_records:
-                try:
-                    # Use merge strategy to handle duplicates
-                    db.merge(risk_stat)
-                    # Commit after each record to ensure partial progress
-                    db.commit()
-                    success_count += 1
-                except Exception as inner_e:
-                    db.rollback()
-                    inner_msg = str(inner_e)
-                    logger.error(f"Error adding individual fixed income record for position {risk_stat.position}: {inner_e}")
+                # Implement retry logic using max_retries parameter
+                retry_count = 0
+                while retry_count <= max_retries:
+                    try:
+                        # Use merge strategy to handle duplicates
+                        db.merge(risk_stat)
+                        # Commit after each record to ensure partial progress
+                        db.commit()
+                        success_count += 1
+                        # Success, break out of retry loop
+                        break
+                    except Exception as inner_e:
+                        retry_count += 1
+                        db.rollback()
+                        inner_msg = str(inner_e)
+                        
+                        if retry_count <= max_retries:
+                            logger.warning(f"Retrying fixed income record for position {risk_stat.position} (attempt {retry_count}/{max_retries}): {inner_e}")
+                            # Wait briefly before retrying to allow any transient issues to resolve
+                            time.sleep(0.5)
+                        else:
+                            logger.error(f"Failed to add fixed income record for position {risk_stat.position} after {max_retries} attempts: {inner_e}")
             
             logger.info(f"Successfully processed fixed income batch {batch_count}: {success_count}/{len(batch_records)} records merged")
             records_succeeded += success_count
@@ -1170,16 +1195,28 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db, batch_siz
             # Process records individually using merge to handle duplicates gracefully (upsert)
             success_count = 0
             for risk_stat in batch_records:
-                try:
-                    # Use merge strategy to handle duplicates
-                    db.merge(risk_stat)
-                    # Commit after each record to ensure partial progress
-                    db.commit()
-                    success_count += 1
-                except Exception as inner_e:
-                    db.rollback()
-                    inner_msg = str(inner_e)
-                    logger.error(f"Error adding individual alternatives record for position {risk_stat.position}: {inner_e}")
+                # Implement retry logic using max_retries parameter
+                retry_count = 0
+                while retry_count <= max_retries:
+                    try:
+                        # Use merge strategy to handle duplicates
+                        db.merge(risk_stat)
+                        # Commit after each record to ensure partial progress
+                        db.commit()
+                        success_count += 1
+                        # Success, break out of retry loop
+                        break
+                    except Exception as inner_e:
+                        retry_count += 1
+                        db.rollback()
+                        inner_msg = str(inner_e)
+                        
+                        if retry_count <= max_retries:
+                            logger.warning(f"Retrying alternatives record for position {risk_stat.position} (attempt {retry_count}/{max_retries}): {inner_e}")
+                            # Wait briefly before retrying to allow any transient issues to resolve
+                            time.sleep(0.5)
+                        else:
+                            logger.error(f"Failed to add alternatives record for position {risk_stat.position} after {max_retries} attempts: {inner_e}")
             
             logger.info(f"Successfully processed alternatives batch {batch_count}: {success_count}/{len(batch_records)} records merged")
             records_succeeded += success_count
