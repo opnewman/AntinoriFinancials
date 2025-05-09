@@ -446,13 +446,13 @@ window.api = {
             if (batchSize) params.batch_size = batchSize;
             if (workers) params.workers = workers;
             
-            const response = await axios.post(`${API_BASE_URL}/api/risk-stats/update`, null, { params });
+            const response = await axios.post(`${API_BASE_URL}/api/risk-stats/update-optimized`, null, { params });
             return response.data;
         } catch (error) {
-            console.error('Error starting risk stats update:', error);
+            console.error('Error starting optimized risk stats update:', error);
             return {
                 success: false,
-                error: error.response?.data?.error || error.message || 'Failed to start risk statistics update'
+                error: error.response?.data?.error || error.message || 'Failed to start optimized risk statistics update'
             };
         }
     },

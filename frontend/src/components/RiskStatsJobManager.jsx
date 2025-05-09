@@ -99,6 +99,64 @@ const RiskStatsJobManager = () => {
     }
   };
   
+  // Start a high-performance optimized risk stats update (completes in 2-3 seconds)
+  const startOptimizedRiskStatsUpdate = async () => {
+    try {
+      setJobState(prev => ({ ...prev, isLoading: true, error: null }));
+      
+      const result = await window.api.updateRiskStatsOptimized();
+      
+      if (result.success) {
+        // For optimized updates, we don't have a job ID since they complete immediately
+        // Create a synthetic job object with completed status
+        const completedJob = {
+          success: true,
+          status: 'completed',
+          total_records: result.total_records || result.processed_records || 0,
+          duration_seconds: result.processing_time_seconds || result.total_api_time_seconds || 0,
+          stats: {
+            equity_records: result.equity_records || 0,
+            fixed_income_records: result.fixed_income_records || 0,
+            alternatives_records: result.alternatives_records || 0
+          }
+        };
+        
+        setJobState(prev => ({ 
+          ...prev, 
+          isLoading: false, 
+          currentJob: completedJob
+        }));
+        
+        // Immediately refresh status after completion
+        fetchRiskStatsStatus();
+        
+        toast({
+          title: 'High-Performance Update Complete',
+          description: `Processed ${result.total_records || result.processed_records || 0} records in ${(result.processing_time_seconds || result.total_api_time_seconds || 0).toFixed(2)} seconds`,
+          status: 'success',
+          duration: 5000,
+          isClosable: true,
+        });
+      } else {
+        throw new Error(result.error || 'Failed to start optimized update');
+      }
+    } catch (error) {
+      setJobState(prev => ({ 
+        ...prev, 
+        isLoading: false, 
+        error: error.message || 'Failed to start optimized risk stats update' 
+      }));
+      
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to start optimized risk stats update',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  };
+  
   // Check the status of a running job
   const checkJobStatus = async (jobId) => {
     try {
@@ -343,6 +401,20 @@ const RiskStatsJobManager = () => {
             className="px-2 py-1 text-sm border border-blue-500 text-blue-500 rounded font-semibold hover:bg-blue-50"
           >
             Refresh Status
+          </button>
+          
+          <button 
+            onClick={startOptimizedRiskStatsUpdate} 
+            className="px-2 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold"
+            disabled={isLoading}
+            title="High-performance optimized update that completes in 2-3 seconds"
+          >
+            {isLoading ? (
+              <span>
+                <span className="inline-block w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                Processing...
+              </span>
+            ) : 'Fast Update (2-3s)'}
           </button>
           
           <button 
