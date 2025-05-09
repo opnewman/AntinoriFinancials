@@ -375,8 +375,19 @@ def risk_stats_direct_update_endpoint():
             db=db
         )
         
-        # Return JSON response
-        return jsonify(result)
+        # Convert the FastAPI response to a Flask response if needed
+        if isinstance(result, dict):
+            # Return JSON response
+            return jsonify(result)
+        else:
+            # Handle FastAPI response - extract the dictionary
+            result_dict = result.body
+            # Return as JSON
+            return jsonify(result_dict) if isinstance(result_dict, dict) else jsonify({
+                "success": True,
+                "message": "Risk statistics updated successfully",
+                "details": str(result)
+            })
     except Exception as e:
         logger.exception("Error in direct risk stats update endpoint:")
         return jsonify({

@@ -291,9 +291,20 @@ def process_risk_stats_direct(
                 for i in range(0, len(fixed_income_records), batch_size):
                     batch = fixed_income_records[i:i+batch_size]
                     try:
-                        # Create ORM objects
-                        orm_objects = [RiskStatisticFixedIncome(**record) for record in batch]
-                        db.bulk_save_objects(orm_objects)
+                        # Create ORM objects - only include non-None fields for cleaner inserts
+                        fixed_income_objects = []
+                        for record in batch:
+                            # Create object with required fields
+                            obj = RiskStatisticFixedIncome(
+                                upload_date=record['upload_date'],
+                                position=record['position'],
+                                ticker_symbol=record['ticker_symbol'],
+                                cusip=record['cusip'],
+                                duration=record['duration']
+                            )
+                            fixed_income_objects.append(obj)
+                            
+                        db.bulk_save_objects(fixed_income_objects)
                         db.commit()
                         logger.info(f"Inserted fixed income batch {i//batch_size + 1}/{(len(fixed_income_records)-1)//batch_size + 1}")
                     except Exception as batch_error:
@@ -368,9 +379,20 @@ def process_risk_stats_direct(
                 for i in range(0, len(alternatives_records), batch_size):
                     batch = alternatives_records[i:i+batch_size]
                     try:
-                        # Create ORM objects
-                        orm_objects = [RiskStatisticAlternatives(**record) for record in batch]
-                        db.bulk_save_objects(orm_objects)
+                        # Create ORM objects - only include non-None fields for cleaner inserts
+                        alternatives_objects = []
+                        for record in batch:
+                            # Create object with required fields
+                            obj = RiskStatisticAlternatives(
+                                upload_date=record['upload_date'],
+                                position=record['position'],
+                                ticker_symbol=record['ticker_symbol'],
+                                cusip=record['cusip'],
+                                beta=record['beta']
+                            )
+                            alternatives_objects.append(obj)
+                            
+                        db.bulk_save_objects(alternatives_objects)
                         db.commit()
                         logger.info(f"Inserted alternatives batch {i//batch_size + 1}/{(len(alternatives_records)-1)//batch_size + 1}")
                     except Exception as batch_error:
