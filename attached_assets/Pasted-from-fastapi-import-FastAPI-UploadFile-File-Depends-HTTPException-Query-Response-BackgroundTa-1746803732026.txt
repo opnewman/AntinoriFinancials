@@ -1,0 +1,89 @@
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Query, Response, BackgroundTasks
+from sqlalchemy.orm import Session
+from backend.database import get_db, init_db
+from backend.src.controllers.report_controller import (
+    upload_data_dump,
+    upload_ownership_tree,
+    upload_security_risk_stats,
+    generate_portfolio_report,
+    get_ownership_tree,
+    get_chart_allocations,
+    get_chart_performance,
+    get_chart_liquidity
+)
+from backend.egnyte_api import download_file
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from datetime import datetime
+import structlog
+import os
+from dotenv import load_dotenv
+import json
+
+# Load environment variables
+load_dotenv()
+
+# Initialize logging
+logger = structlog.get_logger()
+
+# Initialize FastAPI app
+app = FastAPI(title="ANTINORI Backend", description="Financial services backend for multi-family office")
+
+# Initialize the scheduler
+scheduler = AsyncIOScheduler(timezone="US/Eastern")
+
+# Egnyte configuration
+ACCESS_TOKEN = os.getenv("EGNYTE_ACCESS_TOKEN")
+FILE_PATH = r"/Shared/Internal Documents/Proficio Capital Partners/Asset Allocation/Portfolio Management/New Portfolio Sheets/Security Risk Stats.xlsx"
+
+# Initialize database and scheduler on startup
+@app.on_event("startup")
+async def on_startup():
+    try:
+        init_db()
+        logger.info("Database initialized")
+    except Exception as e:
+        logger.error("Failed to initialize database", error=str(e))
+        raise
+
+    # Start the scheduler
+    scheduler.start()
+    logger.info("Scheduler started")
+
+    # Schedule the risk stats download and upload at 8 AM EST
+    scheduler.add_job(
+        run_risk_stats_download_and_upload,
+        CronTrigger(hour=8, minute=0, timezone="US/Eastern"),
+        id="risk_stats_upload",
+        replace_existing=True
+    )
+    logger.info("Scheduled risk stats download and upload at 8 AM EST")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    # Shut down the scheduler
+    scheduler.shutdown()
+    logger.info("Scheduler shut down")
+
+# Function to run the risk stats download and upload
+async def run_risk_stats_download_and_upload():
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"risk_stats_{timestamp}.xlsx"
+        file_path = os.path.join("risk_stats_data", filename)
+
+        # Ensure the directory exists
+        os.makedirs("risk_stats_data", exist_ok=True)
+
+        # Download the file from Egnyte
+        await download_file(ACCESS_TOKEN, FILE_PATH, file_path)
+        logger.info(f"Downloaded risk stats file: {filename}")
+
+        # Process the file
+        with open(file_path, "rb") as f:
+            upload_file = UploadFile(file=f, filename=filename)
+            db: Session = next(get_db())
+            await upload_security_risk_stats(upload_file, db)
+        logger.info(f"Processed risk stats file: {filename}")
+    except Exception as e:
+        logger.error(f"Error during scheduled risk stats download and upload: {str(e)}")

@@ -1,0 +1,214 @@
+async def upload_security_risk_stats(file: UploadFile, db: Session):
+    # Read Excel file with multiple sheets
+    xls = pd.ExcelFile(file.file)
+    upload_date = datetime.now().date()
+    logger.info(f"Processing upload: {file.filename} with tabs: {xls.sheet_names}")
+    
+    # Log raw sheet names for debugging
+    logger.debug(f"Raw sheet names: {xls.sheet_names}")
+    
+    # Process Equity tab
+    equity_records = 0
+    equity_sheet_name = next((name for name in xls.sheet_names if name.lower() == "equity"), None)
+    if equity_sheet_name:
+        logger.info(f"Equity tab found: {equity_sheet_name}")
+        try:
+            # Try reading the sheet with different header rows
+            df = pd.read_excel(xls, sheet_name=equity_sheet_name, header=0)
+            logger.info(f"Equity tab loaded with {len(df)} rows before cleaning")
+            
+            # Clean column names (strip spaces, normalize case)
+            df.columns = [col.strip().lower() if isinstance(col, str) else str(col).strip().lower() for col in df.columns]
+            logger.debug(f"Equity tab columns after cleaning: {list(df.columns)}")
+            
+            # Drop rows where all relevant columns are NaN
+            relevant_columns = ['position', 'ticker symbol', 'amended id', 'vol', 'beta']
+            df = df.dropna(subset=relevant_columns, how='all')
+            logger.info(f"Equity tab after dropping empty rows: {len(df)} rows")
+            
+            # Log the first few rows to inspect the data
+            if not df.empty:
+                logger.debug(f"First 5 rows of Equity tab:\n{df.head().to_string()}")
+            else:
+                logger.warning("Equity tab is empty after cleaning")
+
+            for idx, row in df.iterrows():
+                # Ensure row values are accessible
+                position = str(row.get('position', '')).strip() if pd.notnull(row.get('position')) else ''
+                ticker_symbol = str(row.get('ticker symbol', '')).strip() if pd.notnull(row.get('ticker symbol')) else ''
+                cusip = str(row.get('amended id', '')).strip() if pd.notnull(row.get('amended id')) else ''
+                vol_raw = row.get('vol', None)
+                beta_raw = row.get('beta', None)
+
+                # Handle cases where only one metric is present (assume it's beta for options)
+                if pd.isna(vol_raw) and not pd.isna(beta_raw):
+                    vol = 0.0
+                    beta = beta_raw
+                else:
+                    vol = vol_raw if pd.notnull(vol_raw) else 0.0
+                    beta = beta_raw if pd.notnull(beta_raw) else 0.0
+
+                # Convert error values to 0.0
+                if isinstance(vol, str) and any(err in vol.lower() for err in ["#n/a", "#value"]):
+                    vol = 0.0
+                if isinstance(beta, str) and any(err in beta.lower() for err in ["#n/a", "#value"]):
+                    beta = 0.0
+
+                try:
+                    vol = float(vol) if vol is not None else 0.0
+                    beta = float(beta) if beta is not None else 0.0
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid vol or beta value for equity row {idx}: position={position}, vol={vol}, beta={beta}. Setting to 0.0")
+                    vol = 0.0
+                    beta = 0.0
+
+                logger.debug(f"Equity row {idx} data: position={position}, ticker_symbol={ticker_symbol}, cusip={cusip}, vol={vol}, beta={beta}")
+
+                if not position and not ticker_symbol and not cusip:
+                    logger.warning(f"Equity row {idx} skipped: no valid identifier (position, ticker_symbol, cusip)")
+                    continue
+
+                if vol == 0 and beta == 0:
+                    logger.warning(f"Equity row {idx} has vol=0 and beta=0: position={position}, ticker_symbol={ticker_symbol}, cusip={cusip}")
+
+                record = RiskStatisticEquity(
+                    position=position if position else None,
+                    ticker_symbol=ticker_symbol if ticker_symbol else None,
+                    cusip=cusip if cusip else None,
+                    vol=vol,
+                    beta=beta,
+                    upload_date=upload_date
+                )
+                db.add(record)
+                equity_records += 1
+                logger.debug(f"Added equity record: position={record.position}, vol={record.vol}, beta={record.beta}")
+        except Exception as e:
+            logger.error(f"Error processing Equity tab: {str(e)}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+    
+    # Process Fixed Income tab
+    fixed_income_records = 0
+    fixed_income_sheet_name = next((name for name in xls.sheet_names if name.lower() == "fixed income"), None)
+    if fixed_income_sheet_name:
+        logger.info(f"Fixed Income tab found: {fixed_income_sheet_name}")
+        try:
+            df = pd.read_excel(xls, sheet_name=fixed_income_sheet_name, header=0)
+            logger.info(f"Fixed Income tab loaded with {len(df)} rows before cleaning")
+            
+            # Clean column names
+            df.columns = [col.strip().lower() if isinstance(col, str) else str(col).strip().lower() for col in df.columns]
+            logger.debug(f"Fixed Income tab columns after cleaning: {list(df.columns)}")
+            
+            # Drop empty rows
+            relevant_columns = ['position', 'ticker symbol', 'amended id', 'vol or duration']
+            df = df.dropna(subset=relevant_columns, how='all')
+            logger.info(f"Fixed Income tab after dropping empty rows: {len(df)} rows")
+            
+            # Log the first few rows
+            if not df.empty:
+                logger.debug(f"First 5 rows of Fixed Income tab:\n{df.head().to_string()}")
+            
+            for idx, row in df.iterrows():
+                position = str(row.get("position", "")).strip() if pd.notnull(row.get("position")) else ''
+                ticker_symbol = str(row.get("ticker symbol", "")).strip() if pd.notnull(row.get("ticker symbol")) else ''
+                cusip = str(row.get("amended id", "")).strip() if pd.notnull(row.get("amended id")) else ''
+                duration = row.get("vol or duration", 0.0)
+
+                # Convert error values to 0.0
+                if isinstance(duration, str) and any(err in duration.lower() for err in ["#n/a", "#value"]):
+                    duration = 0.0
+
+                try:
+                    duration = float(duration) if pd.notnull(duration) else 0.0
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid duration value for fixed income row {idx}: position={position}, duration={duration}. Setting to 0.0")
+                    duration = 0.0
+
+                logger.debug(f"Fixed Income row {idx} data: position={position}, ticker_symbol={ticker_symbol}, cusip={cusip}, duration={duration}")
+
+                if not position and not ticker_symbol and not cusip:
+                    logger.warning(f"Fixed Income row {idx} skipped: no valid identifier (position, ticker_symbol, cusip)")
+                    continue
+
+                if duration == 0:
+                    logger.warning(f"Fixed Income row {idx} has duration=0: position={position}, ticker_symbol={ticker_symbol}, cusip={cusip}")
+
+                record = RiskStatisticFixedIncome(
+                    position=position if position else None,
+                    ticker_symbol=ticker_symbol if ticker_symbol else None,
+                    cusip=cusip if cusip else None,
+                    duration=duration,
+                    upload_date=upload_date
+                )
+                db.add(record)
+                fixed_income_records += 1
+                logger.debug(f"Added Fixed Income record: position={record.position}, duration={record.duration}")
+        except Exception as e:
+            logger.error(f"Error processing Fixed Income tab: {str(e)}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+    
+    # Process Alternatives tab
+    alternatives_records = 0
+    alternatives_sheet_name = next((name for name in xls.sheet_names if name.lower() == "alternatives"), None)
+    if alternatives_sheet_name:
+        logger.info(f"Alternatives tab found: {alternatives_sheet_name}")
+        try:
+            df = pd.read_excel(xls, sheet_name=alternatives_sheet_name, header=0)
+            logger.info(f"Alternatives tab loaded with {len(df)} rows before cleaning")
+            
+            # Clean column names
+            df.columns = [col.strip().lower() if isinstance(col, str) else str(col).strip().lower() for col in df.columns]
+            logger.debug(f"Alternatives tab columns after cleaning: {list(df.columns)}")
+            
+            # Drop empty rows
+            relevant_columns = ['position', 'ticker symbol', 'amended id', 'beta']
+            df = df.dropna(subset=relevant_columns, how='all')
+            logger.info(f"Alternatives tab after dropping empty rows: {len(df)} rows")
+            
+            # Log the first few rows
+            if not df.empty:
+                logger.debug(f"First 5 rows of Alternatives tab:\n{df.head().to_string()}")
+            
+            for idx, row in df.iterrows():
+                position = str(row.get("position", "")).strip() if pd.notnull(row.get("position")) else ''
+                ticker_symbol = str(row.get("ticker symbol", "")).strip() if pd.notnull(row.get("ticker symbol")) else ''
+                cusip = str(row.get("amended id", "")).strip() if pd.notnull(row.get("amended id")) else ''
+                beta = row.get("beta", 0.0)
+
+                # Convert error values to 0.0
+                if isinstance(beta, str) and any(err in beta.lower() for err in ["#n/a", "#value"]):
+                    beta = 0.0
+
+                try:
+                    beta = float(beta) if pd.notnull(beta) else 0.0
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid beta value for alternatives row {idx}: position={position}, beta={beta}. Setting to 0.0")
+                    beta = 0.0
+
+                logger.debug(f"Alternatives row {idx} data: position={position}, ticker_symbol={ticker_symbol}, cusip={cusip}, beta={beta}")
+
+                if not position and not ticker_symbol and not cusip:
+                    logger.warning(f"Alternatives row {idx} skipped: no valid identifier (position, ticker_symbol, cusip)")
+                    continue
+
+                if beta == 0:
+                    logger.warning(f"Alternatives row {idx} has beta=0: position={position}, ticker_symbol={ticker_symbol}, cusip={cusip}")
+
+                record = RiskStatisticAlternatives(
+                    position=position if position else None,
+                    ticker_symbol=ticker_symbol if ticker_symbol else None,
+                    cusip=cusip if cusip else None,
+                    beta=beta,
+                    upload_date=upload_date
+                )
+                db.add(record)
+                alternatives_records += 1
+                logger.debug(f"Added Alternatives record: position={record.position}, beta={record.beta}")
+        except Exception as e:
+            logger.error(f"Error processing Alternatives tab: {str(e)}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+    
+    db.commit()
+    logger.info(f"Upload completed: {equity_records} equity records, {fixed_income_records} fixed income records, {alternatives_records} alternatives records")
+
+    return {"message": "Uploaded risk_stats.xlsx"}
