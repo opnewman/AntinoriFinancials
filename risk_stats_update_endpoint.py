@@ -12,6 +12,7 @@ def update_risk_stats():
     - debug: If set to 'true', enables extended debugging output
     - use_test_file: If set to 'true', attempts to use a local test file if available
     - batch_size: Size of batches for database operations (default: 100)
+    - max_retries: Maximum number of retry attempts for database operations (default: 3)
     
     Returns:
         JSON with the status and job information
@@ -29,11 +30,21 @@ def update_risk_stats():
         except ValueError:
             batch_size = 100
             
+        # Process max retries parameter
+        try:
+            max_retries = int(request.args.get('max_retries', '3'))
+            if max_retries < 0 or max_retries > 10:
+                max_retries = 3  # Reset to default if out of reasonable range
+        except ValueError:
+            max_retries = 3
+            
         # Log the request mode
         if debug_mode:
             logger.info("Running risk stats update in DEBUG mode with extended logging")
         if use_test_file:
             logger.info("Attempting to use local test file if available")
+        
+        logger.info(f"Using batch size: {batch_size}, max retries: {max_retries}")
         
         # Check for required environment variables
         egnyte_token = os.environ.get('EGNYTE_ACCESS_TOKEN')
@@ -60,6 +71,7 @@ def update_risk_stats():
         if use_test_file:
             cmd_args.append('--test')
         cmd_args.append(f'--batch-size={batch_size}')
+        cmd_args.append(f'--max-retries={max_retries}')
         cmd_args.append(f'--output=risk_stats_update_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
         
         # Log the command

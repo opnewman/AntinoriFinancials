@@ -95,11 +95,29 @@ def update_risk_stats():
         debug_mode = request.args.get('debug', 'false').lower() == 'true'
         use_test_file = request.args.get('use_test_file', 'false').lower() == 'true'
         
+        # Process batch size parameter
+        try:
+            batch_size = int(request.args.get('batch_size', '50'))
+            if batch_size < 10 or batch_size > 1000:
+                batch_size = 50  # Reset to default if out of reasonable range
+        except ValueError:
+            batch_size = 50
+            
+        # Process max retries parameter
+        try:
+            max_retries = int(request.args.get('max_retries', '3'))
+            if max_retries < 0 or max_retries > 10:
+                max_retries = 3  # Reset to default if out of reasonable range
+        except ValueError:
+            max_retries = 3
+        
         # Log the request mode
         if debug_mode:
             logger.info("Running risk stats update in DEBUG mode with extended logging")
         if use_test_file:
             logger.info("Attempting to use local test file if available")
+            
+        logger.info(f"Using batch size: {batch_size}, max retries: {max_retries}")
         
         # Check for required environment variables
         egnyte_token = os.environ.get('EGNYTE_ACCESS_TOKEN')
@@ -141,22 +159,8 @@ def update_risk_stats():
                 except Exception as db_error:
                     logger.warning(f"Could not retrieve current database stats: {db_error}")
             
-            # Process risk stats with optimized approach
-            # Get batch size from query parameters (default: 50)
-            try:
-                batch_size = int(request.args.get('batch_size', '50'))
-                if batch_size < 10 or batch_size > 500:
-                    batch_size = 50  # Use sensible limits
-            except ValueError:
-                batch_size = 50
-                
-            # Get max retries from query parameters (default: 3)
-            try:
-                max_retries = int(request.args.get('max_retries', '3'))
-                if max_retries < 1 or max_retries > 10:
-                    max_retries = 3  # Use sensible limits
-            except ValueError:
-                max_retries = 3
+            # Process risk stats with optimized approach - using the parameters 
+            # processed earlier in this function
                 
             logger.info(f"Using optimized risk stats processing: batch_size={batch_size}, max_retries={max_retries}")
             result = process_risk_stats(db, use_test_file=use_test_file, batch_size=batch_size, max_retries=max_retries)
