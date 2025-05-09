@@ -219,14 +219,18 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=200, max_ret
                                     
                                     if vol_col and not pd.isna(row.get(vol_col)):
                                         try:
-                                            vol_str = str(row.get(vol_col)).strip()
-                                            # Enhanced check for various N/A formats and invalid values
-                                            invalid_values = ['#n/a invalid security', 'n/a', '#n/a', 'na', 'nan', '-']
-                                            if not any(val == vol_str.lower() for val in invalid_values):
+                                            vol_str = str(row.get(vol_col)).strip().lower()
+                                            # Enhanced check for more variations of N/A or invalid values
+                                            invalid_patterns = ['#n/a', 'n/a', 'na', 'nan', '-', 'invalid', 'err', 'null', 'none', '']
+                                            
+                                            # Check for any of the patterns being in the string
+                                            is_invalid = any(pattern in vol_str for pattern in invalid_patterns)
+                                            
+                                            if not is_invalid and vol_str:
                                                 vol_value = float(vol_str)
                                                 # Log successful volatility capture for debugging
                                                 if vol_value > 0:
-                                                    logger.debug(f"Captured valid equity volatility {vol_value} for {position}")
+                                                    logger.info(f"Captured valid equity volatility {vol_value} for {position}")
                                         except (ValueError, TypeError) as e:
                                             # Log conversion errors for debugging
                                             logger.debug(f"Equity volatility conversion error for {position}: {e} (value: '{row.get(vol_col)}')")
@@ -235,13 +239,17 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=200, max_ret
                                     
                                     if beta_col and not pd.isna(row.get(beta_col)):
                                         try:
-                                            beta_str = str(row.get(beta_col)).strip()
-                                            # Enhanced check for various N/A formats and invalid values
-                                            invalid_values = ['#n/a invalid security', 'n/a', '#n/a', 'na', 'nan', '-']
-                                            if not any(val == beta_str.lower() for val in invalid_values):
+                                            beta_str = str(row.get(beta_col)).strip().lower()
+                                            # Enhanced check for more variations of N/A or invalid values
+                                            invalid_patterns = ['#n/a', 'n/a', 'na', 'nan', '-', 'invalid', 'err', 'null', 'none', '']
+                                            
+                                            # Check for any of the patterns being in the string
+                                            is_invalid = any(pattern in beta_str for pattern in invalid_patterns)
+                                            
+                                            if not is_invalid and beta_str:
                                                 beta_value = float(beta_str)
                                                 # Log successful beta capture for debugging
-                                                logger.debug(f"Captured valid equity beta {beta_value} for {position}")
+                                                logger.info(f"Captured valid equity beta {beta_value} for {position}")
                                         except (ValueError, TypeError) as e:
                                             # Log conversion errors for debugging
                                             logger.debug(f"Equity beta conversion error for {position}: {e} (value: '{row.get(beta_col)}')")

@@ -82,6 +82,8 @@ def batch_upsert_risk_stats(db: Session, records, batch_size=100, max_retries=3)
             batch_params = []
             for record in batch:
                 # Handle possible None values in a more DB-friendly way
+                # Convert numeric values to proper Decimal type and handle None safely
+                # This fixes issues with database type compatibility
                 batch_params.append({
                     "import_date": record.import_date,
                     "position": record.position,
@@ -90,9 +92,9 @@ def batch_upsert_risk_stats(db: Session, records, batch_size=100, max_retries=3)
                     "asset_class": record.asset_class,
                     "second_level": record.second_level,
                     "bloomberg_id": record.bloomberg_id,
-                    "volatility": record.volatility,
-                    "beta": record.beta,
-                    "duration": record.duration,
+                    "volatility": float(record.volatility) if record.volatility is not None else None,
+                    "beta": float(record.beta) if record.beta is not None else None,
+                    "duration": float(record.duration) if record.duration is not None else None,
                     "notes": record.notes,
                     "amended_id": record.amended_id,
                     "source_file": record.source_file,
@@ -138,6 +140,7 @@ def batch_upsert_risk_stats(db: Session, records, batch_size=100, max_retries=3)
                     while not success and retry_count < max_retries:
                         try:
                             # Use the same upsert statement for individual records
+                            # Apply the same numeric handling for individual records
                             params = {
                                 "import_date": record.import_date,
                                 "position": record.position,
@@ -146,9 +149,9 @@ def batch_upsert_risk_stats(db: Session, records, batch_size=100, max_retries=3)
                                 "asset_class": record.asset_class,
                                 "second_level": record.second_level,
                                 "bloomberg_id": record.bloomberg_id,
-                                "volatility": record.volatility,
-                                "beta": record.beta,
-                                "duration": record.duration,
+                                "volatility": float(record.volatility) if record.volatility is not None else None,
+                                "beta": float(record.beta) if record.beta is not None else None,
+                                "duration": float(record.duration) if record.duration is not None else None,
                                 "notes": record.notes,
                                 "amended_id": record.amended_id,
                                 "source_file": record.source_file,
