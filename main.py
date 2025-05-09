@@ -22,6 +22,9 @@ from src.api.risk_stats_api import (
     get_risk_stats_data
 )
 
+# Import direct risk stats API for better performance
+from src.api.risk_stats_direct_api import update_risk_stats_direct
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -329,6 +332,57 @@ def get_risk_stats_status_endpoint():
     """
     # Use the optimized implementation
     return get_risk_stats_status()
+
+@app.route("/api/risk-stats/update-direct", methods=["GET", "POST"])
+def risk_stats_direct_update_endpoint():
+    """
+    Update risk statistics with the new direct implementation using separate tables.
+    
+    This is the most efficient implementation, designed for maximum performance and
+    optimal database organization. It uses separate tables for each asset class.
+    
+    Query parameters:
+    - debug: Enable debug mode (default: false)
+    - use_test_file: Use test file instead of downloading from Egnyte (default: false)
+    - batch_size: Batch size for database operations (default: 500)
+    
+    Returns:
+        JSON with processing results and timing information
+    """
+    # Forward to the FastAPI-style implementation
+    try:
+        # Parse query parameters
+        debug_mode = request.args.get('debug', 'false').lower() == 'true'
+        use_test_file = request.args.get('use_test_file', 'false').lower() == 'true'
+        
+        # Get batch size parameter
+        try:
+            batch_size = int(request.args.get('batch_size', '500'))
+            if batch_size < 10 or batch_size > 1000:
+                batch_size = 500  # Reset to default if out of reasonable range
+        except ValueError:
+            batch_size = 500
+        
+        # Get a database session
+        from src.database import get_db
+        db = next(get_db())
+        
+        # Call the direct implementation
+        result = update_risk_stats_direct(
+            debug=debug_mode,
+            use_test_file=use_test_file,
+            batch_size=batch_size,
+            db=db
+        )
+        
+        # Return JSON response
+        return jsonify(result)
+    except Exception as e:
+        logger.exception("Error in direct risk stats update endpoint:")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 # Portfolio Report API Endpoint
 @app.route("/api/portfolio-report", methods=["GET"])

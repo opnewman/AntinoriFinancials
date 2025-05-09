@@ -252,22 +252,29 @@ class RiskStatisticEquity(Base):
     __tablename__ = 'risk_statistic_equity'
     
     id = sa.Column(sa.Integer, primary_key=True)
-    report_date = sa.Column(sa.Date, nullable=False, index=True)
-    security_id = sa.Column(sa.String, nullable=False, index=True)  # CUSIP or internal ID
-    beta = sa.Column(sa.Numeric(10, 4))
-    volatility = sa.Column(sa.Numeric(10, 4))
-    alpha = sa.Column(sa.Numeric(10, 4))
-    sharpe_ratio = sa.Column(sa.Numeric(10, 4))
-    information_ratio = sa.Column(sa.Numeric(10, 4))
-    tracking_error = sa.Column(sa.Numeric(10, 4))
-    max_drawdown = sa.Column(sa.Numeric(10, 4))
-    meta = sa.Column(sa.JSON)  # For any additional fields
+    upload_date = sa.Column(sa.Date, nullable=False, index=True)  # Date the data was imported
+    position = sa.Column(sa.String, index=True)   # Security/position name
+    ticker_symbol = sa.Column(sa.String, index=True)              # Ticker symbol if available
+    cusip = sa.Column(sa.String, index=True)                      # CUSIP if available
+    
+    # Risk metrics specific to equity
+    vol = sa.Column(sa.Numeric(10, 6))                     # Volatility (standard deviation)
+    beta = sa.Column(sa.Numeric(10, 6))                    # Beta (compared to benchmark)
+    
+    # For backward compatibility and future expansion
+    alpha = sa.Column(sa.Numeric(10, 4), nullable=True)
+    sharpe_ratio = sa.Column(sa.Numeric(10, 4), nullable=True)
+    information_ratio = sa.Column(sa.Numeric(10, 4), nullable=True)
+    tracking_error = sa.Column(sa.Numeric(10, 4), nullable=True)
+    max_drawdown = sa.Column(sa.Numeric(10, 4), nullable=True)
+    meta = sa.Column(sa.JSON, nullable=True)  # For any additional fields
     
     created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
     updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
     
     __table_args__ = (
-        sa.UniqueConstraint('report_date', 'security_id', name='uix_equity_risk_date_security'),
+        sa.Index('idx_risk_statistic_equity_search', 'position', 'ticker_symbol', 'cusip'),
+        sa.Index('idx_risk_statistic_equity_date', 'upload_date'),
     )
 
 
@@ -278,22 +285,29 @@ class RiskStatisticFixedIncome(Base):
     __tablename__ = 'risk_statistic_fixed_income'
     
     id = sa.Column(sa.Integer, primary_key=True)
-    report_date = sa.Column(sa.Date, nullable=False, index=True)
-    security_id = sa.Column(sa.String, nullable=False, index=True)  # CUSIP or internal ID
-    duration = sa.Column(sa.Numeric(10, 4))
-    modified_duration = sa.Column(sa.Numeric(10, 4))
-    convexity = sa.Column(sa.Numeric(10, 4))
-    yield_to_maturity = sa.Column(sa.Numeric(10, 4))
-    yield_to_worst = sa.Column(sa.Numeric(10, 4))
-    option_adjusted_spread = sa.Column(sa.Numeric(10, 4))
-    credit_rating = sa.Column(sa.String)
-    meta = sa.Column(sa.JSON)  # For any additional fields
+    upload_date = sa.Column(sa.Date, nullable=False, index=True)  # Date the data was imported
+    position = sa.Column(sa.String, index=True)   # Security/position name
+    ticker_symbol = sa.Column(sa.String, index=True)              # Ticker symbol if available
+    cusip = sa.Column(sa.String, index=True)                      # CUSIP if available
+    
+    # Risk metrics specific to fixed income
+    duration = sa.Column(sa.Numeric(10, 6))                       # Duration (for fixed income)
+    
+    # For backward compatibility and future expansion
+    modified_duration = sa.Column(sa.Numeric(10, 4), nullable=True)
+    convexity = sa.Column(sa.Numeric(10, 4), nullable=True)
+    yield_to_maturity = sa.Column(sa.Numeric(10, 4), nullable=True)
+    yield_to_worst = sa.Column(sa.Numeric(10, 4), nullable=True)
+    option_adjusted_spread = sa.Column(sa.Numeric(10, 4), nullable=True)
+    credit_rating = sa.Column(sa.String, nullable=True)
+    meta = sa.Column(sa.JSON, nullable=True)  # For any additional fields
     
     created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
     updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
     
     __table_args__ = (
-        sa.UniqueConstraint('report_date', 'security_id', name='uix_fixed_income_risk_date_security'),
+        sa.Index('idx_risk_statistic_fixed_income_search', 'position', 'ticker_symbol', 'cusip'),
+        sa.Index('idx_risk_statistic_fixed_income_date', 'upload_date'),
     )
 
 
@@ -304,21 +318,28 @@ class RiskStatisticAlternatives(Base):
     __tablename__ = 'risk_statistic_alternatives'
     
     id = sa.Column(sa.Integer, primary_key=True)
-    report_date = sa.Column(sa.Date, nullable=False, index=True)
-    security_id = sa.Column(sa.String, nullable=False, index=True)  # CUSIP or internal ID
-    correlation_equity = sa.Column(sa.Numeric(10, 4))
-    correlation_fixed_income = sa.Column(sa.Numeric(10, 4))
-    beta = sa.Column(sa.Numeric(10, 4))
-    volatility = sa.Column(sa.Numeric(10, 4))
-    max_drawdown = sa.Column(sa.Numeric(10, 4))
-    illiquidity_premium = sa.Column(sa.Numeric(10, 4))
-    meta = sa.Column(sa.JSON)  # For any additional fields
+    upload_date = sa.Column(sa.Date, nullable=False, index=True)  # Date the data was imported
+    position = sa.Column(sa.String, index=True)   # Security/position name
+    ticker_symbol = sa.Column(sa.String, index=True)              # Ticker symbol if available
+    cusip = sa.Column(sa.String, index=True)                      # CUSIP if available
+    
+    # Risk metrics specific to alternatives
+    beta = sa.Column(sa.Numeric(10, 6))                           # Beta (compared to benchmark)
+    
+    # For backward compatibility and future expansion
+    correlation_equity = sa.Column(sa.Numeric(10, 4), nullable=True)
+    correlation_fixed_income = sa.Column(sa.Numeric(10, 4), nullable=True)
+    volatility = sa.Column(sa.Numeric(10, 4), nullable=True)
+    max_drawdown = sa.Column(sa.Numeric(10, 4), nullable=True)
+    illiquidity_premium = sa.Column(sa.Numeric(10, 4), nullable=True)
+    meta = sa.Column(sa.JSON, nullable=True)  # For any additional fields
     
     created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
     updated_at = sa.Column(sa.DateTime, onupdate=sa.func.now())
     
     __table_args__ = (
-        sa.UniqueConstraint('report_date', 'security_id', name='uix_alternatives_risk_date_security'),
+        sa.Index('idx_risk_statistic_alternatives_search', 'position', 'ticker_symbol', 'cusip'),
+        sa.Index('idx_risk_statistic_alternatives_date', 'upload_date'),
     )
 
 
