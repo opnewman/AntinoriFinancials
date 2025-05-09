@@ -218,10 +218,10 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=200, max_ret
                                                 vol_value = float(vol_str)
                                                 # Log successful volatility capture for debugging
                                                 if vol_value > 0:
-                                                    logger.debug(f"Captured valid volatility {vol_value} for {position}")
+                                                    logger.debug(f"Captured valid equity volatility {vol_value} for {position}")
                                         except (ValueError, TypeError) as e:
                                             # Log conversion errors for debugging
-                                            logger.debug(f"Volatility conversion error for {position}: {e} (value: '{row.get(vol_col)}')")
+                                            logger.debug(f"Equity volatility conversion error for {position}: {e} (value: '{row.get(vol_col)}')")
                                             # Just leave as None if we can't convert
                                             pass
                                     
@@ -233,10 +233,10 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=200, max_ret
                                             if not any(val == beta_str.lower() for val in invalid_values):
                                                 beta_value = float(beta_str)
                                                 # Log successful beta capture for debugging
-                                                logger.debug(f"Captured valid beta {beta_value} for {position}")
+                                                logger.debug(f"Captured valid equity beta {beta_value} for {position}")
                                         except (ValueError, TypeError) as e:
                                             # Log conversion errors for debugging
-                                            logger.debug(f"Beta conversion error for {position}: {e} (value: '{row.get(beta_col)}')")
+                                            logger.debug(f"Equity beta conversion error for {position}: {e} (value: '{row.get(beta_col)}')")
                                             # Just leave as None if we can't convert
                                             pass
                                     
@@ -352,14 +352,26 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=200, max_ret
                                     if duration_col and not pd.isna(row.get(duration_col)):
                                         try:
                                             dur_str = str(row.get(duration_col)).strip()
-                                            if dur_str.lower() != '#n/a invalid security' and dur_str.lower() != 'n/a':
+                                            # Enhanced check for various N/A formats and invalid values
+                                            invalid_values = ['#n/a invalid security', 'n/a', '#n/a', 'na', 'nan', '-']
+                                            if not any(val == dur_str.lower() for val in invalid_values):
                                                 duration = float(dur_str)
-                                        except (ValueError, TypeError):
+                                                # Log successful duration capture for debugging
+                                                if duration > 0:
+                                                    logger.debug(f"Captured valid FI duration {duration} for {position}")
+                                        except (ValueError, TypeError) as e:
+                                            # Log conversion errors for debugging
+                                            logger.debug(f"FI duration conversion error for {position}: {e} (value: '{row.get(duration_col)}')")
                                             pass
                                     elif ticker and ticker in durations_data:
                                         try:
                                             duration = float(durations_data[ticker])
-                                        except (ValueError, TypeError):
+                                            # Log successful duration capture from lookup
+                                            if duration > 0:
+                                                logger.debug(f"Captured valid FI duration {duration} for {position} from durations lookup")
+                                        except (ValueError, TypeError) as e:
+                                            # Log conversion errors for debugging
+                                            logger.debug(f"FI duration lookup conversion error for {position}: {e}")
                                             pass
                                     
                                     # Also look for volatility or beta values in fixed income
