@@ -90,26 +90,37 @@ def process_risk_stats_direct(
         # 3. Process the file
         logger.info(f"Successfully downloaded file ({os.path.getsize(file_path) / 1024 / 1024:.2f} MB)")
         
-        # Clear existing records for the import date
+        # Recreate tables completely to ensure schema consistency
         try:
-            # Remove any existing records for this date
-            equity_deleted = db.query(RiskStatisticEquity).filter(
-                RiskStatisticEquity.upload_date == import_date
-            ).delete()
-            fixed_income_deleted = db.query(RiskStatisticFixedIncome).filter(
-                RiskStatisticFixedIncome.upload_date == import_date
-            ).delete()
-            alternatives_deleted = db.query(RiskStatisticAlternatives).filter(
-                RiskStatisticAlternatives.upload_date == import_date
-            ).delete()
+            # First, drop the tables if they exist
+            from sqlalchemy.ext.declarative import declarative_base
+            Base = declarative_base()
             
+            logger.info("Recreating risk statistics tables to ensure schema consistency")
+            db.execute(text("DROP TABLE IF EXISTS risk_statistic_alternatives CASCADE"))
+            db.execute(text("DROP TABLE IF EXISTS risk_statistic_fixed_income CASCADE"))
+            db.execute(text("DROP TABLE IF EXISTS risk_statistic_equity CASCADE"))
             db.commit()
-            logger.info(f"Cleared existing risk stat records for {import_date}: "
-                      f"Equity={equity_deleted}, Fixed Income={fixed_income_deleted}, "
-                      f"Alternatives={alternatives_deleted}")
-        except Exception as clear_error:
-            logger.error(f"Error clearing existing records: {clear_error}")
+            
+            # Import the Base class with our models
+            from src.models.models import Base
+            
+            # Force SQLAlchemy to create tables based on our models
+            Base.metadata.create_all(bind=db.get_bind(), tables=[
+                RiskStatisticEquity.__table__,
+                RiskStatisticFixedIncome.__table__,
+                RiskStatisticAlternatives.__table__
+            ])
+            db.commit()
+            
+            logger.info("Risk statistics tables recreated successfully")
+        except Exception as recreate_error:
+            logger.error(f"Error recreating tables: {recreate_error}")
+            logger.error(traceback.format_exc())
             db.rollback()
+            results["success"] = False
+            results["error"] = f"Schema initialization error: {str(recreate_error)}"
+            return results
         
         # Read the Excel file
         logger.info("Reading Excel file")
