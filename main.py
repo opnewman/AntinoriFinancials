@@ -84,6 +84,8 @@ def update_risk_stats():
     Query parameters:
     - debug: If set to 'true', enables extended debugging output
     - use_test_file: If set to 'true', attempts to use a local test file if available
+    - batch_size: Size of batches for database operations (default: 50)
+    - max_retries: Maximum number of retry attempts for database operations (default: 3)
     
     Returns:
         JSON with the status and summary of the update

@@ -128,6 +128,7 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                     # Define column mappings based on what we find
                     position_col = 'Position' if 'Position' in columns else None
                     ticker_col = 'Ticker Symbol' if 'Ticker Symbol' in columns else None
+                    cusip_col = 'CUSIP' if 'CUSIP' in columns else None
                     vol_col = 'Vol' if 'Vol' in columns else None
                     beta_col = 'BETA' if 'BETA' in columns else None
                     second_level_col = 'Second Level' if 'Second Level' in columns else None
@@ -136,71 +137,71 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                     
                     if not position_col:
                         logger.error("Position column not found in Equity sheet - cannot proceed")
-                        continue
-                    
-                    # Process in chunks
-                    for chunk_start in range(1, total_rows + 1, chunk_size):
-                        chunk_end = min(chunk_start + chunk_size - 1, total_rows + 1)
-                        logger.info(f"Reading equity rows {chunk_start}-{chunk_end}")
+                        # Skip processing this sheet
+                        equity_records = []
+                    else:
+                        # Process in chunks
+                        for chunk_start in range(1, total_rows + 1, chunk_size):
+                            chunk_end = min(chunk_start + chunk_size - 1, total_rows + 1)
+                            logger.info(f"Reading equity rows {chunk_start}-{chunk_end}")
+                            
+                            chunk = pd.read_excel(
+                                xls, 
+                                sheet_name=equity_sheet,
+                                skiprows=range(1, chunk_start),
+                                nrows=(chunk_end - chunk_start + 1)
+                            )
+                            
+                            # Check for duplicate positions in this chunk
+                            if position_col and len(chunk) > 0:
+                                duplicates = chunk[chunk.duplicated(position_col, keep='first')][position_col]
+                                if len(duplicates) > 0:
+                                    logger.warning(f"Found {len(duplicates)} duplicate positions in Equity chunk {chunk_start}-{chunk_end}")
+                            
+                            for idx, row in chunk.iterrows():
+                                try:
+                                    if pd.isna(row.get(position_col)):
+                                        continue
+                                    
+                                    position = str(row.get(position_col)).strip()
+                                    ticker = str(row.get(ticker_col)).strip() if ticker_col and not pd.isna(row.get(ticker_col)) else None
+                                    cusip = str(row.get(cusip_col)).strip() if cusip_col and not pd.isna(row.get(cusip_col)) else None
+                                    
+                                    # Create record
+                                    record = EgnyteRiskStat(
+                                        import_date=import_date,
+                                        position=position,
+                                        ticker_symbol=ticker,
+                                        cusip=cusip,
+                                        asset_class='Equity',
+                                        second_level=str(row.get(second_level_col)).strip() if second_level_col and not pd.isna(row.get(second_level_col)) else None,
+                                        volatility=float(row.get(vol_col)) if vol_col and not pd.isna(row.get(vol_col)) else None,
+                                        beta=float(row.get(beta_col)) if beta_col and not pd.isna(row.get(beta_col)) else None,
+                                        notes=str(row.get(notes_col)).strip() if notes_col and not pd.isna(row.get(notes_col)) else None,
+                                        amended_id=str(row.get(amended_id_col)).strip() if amended_id_col and not pd.isna(row.get(amended_id_col)) else None,
+                                        source_file=os.path.basename(file_path),
+                                        source_tab=equity_sheet,
+                                        source_row=idx + chunk_start
+                                    )
+                                    equity_records.append(record)
+                                except Exception as row_error:
+                                    logger.error(f"Error processing equity row {idx + chunk_start}: {row_error}")
+                                    error_count += 1
                         
-                        chunk = pd.read_excel(
-                            xls, 
-                            sheet_name=equity_sheet,
-                            skiprows=range(1, chunk_start),
-                            nrows=(chunk_end - chunk_start + 1)
-                        )
-                        
-                        # Check for duplicate positions in this chunk
-                        if position_col and len(chunk) > 0:
-                            duplicates = chunk[chunk.duplicated(position_col, keep='first')][position_col]
-                            if len(duplicates) > 0:
-                                logger.warning(f"Found {len(duplicates)} duplicate positions in chunk {chunk_start}-{chunk_end}")
-                        
-                        for idx, row in chunk.iterrows():
-                            try:
-                                if pd.isna(row.get(position_col)):
-                                    continue
-                                
-                                position = str(row.get(position_col)).strip()
-                                ticker = str(row.get(ticker_col)).strip() if ticker_col and not pd.isna(row.get(ticker_col)) else None
-                                
-                                # Create record
-                                record = EgnyteRiskStat(
-                                    import_date=import_date,
-                                    position=position,
-                                    ticker_symbol=ticker,
-                                    asset_class='Equity',
-                                    second_level=str(row.get(second_level_col)).strip() if second_level_col and not pd.isna(row.get(second_level_col)) else None,
-                                    volatility=float(row.get(vol_col)) if vol_col and not pd.isna(row.get(vol_col)) else None,
-                                    beta=float(row.get(beta_col)) if beta_col and not pd.isna(row.get(beta_col)) else None,
-                                    notes=str(row.get(notes_col)).strip() if notes_col and not pd.isna(row.get(notes_col)) else None,
-                                    amended_id=str(row.get(amended_id_col)).strip() if amended_id_col and not pd.isna(row.get(amended_id_col)) else None,
-                                    source_file=os.path.basename(file_path),
-                                    source_tab=equity_sheet,
-                                    source_row=idx + chunk_start
-                                )
-                                equity_records.append(record)
-                            except Exception as row_error:
-                                logger.error(f"Error processing equity row {idx + chunk_start}: {row_error}")
-                                error_count += 1
-                    
-                    # Process equity records with batch upsert
-                    if equity_records:
-                        logger.info(f"Upserting {len(equity_records)} equity records")
-                        success, errors = batch_upsert_risk_stats(db, equity_records, batch_size, max_retries)
-                        equity_count = success
-                        error_count += errors
-                        logger.info(f"Equity processing complete: {success} successful, {errors} errors")
+                        # Process equity records with batch upsert
+                        if equity_records:
+                            logger.info(f"Upserting {len(equity_records)} equity records")
+                            success, errors = batch_upsert_risk_stats(db, equity_records, batch_size, max_retries)
+                            equity_count = success
+                            error_count += errors
+                            logger.info(f"Equity processing complete: {success} successful, {errors} errors")
                 
-                # Process Fixed Income sheet (similar to Equity)
+                # Process Fixed Income sheet
                 if fi_sheet:
                     logger.info(f"Processing Fixed Income sheet: {fi_sheet}")
                     fi_records = []
                     
-                    # Similar code structure as equity processing...
-                    # Read sheet in chunks, process each row, create records, and batch upsert
-                    
-                    # Example of processing with durations from the fixed income durations sheet
+                    # Read durations data from the fixed income durations sheet
                     durations_data = {}
                     if fi_durations_sheet:
                         logger.info(f"Reading durations from sheet: {fi_durations_sheet}")
@@ -215,15 +216,174 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                         except Exception as dur_error:
                             logger.error(f"Error loading durations sheet: {dur_error}")
                     
-                    # Process fixed income sheet...
+                    # Process the Fixed Income sheet
+                    # Read sheet in chunks to avoid memory issues
+                    chunk_size = 1000
+                    sheet_obj = xls.book.sheet_by_name(fi_sheet)
+                    total_rows = sheet_obj.nrows - 1  # Subtract header row
+                    
+                    # Get column headers
+                    columns = pd.read_excel(xls, sheet_name=fi_sheet, nrows=1).columns.tolist()
+                    logger.info(f"Fixed Income sheet has {total_rows} rows and columns: {columns}")
+                    
+                    # Define column mappings based on what we find
+                    position_col = 'Position' if 'Position' in columns else None
+                    ticker_col = 'Ticker Symbol' if 'Ticker Symbol' in columns else None
+                    cusip_col = 'CUSIP' if 'CUSIP' in columns else None
+                    duration_col = 'Duration' if 'Duration' in columns else None
+                    second_level_col = 'Second Level' if 'Second Level' in columns else None
+                    amended_id_col = 'Amended ID' if 'Amended ID' in columns else None
+                    notes_col = 'Notes' if 'Notes' in columns else None
+                    
+                    if not position_col:
+                        logger.error("Position column not found in Fixed Income sheet - cannot proceed")
+                        # Skip processing this sheet
+                        fi_records = []
+                    else:
+                        # Process in chunks
+                        for chunk_start in range(1, total_rows + 1, chunk_size):
+                            chunk_end = min(chunk_start + chunk_size - 1, total_rows + 1)
+                            logger.info(f"Reading fixed income rows {chunk_start}-{chunk_end}")
+                            
+                            chunk = pd.read_excel(
+                                xls, 
+                                sheet_name=fi_sheet,
+                                skiprows=range(1, chunk_start),
+                                nrows=(chunk_end - chunk_start + 1)
+                            )
+                            
+                            # Check for duplicate positions in this chunk
+                            if position_col and len(chunk) > 0:
+                                duplicates = chunk[chunk.duplicated(position_col, keep='first')][position_col]
+                                if len(duplicates) > 0:
+                                    logger.warning(f"Found {len(duplicates)} duplicate positions in Fixed Income chunk {chunk_start}-{chunk_end}")
+                            
+                            for idx, row in chunk.iterrows():
+                                try:
+                                    if pd.isna(row.get(position_col)):
+                                        continue
+                                    
+                                    position = str(row.get(position_col)).strip()
+                                    ticker = str(row.get(ticker_col)).strip() if ticker_col and not pd.isna(row.get(ticker_col)) else None
+                                    cusip = str(row.get(cusip_col)).strip() if cusip_col and not pd.isna(row.get(cusip_col)) else None
+                                    
+                                    # Get duration from either the row or the durations lookup
+                                    duration = None
+                                    if duration_col and not pd.isna(row.get(duration_col)):
+                                        duration = float(row.get(duration_col))
+                                    elif ticker and ticker in durations_data:
+                                        duration = float(durations_data[ticker])
+                                    
+                                    # Create record
+                                    record = EgnyteRiskStat(
+                                        import_date=import_date,
+                                        position=position,
+                                        ticker_symbol=ticker,
+                                        cusip=cusip,
+                                        asset_class='Fixed Income',
+                                        second_level=str(row.get(second_level_col)).strip() if second_level_col and not pd.isna(row.get(second_level_col)) else None,
+                                        duration=duration,
+                                        notes=str(row.get(notes_col)).strip() if notes_col and not pd.isna(row.get(notes_col)) else None,
+                                        amended_id=str(row.get(amended_id_col)).strip() if amended_id_col and not pd.isna(row.get(amended_id_col)) else None,
+                                        source_file=os.path.basename(file_path),
+                                        source_tab=fi_sheet,
+                                        source_row=idx + chunk_start
+                                    )
+                                    fi_records.append(record)
+                                except Exception as row_error:
+                                    logger.error(f"Error processing fixed income row {idx + chunk_start}: {row_error}")
+                                    error_count += 1
+                        
+                        # Process fixed income records with batch upsert
+                        if fi_records:
+                            logger.info(f"Upserting {len(fi_records)} fixed income records")
+                            success, errors = batch_upsert_risk_stats(db, fi_records, batch_size, max_retries)
+                            fi_count = success
+                            error_count += errors
+                            logger.info(f"Fixed Income processing complete: {success} successful, {errors} errors")
                 
-                # Process Alternatives sheet (similar to Equity)
+                # Process Alternatives sheet
                 if alt_sheet:
                     logger.info(f"Processing Alternatives sheet: {alt_sheet}")
                     alt_records = []
                     
-                    # Similar code structure as equity processing...
-                    # Read sheet in chunks, process each row, create records, and batch upsert
+                    # Read sheet in chunks to avoid memory issues
+                    chunk_size = 1000
+                    sheet_obj = xls.book.sheet_by_name(alt_sheet)
+                    total_rows = sheet_obj.nrows - 1  # Subtract header row
+                    
+                    # Get column headers
+                    columns = pd.read_excel(xls, sheet_name=alt_sheet, nrows=1).columns.tolist()
+                    logger.info(f"Alternatives sheet has {total_rows} rows and columns: {columns}")
+                    
+                    # Define column mappings based on what we find
+                    position_col = 'Position' if 'Position' in columns else None
+                    ticker_col = 'Ticker Symbol' if 'Ticker Symbol' in columns else None
+                    cusip_col = 'CUSIP' if 'CUSIP' in columns else None
+                    vol_col = 'Vol' if 'Vol' in columns else None
+                    second_level_col = 'Second Level' if 'Second Level' in columns else None
+                    amended_id_col = 'Amended ID' if 'Amended ID' in columns else None
+                    notes_col = 'Notes' if 'Notes' in columns else None
+                    
+                    if not position_col:
+                        logger.error("Position column not found in Alternatives sheet - cannot proceed")
+                        # Skip processing this sheet
+                        alt_records = []
+                    else:
+                        # Process in chunks
+                        for chunk_start in range(1, total_rows + 1, chunk_size):
+                            chunk_end = min(chunk_start + chunk_size - 1, total_rows + 1)
+                            logger.info(f"Reading alternatives rows {chunk_start}-{chunk_end}")
+                            
+                            chunk = pd.read_excel(
+                                xls, 
+                                sheet_name=alt_sheet,
+                                skiprows=range(1, chunk_start),
+                                nrows=(chunk_end - chunk_start + 1)
+                            )
+                            
+                            # Check for duplicate positions in this chunk
+                            if position_col and len(chunk) > 0:
+                                duplicates = chunk[chunk.duplicated(position_col, keep='first')][position_col]
+                                if len(duplicates) > 0:
+                                    logger.warning(f"Found {len(duplicates)} duplicate positions in Alternatives chunk {chunk_start}-{chunk_end}")
+                            
+                            for idx, row in chunk.iterrows():
+                                try:
+                                    if pd.isna(row.get(position_col)):
+                                        continue
+                                    
+                                    position = str(row.get(position_col)).strip()
+                                    ticker = str(row.get(ticker_col)).strip() if ticker_col and not pd.isna(row.get(ticker_col)) else None
+                                    cusip = str(row.get(cusip_col)).strip() if cusip_col and not pd.isna(row.get(cusip_col)) else None
+                                    
+                                    # Create record
+                                    record = EgnyteRiskStat(
+                                        import_date=import_date,
+                                        position=position,
+                                        ticker_symbol=ticker,
+                                        cusip=cusip,
+                                        asset_class='Alternatives',
+                                        second_level=str(row.get(second_level_col)).strip() if second_level_col and not pd.isna(row.get(second_level_col)) else None,
+                                        volatility=float(row.get(vol_col)) if vol_col and not pd.isna(row.get(vol_col)) else None,
+                                        notes=str(row.get(notes_col)).strip() if notes_col and not pd.isna(row.get(notes_col)) else None,
+                                        amended_id=str(row.get(amended_id_col)).strip() if amended_id_col and not pd.isna(row.get(amended_id_col)) else None,
+                                        source_file=os.path.basename(file_path),
+                                        source_tab=alt_sheet,
+                                        source_row=idx + chunk_start
+                                    )
+                                    alt_records.append(record)
+                                except Exception as row_error:
+                                    logger.error(f"Error processing alternatives row {idx + chunk_start}: {row_error}")
+                                    error_count += 1
+                        
+                        # Process alternatives records with batch upsert
+                        if alt_records:
+                            logger.info(f"Upserting {len(alt_records)} alternatives records")
+                            success, errors = batch_upsert_risk_stats(db, alt_records, batch_size, max_retries)
+                            alt_count = success
+                            error_count += errors
+                            logger.info(f"Alternatives processing complete: {success} successful, {errors} errors")
                 
             # Calculate overall statistics and timing
             end_time = time.time()
