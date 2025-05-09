@@ -66,6 +66,7 @@ def init_db():
     from src.models.models import FinancialPosition, FinancialSummary
     from src.models.models import RiskStatisticEquity, RiskStatisticFixedIncome, RiskStatisticAlternatives
     from src.models.models import OwnershipMetadata, OwnershipItem
+    from src.models.models import RiskStatsJob, EgnyteRiskStat
     
     # Create tables
     Base.metadata.create_all(bind=engine)

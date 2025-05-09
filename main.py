@@ -14,6 +14,14 @@ import re
 import traceback
 from dotenv import load_dotenv
 
+# Import optimized risk stats API endpoints
+from src.api.risk_stats_api import (
+    update_risk_stats_async,
+    get_risk_stats_job_status,
+    get_risk_stats_status,
+    get_risk_stats_data
+)
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -72,176 +80,41 @@ def api_root():
 def health():
     return jsonify({"status": "healthy"})
 
-# Risk Stats API Endpoints
+# Risk Stats API Endpoints - Completely redesigned with job-based asynchronous processing
 @app.route("/api/risk-stats/update", methods=["GET", "POST"])
-def update_risk_stats():
+def update_risk_stats_endpoint():
     """
-    Update risk statistics from Egnyte.
+    Update risk statistics from Egnyte using the new optimized async approach.
     
-    This endpoint fetches the risk statistics file from Egnyte and processes it
-    using an optimized approach for handling large Excel files.
-    It requires an Egnyte API token to be set in the environment variables.
+    This endpoint launches a background job to fetch and process risk statistics,
+    avoiding web server timeouts. It returns immediately with a job ID that can
+    be used to check the status of the job.
     
     Query parameters:
     - debug: If set to 'true', enables extended debugging output
     - use_test_file: If set to 'true', attempts to use a local test file if available
-    - batch_size: Size of batches for database operations (default: 50)
+    - batch_size: Size of batches for database operations (default: 200)
     - max_retries: Maximum number of retry attempts for database operations (default: 3)
     
     Returns:
-        JSON with the status and summary of the update
+        JSON with the job ID and initial status
     """
-    try:
-        # Check query parameters
-        debug_mode = request.args.get('debug', 'false').lower() == 'true'
-        use_test_file = request.args.get('use_test_file', 'false').lower() == 'true'
-        
-        # Process batch size parameter - increased default for performance
-        try:
-            batch_size = int(request.args.get('batch_size', '200'))  # Increased from 50 to 200
-            if batch_size < 10 or batch_size > 2000:  # Increased upper limit
-                batch_size = 200  # Reset to default if out of reasonable range
-        except ValueError:
-            batch_size = 200
-            
-        # Process max retries parameter
-        try:
-            max_retries = int(request.args.get('max_retries', '3'))
-            if max_retries < 0 or max_retries > 10:
-                max_retries = 3  # Reset to default if out of reasonable range
-        except ValueError:
-            max_retries = 3
-        
-        # Log the request mode
-        if debug_mode:
-            logger.info("Running risk stats update in DEBUG mode with extended logging")
-        if use_test_file:
-            logger.info("Attempting to use local test file if available")
-            
-        logger.info(f"Using batch size: {batch_size}, max retries: {max_retries}")
-        
-        # Check for required environment variables
-        egnyte_token = os.environ.get('EGNYTE_ACCESS_TOKEN')
-        egnyte_domain = os.environ.get('EGNYTE_DOMAIN')
-        egnyte_path = os.environ.get('EGNYTE_RISK_STATS_PATH')
-        
-        # Log configuration details in debug mode
-        if debug_mode:
-            logger.info(f"Egnyte configuration: Domain={egnyte_domain or 'default'}, Path={egnyte_path or 'default'}")
-            logger.info(f"Token available: {'Yes' if egnyte_token else 'No'}")
-        
-        if not egnyte_token and not use_test_file:
-            logger.error("EGNYTE_ACCESS_TOKEN not found in environment variables")
-            return jsonify({
-                "success": False,
-                "error": "Egnyte API token not configured. Please set the EGNYTE_ACCESS_TOKEN environment variable.",
-                "debug_info": "Missing required environment variable EGNYTE_ACCESS_TOKEN"
-            }), 400
-            
-        # Import the optimized service
-        from src.services.risk_stats_service import process_risk_stats
-        
-        logger.info("Starting risk statistics update process")
-        with get_db_connection() as db:
-            # Check database state before processing
-            if debug_mode:
-                try:
-                    # Count current records in the database
-                    from src.models.models import EgnyteRiskStat
-                    stats_count = db.query(EgnyteRiskStat).count()
-                    
-                    # Count by asset class
-                    equity_count = db.query(EgnyteRiskStat).filter_by(asset_class='Equity').count()
-                    fi_count = db.query(EgnyteRiskStat).filter_by(asset_class='Fixed Income').count()
-                    alt_count = db.query(EgnyteRiskStat).filter_by(asset_class='Alternatives').count()
-                    
-                    logger.info(f"Current EgnyteRiskStat record counts - Total: {stats_count}, "
-                                f"Equity: {equity_count}, Fixed Income: {fi_count}, Alternatives: {alt_count}")
-                except Exception as db_error:
-                    logger.warning(f"Could not retrieve current database stats: {db_error}")
-            
-            # Process risk stats with optimized approach - using the parameters 
-            # processed earlier in this function
-                
-            logger.info(f"Using optimized risk stats processing: batch_size={batch_size}, max_retries={max_retries}")
-            result = process_risk_stats(db, use_test_file=use_test_file, batch_size=batch_size, max_retries=max_retries)
-            
-            # Check if operation was successful
-            if result.get("success", False):
-                logger.info(f"Risk statistics update completed successfully")
-                
-                # Add detailed stats in the response for debugging
-                if debug_mode:
-                    try:
-                        # Count records after processing
-                        from src.models.models import EgnyteRiskStat
-                        stats_count = db.query(EgnyteRiskStat).count()
-                        
-                        # Count by asset class
-                        equity_count = db.query(EgnyteRiskStat).filter_by(asset_class='Equity').count()
-                        fi_count = db.query(EgnyteRiskStat).filter_by(asset_class='Fixed Income').count()
-                        alt_count = db.query(EgnyteRiskStat).filter_by(asset_class='Alternatives').count()
-                        
-                        # Add detailed counts to result
-                        result["detailed_counts"] = {
-                            "total": stats_count,
-                            "equity": equity_count,
-                            "fixed_income": fi_count,
-                            "alternatives": alt_count
-                        }
-                        
-                        logger.info(f"Updated EgnyteRiskStat record counts - Total: {stats_count}, "
-                                    f"Equity: {equity_count}, Fixed Income: {fi_count}, Alternatives: {alt_count}")
-                    except Exception as count_error:
-                        logger.warning(f"Could not retrieve updated database stats: {count_error}")
-                
-                return jsonify(result)
-            else:
-                # Return the error from the service
-                logger.error(f"Risk statistics update failed: {result}")
-                
-                # If warnings exist, use a 200 status but include warnings
-                if "warnings" in result:
-                    return jsonify(result), 200
-                else:
-                    # Otherwise return a 400 status for errors
-                    return jsonify(result), 400
-            
-    except Exception as e:
-        error_details = str(e)
-        logger.exception(f"Unexpected error updating risk statistics: {error_details}")
-        
-        # Provide helpful message for specific error types
-        if "duplicate key value violates unique constraint" in error_details:
-            return jsonify({
-                "success": False,
-                "error": "Database conflict occurred. Please try again.",
-                "debug_info": error_details
-            }), 500
-        elif "EGNYTE_ACCESS_TOKEN" in error_details:
-            return jsonify({
-                "success": False,
-                "error": "Egnyte API token is missing or invalid. Please check your configuration.",
-                "debug_info": error_details
-            }), 500
-        elif "connection" in error_details.lower() or "timeout" in error_details.lower():
-            return jsonify({
-                "success": False,
-                "error": "Connection error when contacting Egnyte. Please check network connectivity.",
-                "debug_info": error_details
-            }), 500
-        elif "excel" in error_details.lower() or "file" in error_details.lower():
-            return jsonify({
-                "success": False, 
-                "error": "Error processing Excel file. File may be corrupted or have an invalid format.",
-                "debug_info": error_details
-            }), 500
-        else:
-            return jsonify({
-                "success": False,
-                "error": "An unexpected error occurred during risk statistics update.",
-                "debug_info": error_details
-            }), 500
+    # Use the new async implementation
+    return update_risk_stats_async()
+
+
+@app.route("/api/risk-stats/jobs/<int:job_id>", methods=["GET"])
+def risk_stats_job_status(job_id):
+    """
+    Get the status of a risk statistics update job.
+    
+    Path parameters:
+    - job_id: ID of the job to check
+    
+    Returns:
+        JSON with the job status and details
+    """
+    return get_risk_stats_job_status(job_id)
 
 @app.route("/api/portfolio/risk-metrics", methods=["GET"])
 def get_portfolio_risk_metrics():
@@ -318,94 +191,28 @@ def get_portfolio_risk_metrics():
         }), 500
 
 @app.route("/api/risk-stats", methods=["GET"])
-def get_risk_stats():
+def get_risk_stats_endpoint():
     """
-    Get risk statistics from the database.
+    Get risk statistics from the database with optimized query handling.
     
     Query parameters:
     - asset_class: Filter to specific asset class - 'Equity', 'Fixed Income', or 'Alternatives'
     - second_level: Filter to specific second level category
     - position: Filter to specific position/security
     - ticker: Filter to specific ticker symbol
+    - cusip: Filter to specific CUSIP
+    - limit: Maximum number of records to return (default: 100)
+    - offset: Number of records to skip (default: 0)
     
     Returns:
         JSON with risk statistics data
     """
-    try:
-        # Get query parameters
-        asset_class = request.args.get('asset_class')
-        second_level = request.args.get('second_level')
-        position = request.args.get('position')
-        ticker = request.args.get('ticker')
-        
-        with get_db_connection() as db:
-            # Base query
-            query = db.query(EgnyteRiskStat)
-            
-            # Apply filters
-            if asset_class:
-                query = query.filter(EgnyteRiskStat.asset_class == asset_class)
-            
-            if second_level:
-                query = query.filter(EgnyteRiskStat.second_level == second_level)
-                
-            if position:
-                query = query.filter(EgnyteRiskStat.position.ilike(f"%{position}%"))
-                
-            if ticker:
-                query = query.filter(EgnyteRiskStat.ticker_symbol.ilike(f"%{ticker}%"))
-            
-            # Get the latest import date
-            latest_date = db.query(func.max(EgnyteRiskStat.import_date)).scalar()
-            
-            if latest_date:
-                query = query.filter(EgnyteRiskStat.import_date == latest_date)
-                
-                # Execute the query
-                risk_stats = query.all()
-                
-                # Convert to JSON
-                result = []
-                for stat in risk_stats:
-                    result.append({
-                        "id": stat.id,
-                        "import_date": stat.import_date.isoformat() if stat.import_date else None,
-                        "position": stat.position,
-                        "ticker_symbol": stat.ticker_symbol,
-                        "cusip": stat.cusip,
-                        "asset_class": stat.asset_class,
-                        "second_level": stat.second_level,
-                        "bloomberg_id": stat.bloomberg_id,
-                        "volatility": float(str(stat.volatility)) if stat.volatility is not None else None,
-                        "beta": float(str(stat.beta)) if stat.beta is not None else None,
-                        "duration": float(str(stat.duration)) if stat.duration is not None else None,
-                        "notes": stat.notes,
-                        "amended_id": stat.amended_id
-                    })
-                
-                return jsonify({
-                    "success": True,
-                    "count": len(result),
-                    "import_date": latest_date.isoformat() if latest_date else None,
-                    "risk_stats": result
-                })
-            else:
-                return jsonify({
-                    "success": True,
-                    "count": 0,
-                    "import_date": None,
-                    "risk_stats": []
-                })
-            
-    except Exception as e:
-        logger.exception(f"Error getting risk statistics: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+    # Use the optimized implementation
+    return get_risk_stats_data()
+
 
 @app.route("/api/risk-stats/status", methods=["GET"])
-def get_risk_stats_status():
+def get_risk_stats_status_endpoint():
     """
     Get the status of risk statistics data.
     
@@ -414,53 +221,8 @@ def get_risk_stats_status():
     Returns:
         JSON with the status of risk statistics data
     """
-    try:
-        with get_db_connection() as db:
-            # Get the latest import date
-            latest_date = db.query(func.max(EgnyteRiskStat.import_date)).scalar()
-            
-            if latest_date:
-                # Count records by asset class
-                equity_count = db.query(EgnyteRiskStat).filter(
-                    EgnyteRiskStat.import_date == latest_date,
-                    EgnyteRiskStat.asset_class == 'Equity'
-                ).count()
-                
-                fixed_income_count = db.query(EgnyteRiskStat).filter(
-                    EgnyteRiskStat.import_date == latest_date,
-                    EgnyteRiskStat.asset_class == 'Fixed Income'
-                ).count()
-                
-                alternatives_count = db.query(EgnyteRiskStat).filter(
-                    EgnyteRiskStat.import_date == latest_date,
-                    EgnyteRiskStat.asset_class == 'Alternatives'
-                ).count()
-                
-                total_count = equity_count + fixed_income_count + alternatives_count
-                
-                return jsonify({
-                    "success": True,
-                    "has_data": True,
-                    "latest_import_date": latest_date.isoformat(),
-                    "total_records": total_count,
-                    "equity_records": equity_count,
-                    "fixed_income_records": fixed_income_count,
-                    "alternatives_records": alternatives_count
-                })
-            else:
-                return jsonify({
-                    "success": True,
-                    "has_data": False,
-                    "latest_import_date": None,
-                    "total_records": 0
-                })
-            
-    except Exception as e:
-        logger.exception(f"Error getting risk statistics status: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+    # Use the optimized implementation
+    return get_risk_stats_status()
 
 # Portfolio Report API Endpoint
 @app.route("/api/portfolio-report", methods=["GET"])
