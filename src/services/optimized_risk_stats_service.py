@@ -304,22 +304,36 @@ def process_risk_stats_optimized(
                             """
                             stmt = text(insert_sql)
                             
-                            # Implement retry logic with fresh connections for resilience
+                            # CRITICAL PERFORMANCE IMPROVEMENT: Use executemany for true batch operations
+                            # Add detailed error tracking for debugging
                             retry_count = 0
                             success = False
                             
+                            # Debug info for tracking the issue
+                            logger.info(f"DEBUG: Batch {i//batch_size + 1} - Attempting to insert {len(records_to_insert)} records")
+                            logger.info(f"DEBUG: Batch {i//batch_size + 1} - First record sample: {str(records_to_insert[0])[:200]}")
+                            logger.info(f"DEBUG: Batch {i//batch_size + 1} - Parameter keys: {list(records_to_insert[0].keys())}")
+                            
                             while retry_count < max_retries and not success:
                                 try:
-                                    # Execute with a per-batch transaction
-                                    # Use the preprocessed records with proper types
-                                    for record in records_to_insert:
-                                        db.execute(stmt, record)
+                                    # MAJOR PERFORMANCE IMPROVEMENT: Use executemany instead of loop
+                                    # This will significantly reduce the number of database roundtrips
+                                    start_time = time.time()
+                                    db.execute(stmt, records_to_insert)
                                     db.commit()
+                                    end_time = time.time()
                                     success = True
-                                    logger.info(f"Successfully inserted batch {i//batch_size + 1}")
+                                    logger.info(f"DEBUG: Successfully inserted batch {i//batch_size + 1} in {end_time - start_time:.2f} seconds")
                                 except Exception as batch_error:
                                     retry_count += 1
-                                    logger.warning(f"Batch insert error (attempt {retry_count}/{max_retries}): {batch_error}")
+                                    logger.error(f"DEBUG: BATCH ERROR DETAILS: {type(batch_error).__name__}: {str(batch_error)}")
+                                    logger.error(f"DEBUG: BATCH ERROR TRACEBACK: {traceback.format_exc()}")
+                                    
+                                    # Print more details about the records
+                                    if len(records_to_insert) > 0:
+                                        logger.error(f"DEBUG: PROBLEMATIC BATCH: Sample record keys: {list(records_to_insert[0].keys())}")
+                                        logger.error(f"DEBUG: PROBLEMATIC BATCH: Sample record values: {list(records_to_insert[0].values())}")
+                                    
                                     db.rollback()
                                     
                                     if retry_count == max_retries:
