@@ -5,6 +5,7 @@ Designed for high-performance batch operations with minimal database interaction
 
 import os
 import gc
+import sys
 import time
 import logging
 import tempfile
@@ -489,5 +490,4 @@ def parallel_process_sheet(
 
 
 # Make sure to import these if they're not in scope
-import sys
 import sqlalchemy as sa
