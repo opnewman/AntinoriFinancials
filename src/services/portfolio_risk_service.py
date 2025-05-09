@@ -303,8 +303,6 @@ def process_equity_risk(
             
             # Track the total matched value for coverage calculation
             matched_value += adjusted_value_decimal
-            
-            matched_value += adjusted_value_decimal
     
     # Calculate coverage
     if totals["equity"] > Decimal('0.0'):
