@@ -34,6 +34,12 @@ def process_risk_stats_optimized(
     max_workers: int = 3
 ) -> Dict[str, Any]:
     """
+    DEBUGGING ON - Verbose logging added
+    """
+    logger.info("DEBUG: ========== STARTING RISK STATS OPTIMIZED PROCESSING ==========")
+    logger.info(f"DEBUG: Parameters - use_test_file={use_test_file}, batch_size={batch_size}, max_workers={max_workers}")
+    logger.info(f"DEBUG: Database session object: {db}")
+    """
     Highly optimized function to process risk statistics from Egnyte.
     
     Key optimizations:

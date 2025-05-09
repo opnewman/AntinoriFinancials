@@ -40,6 +40,12 @@ def download_risk_stats_file(token=None, domain=None, file_path=None, use_test_f
     Returns:
         str: Path to the downloaded temporary file
     """
+    logger.info("DEBUG: ========== STARTING RISK STATS FILE DOWNLOAD ==========")
+    logger.info(f"DEBUG: Parameters - use_test_file={use_test_file}, domain={domain}")
+    logger.info(f"DEBUG: Environment variables: EGNYTE_ACCESS_TOKEN={'EXISTS' if os.environ.get('EGNYTE_ACCESS_TOKEN') else 'MISSING'}")
+    logger.info(f"DEBUG: Environment variables: EGNYTE_DOMAIN={'EXISTS' if os.environ.get('EGNYTE_DOMAIN') else 'MISSING'}")
+    logger.info(f"DEBUG: Environment variables: EGNYTE_RISK_STATS_PATH={'EXISTS' if os.environ.get('EGNYTE_RISK_STATS_PATH') else 'MISSING'}")
+    logger.info(f"DEBUG: Environment variables: LOCAL_RISK_STATS_FILE={'EXISTS' if os.environ.get('LOCAL_RISK_STATS_FILE') else 'MISSING'}")
     # Check for any existing downloaded files first to help with debuging  
     local_test_file = os.environ.get('LOCAL_RISK_STATS_FILE')
     if use_test_file and local_test_file and os.path.exists(local_test_file):

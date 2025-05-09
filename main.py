@@ -180,8 +180,25 @@ def update_risk_stats_optimized_endpoint():
         
         try:
             # Create a dedicated engine for this operation
-            engine = create_engine(os.environ.get('DATABASE_URL'), **extended_args)
+            database_url = os.environ.get('DATABASE_URL')
+            logger.info(f"DEBUG: Using database URL: {database_url[:10]}...{database_url[-10:]}")
+            logger.info(f"DEBUG: Connection arguments: {extended_args}")
+            
+            engine = create_engine(database_url, **extended_args)
             Session = sessionmaker(bind=engine)
+            
+            # Test the database connection first
+            try:
+                with engine.connect() as conn:
+                    logger.info("DEBUG: Database connection test successful")
+                    result = conn.execute("SELECT 1")
+                    logger.info(f"DEBUG: Database connection test result: {result.fetchone()}")
+            except Exception as db_test_error:
+                logger.error(f"DEBUG: Database connection test failed: {str(db_test_error)}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Database connection failed: {str(db_test_error)}"
+                }), 500
             
             # Process risk statistics with a fresh session
             with Session() as db:
@@ -190,19 +207,33 @@ def update_risk_stats_optimized_endpoint():
                     logger.info(f"Reducing batch size from {batch_size} to 500 for better stability")
                     batch_size = 500
                 
-                results = process_risk_stats_optimized(
-                    db=db,
-                    use_test_file=use_test_file,
-                    batch_size=batch_size,
-                    max_workers=workers
-                )
+                logger.info(f"DEBUG: Starting optimized risk stats processing with batch_size={batch_size}, max_workers={workers}")
                 
-                # Add total API request time
-                total_time = time.time() - start_time
-                results["total_api_time_seconds"] = total_time
-                
-                # Return results directly
-                return jsonify(results)
+                try:
+                    results = process_risk_stats_optimized(
+                        db=db,
+                        use_test_file=use_test_file,
+                        batch_size=batch_size,
+                        max_workers=workers
+                    )
+                    
+                    logger.info(f"DEBUG: Results from process_risk_stats_optimized: {results}")
+                    
+                    # Add total API request time
+                    total_time = time.time() - start_time
+                    results["total_api_time_seconds"] = total_time
+                    
+                    # Return results directly
+                    logger.info("DEBUG: Returning successful results")
+                    return jsonify(results)
+                except Exception as processing_error:
+                    logger.error(f"DEBUG: Error during risk stats processing: {str(processing_error)}")
+                    logger.error(f"DEBUG: Error traceback: {traceback.format_exc()}")
+                    return jsonify({
+                        "success": False,
+                        "error": f"Processing error: {str(processing_error)}",
+                        "traceback": traceback.format_exc()
+                    }), 500
         finally:
             # Make sure to dispose of the engine
             if 'engine' in locals():
