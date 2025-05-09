@@ -77,7 +77,8 @@ def update_risk_stats():
     """
     Update risk statistics from Egnyte.
     
-    This endpoint fetches the risk statistics file from Egnyte and processes it.
+    This endpoint fetches the risk statistics file from Egnyte and processes it
+    using an optimized approach for handling large Excel files.
     It requires an Egnyte API token to be set in the environment variables.
     
     Query parameters:
@@ -116,8 +117,8 @@ def update_risk_stats():
                 "debug_info": "Missing required environment variable EGNYTE_ACCESS_TOKEN"
             }), 400
             
-        # Import the service
-        from src.services.egnyte_service import fetch_and_process_risk_stats
+        # Import the optimized service
+        from src.services.risk_stats_service import process_risk_stats
         
         logger.info("Starting risk statistics update process")
         with get_db_connection() as db:
@@ -138,8 +139,25 @@ def update_risk_stats():
                 except Exception as db_error:
                     logger.warning(f"Could not retrieve current database stats: {db_error}")
             
-            # Get the risk stats from Egnyte and process them with debug options if enabled
-            result = fetch_and_process_risk_stats(db, use_test_file=use_test_file)
+            # Process risk stats with optimized approach
+            # Get batch size from query parameters (default: 50)
+            try:
+                batch_size = int(request.args.get('batch_size', '50'))
+                if batch_size < 10 or batch_size > 500:
+                    batch_size = 50  # Use sensible limits
+            except ValueError:
+                batch_size = 50
+                
+            # Get max retries from query parameters (default: 3)
+            try:
+                max_retries = int(request.args.get('max_retries', '3'))
+                if max_retries < 1 or max_retries > 10:
+                    max_retries = 3  # Use sensible limits
+            except ValueError:
+                max_retries = 3
+                
+            logger.info(f"Using optimized risk stats processing: batch_size={batch_size}, max_retries={max_retries}")
+            result = process_risk_stats(db, use_test_file=use_test_file, batch_size=batch_size, max_retries=max_retries)
             
             # Check if operation was successful
             if result.get("success", False):
