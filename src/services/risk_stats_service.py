@@ -97,16 +97,32 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                 fi_durations_sheet = None
                 
                 # Try to identify sheets by name
+                logger.info("Identifying sheet types based on sheet names")
                 for sheet in sheet_names:
                     sheet_lower = sheet.lower()
+                    logger.info(f"Examining sheet: '{sheet}' (lowercase: '{sheet_lower}')")
+                    
                     if 'equity' in sheet_lower:
+                        logger.info(f"  - Identified as EQUITY sheet: '{sheet}'")
                         equity_sheet = sheet
                     elif 'fixed income' in sheet_lower and 'duration' not in sheet_lower:
+                        logger.info(f"  - Identified as FIXED INCOME sheet: '{sheet}'")
                         fi_sheet = sheet
                     elif 'duration' in sheet_lower:
+                        logger.info(f"  - Identified as FIXED INCOME DURATIONS sheet: '{sheet}'")
                         fi_durations_sheet = sheet
                     elif any(alt in sheet_lower for alt in ['alt', 'alternatives']):
+                        logger.info(f"  - Identified as ALTERNATIVES sheet: '{sheet}'")
                         alt_sheet = sheet
+                    else:
+                        logger.info(f"  - Unrecognized sheet type: '{sheet}'")
+                
+                # Log detailed Excel file structure for debugging
+                logger.info("DEBUG: Excel File Structure Details:")
+                logger.info(f"  - File path: {file_path}")
+                logger.info(f"  - File size: {os.path.getsize(file_path) / (1024*1024):.2f} MB")
+                logger.info(f"  - Sheet count: {len(sheet_names)}")
+                logger.info(f"  - Excel library: pandas {pd.__version__}")
                 
                 logger.info(f"Identified sheets - Equity: {equity_sheet}, Fixed Income: {fi_sheet}, "
                            f"Fixed Income Durations: {fi_durations_sheet}, Alternatives: {alt_sheet}")
@@ -223,11 +239,15 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                     # Process the Fixed Income sheet
                     # Read sheet in chunks to avoid memory issues
                     chunk_size = 1000
-                    sheet_obj = xls.book.sheet_by_name(fi_sheet)
-                    total_rows = sheet_obj.nrows - 1  # Subtract header row
+                    
+                    # Use pandas to get sheet info instead of xlrd methods
+                    # Get total rows by reading the sheet
+                    logger.info(f"Reading sheet for row count: {fi_sheet}")
+                    df_preview = pd.read_excel(xls, sheet_name=fi_sheet)
+                    total_rows = len(df_preview) - 1  # Subtract header row
                     
                     # Get column headers
-                    columns = pd.read_excel(xls, sheet_name=fi_sheet, nrows=1).columns.tolist()
+                    columns = df_preview.columns.tolist()
                     logger.info(f"Fixed Income sheet has {total_rows} rows and columns: {columns}")
                     
                     # Define column mappings based on what we find
@@ -313,11 +333,15 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retr
                     
                     # Read sheet in chunks to avoid memory issues
                     chunk_size = 1000
-                    sheet_obj = xls.book.sheet_by_name(alt_sheet)
-                    total_rows = sheet_obj.nrows - 1  # Subtract header row
+
+                    # Use pandas to get sheet info instead of xlrd methods
+                    # Get total rows by reading the sheet
+                    logger.info(f"Reading sheet for row count: {alt_sheet}")
+                    df_preview = pd.read_excel(xls, sheet_name=alt_sheet)
+                    total_rows = len(df_preview) - 1  # Subtract header row
                     
                     # Get column headers
-                    columns = pd.read_excel(xls, sheet_name=alt_sheet, nrows=1).columns.tolist()
+                    columns = df_preview.columns.tolist()
                     logger.info(f"Alternatives sheet has {total_rows} rows and columns: {columns}")
                     
                     # Define column mappings based on what we find
