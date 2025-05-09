@@ -1,5 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { 
+// RiskStatsPage.jsx
+// Non-module version for direct browser loading
+
+// Get React and Chakra UI from global scope
+const { useState, useEffect } = React;
+const { 
   Box, 
   Container, 
   Heading, 
@@ -32,10 +36,9 @@ import {
   Card,
   CardHeader,
   CardBody
-} from '@chakra-ui/react';
+} = ChakraUI;
 
-import { getRiskStats, getRiskStatsStatus } from '../api';
-import RiskStatsJobManager from '../components/RiskStatsJobManager';
+// RiskStatsJobManager component is loaded globally from a script tag
 
 /**
  * Risk Statistics page for viewing and managing security risk metrics
@@ -70,7 +73,7 @@ const RiskStatsPage = () => {
     
     try {
       const { assetClass, secondLevel, position, ticker } = filters;
-      const response = await getRiskStats(
+      const response = await window.api.getRiskStats(
         assetClass || null,
         secondLevel || null, 
         position || null, 

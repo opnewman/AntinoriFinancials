@@ -1,5 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { 
+// RiskStatsJobManager.jsx
+// Non-module version for direct browser loading
+
+// Use React and Chakra UI from global scope
+const { useState, useEffect } = React;
+const { 
   Alert, 
   Button, 
   Card, 
@@ -16,9 +20,9 @@ import {
   Heading,
   Divider,
   useToast
-} from '@chakra-ui/react';
+} = ChakraUI;
 
-import { updateRiskStats, getRiskStatsJobStatus, getRiskStatsStatus } from '../api';
+// API functions are available from the window.api global object
 
 /**
  * Component for managing risk stats jobs with improved UX for job tracking.
@@ -59,7 +63,7 @@ const RiskStatsJobManager = () => {
     try {
       setJobState(prev => ({ ...prev, isLoading: true, error: null }));
       
-      const result = await updateRiskStats();
+      const result = await window.api.updateRiskStats();
       
       if (result.success) {
         setJobState(prev => ({ 
@@ -98,7 +102,7 @@ const RiskStatsJobManager = () => {
   // Check the status of a running job
   const checkJobStatus = async (jobId) => {
     try {
-      const result = await getRiskStatsJobStatus(jobId);
+      const result = await window.api.getRiskStatsJobStatus(jobId);
       
       if (result.success) {
         setJobState(prev => ({ ...prev, currentJob: result }));
@@ -132,7 +136,7 @@ const RiskStatsJobManager = () => {
   // Fetch the current risk stats status
   const fetchRiskStatsStatus = async () => {
     try {
-      const status = await getRiskStatsStatus();
+      const status = await window.api.getRiskStatsStatus();
       setJobState(prev => ({ ...prev, statsStatus: status }));
     } catch (error) {
       console.error('Error fetching risk stats status:', error);
