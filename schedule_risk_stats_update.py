@@ -36,8 +36,14 @@ def update_risk_stats_job():
     """Job to update risk statistics from Egnyte."""
     logger.info("Starting scheduled risk statistics update...")
     try:
+        # Default to conservative values for batch processing
+        batch_size = 50
+        max_retries = 3
+        
+        logger.info(f"Using batch size: {batch_size}, max retries: {max_retries}")
+        
         with get_db_connection() as db:
-            result = fetch_and_process_risk_stats(db)
+            result = fetch_and_process_risk_stats(db, batch_size=batch_size, max_retries=max_retries)
             if result.get('success'):
                 logger.info(f"Risk statistics update completed successfully. Imported {result.get('stats', {}).get('total_records', 0)} records.")
             else:

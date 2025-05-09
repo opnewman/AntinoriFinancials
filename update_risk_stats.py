@@ -4,13 +4,14 @@ Standalone script for downloading and processing risk statistics from Egnyte.
 This script runs independently to avoid web server timeouts.
 
 Usage:
-    python update_risk_stats.py [--test] [--debug] [--batch-size=100] [--output=output.log]
+    python update_risk_stats.py [--test] [--debug] [--batch-size=100] [--max-retries=3] [--output=output.log]
 
 Options:
-    --test       Use test file instead of downloading from Egnyte
-    --debug      Enable debug logging
-    --batch-size Size of batches for database operations (default: 100)
-    --output     Output file for logs (default: risk_stats_update.log)
+    --test         Use test file instead of downloading from Egnyte
+    --debug        Enable debug logging
+    --batch-size   Size of batches for database operations (default: 100)
+    --max-retries  Maximum number of retry attempts for database operations (default: 3)
+    --output       Output file for logs (default: risk_stats_update.log)
 """
 
 import argparse
