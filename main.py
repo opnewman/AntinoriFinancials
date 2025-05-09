@@ -95,13 +95,13 @@ def update_risk_stats():
         debug_mode = request.args.get('debug', 'false').lower() == 'true'
         use_test_file = request.args.get('use_test_file', 'false').lower() == 'true'
         
-        # Process batch size parameter
+        # Process batch size parameter - increased default for performance
         try:
-            batch_size = int(request.args.get('batch_size', '50'))
-            if batch_size < 10 or batch_size > 1000:
-                batch_size = 50  # Reset to default if out of reasonable range
+            batch_size = int(request.args.get('batch_size', '200'))  # Increased from 50 to 200
+            if batch_size < 10 or batch_size > 2000:  # Increased upper limit
+                batch_size = 200  # Reset to default if out of reasonable range
         except ValueError:
-            batch_size = 50
+            batch_size = 200
             
         # Process max retries parameter
         try:

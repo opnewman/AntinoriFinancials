@@ -15,7 +15,7 @@ from src.services.upsert_helper import batch_upsert_risk_stats, clean_risk_stats
 
 logger = logging.getLogger(__name__)
 
-def process_risk_stats(db: Session, use_test_file=False, batch_size=50, max_retries=3):
+def process_risk_stats(db: Session, use_test_file=False, batch_size=200, max_retries=3):
     """
     Optimized function to download and process risk statistics from Egnyte.
     Uses chunked processing and optimized database operations for large files.
