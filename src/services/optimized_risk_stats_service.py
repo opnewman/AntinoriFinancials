@@ -191,18 +191,59 @@ def process_risk_stats_optimized(
                     
                     # Execute the bulk insert with UPSERT logic
                     if all_records:
+                        logger.info("DEBUG: ========== PREPARING FOR DATABASE OPERATIONS ==========")
+                        logger.info(f"DEBUG: Initial record count: {len(all_records)}")
+                        
                         # First, deduplicate records to avoid the CardinalityViolation error
                         # Create a dictionary with (import_date, position, asset_class) as key
                         unique_records = {}
+                        duplicate_count = 0
+                        problematic_records = 0
+                        
                         for record in all_records:
-                            # Create a unique key for each record
-                            key = (record['import_date'], record['position'], record['asset_class'])
-                            # If duplicate found, keep the latest one
-                            unique_records[key] = record
+                            try:
+                                # Validate record keys
+                                if 'import_date' not in record:
+                                    logger.error(f"DEBUG: Missing import_date in record: {record}")
+                                    problematic_records += 1
+                                    continue
+                                    
+                                if 'position' not in record:
+                                    logger.error(f"DEBUG: Missing position in record: {record}")
+                                    problematic_records += 1
+                                    continue
+                                    
+                                if 'asset_class' not in record:
+                                    logger.error(f"DEBUG: Missing asset_class in record: {record}")
+                                    problematic_records += 1
+                                    continue
+                                
+                                # Create a unique key for each record
+                                key = (record['import_date'], record['position'], record['asset_class'])
+                                
+                                # If duplicate found, keep the latest one
+                                if key in unique_records:
+                                    duplicate_count += 1
+                                
+                                unique_records[key] = record
+                            except Exception as key_error:
+                                logger.error(f"DEBUG: Error creating record key: {key_error}")
+                                logger.error(f"DEBUG: Problematic record: {record}")
+                                problematic_records += 1
                         
                         # Convert back to list
                         deduplicated_records = list(unique_records.values())
                         record_count = len(deduplicated_records)
+                        
+                        logger.info(f"DEBUG: Deduplicated record count: {record_count} (removed {duplicate_count} duplicates, {problematic_records} problematic records)")
+                        
+                        # Sample validation of records
+                        if record_count > 0:
+                            sample_record = deduplicated_records[0]
+                            logger.info(f"DEBUG: Sample record: {sample_record}")
+                            logger.info(f"DEBUG: Sample record import_date type: {type(sample_record['import_date'])}")
+                            logger.info(f"DEBUG: Sample record position type: {type(sample_record['position'])}")
+                            logger.info(f"DEBUG: Sample record asset_class type: {type(sample_record['asset_class'])}")
                         
                         logger.info(f"Preparing to insert {record_count} unique records (removed {len(all_records) - record_count} duplicates)")
                         
@@ -367,6 +408,11 @@ def parallel_process_sheet(
     Returns:
         Dict with processing results and records
     """
+    logger.info("DEBUG: ========== PARALLEL PROCESS SHEET ==========")
+    logger.info(f"DEBUG: Parameters - file_path={file_path}, sheet_name={sheet_name}, asset_class={asset_class}")
+    logger.info(f"DEBUG: File exists: {os.path.exists(file_path)}")
+    if os.path.exists(file_path):
+        logger.info(f"DEBUG: File size: {os.path.getsize(file_path) / 1024 / 1024:.2f} MB")
     logger.info(f"Processing {asset_class} sheet: {sheet_name}")
     records = []
     
