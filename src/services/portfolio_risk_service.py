@@ -81,7 +81,8 @@ def calculate_portfolio_risk_metrics(
     db: Session,
     level: str,
     level_key: str,
-    report_date: date
+    report_date: date,
+    max_positions: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Calculate risk metrics for a portfolio based on its positions.
@@ -257,11 +258,76 @@ def calculate_portfolio_risk_metrics(
     # Process positions by asset class to calculate weighted risk metrics
     if is_large_portfolio:
         logger.info("Using cache-optimized risk stat lookup for large portfolio")
+        # Add time tracking for debugging
+        import time
+        start_time = time.time()
+        processed_count = 0
+        
+        # Check if a sample size was specified by the user, or if this is a large portfolio
+        if max_positions or position_count > 10000:
+            sample_size = max_positions if max_positions else 2000  # Use specified sample size or default
+            logger.warning(f"Extremely large portfolio with {position_count} positions. Using sampling technique with sample size {sample_size}.")
+            sampled_positions = []
+            
+            # Sample positions by asset class to ensure good coverage
+            equity_positions = [p for p in positions if p.asset_class and "equity" in p.asset_class.lower()]
+            fixed_income_positions = [p for p in positions if p.asset_class and "fixed income" in p.asset_class.lower()]
+            hard_currency_positions = [p for p in positions if p.asset_class and "hard currency" in p.asset_class.lower()]
+            alternative_positions = [p for p in positions if p.asset_class and "alternative" in p.asset_class.lower()]
+            
+            # Calculate proportions based on total positions
+            equity_count = len(equity_positions)
+            fixed_income_count = len(fixed_income_positions)
+            hard_currency_count = len(hard_currency_positions)
+            alternative_count = len(alternative_positions)
+            
+            # Calculate sample sizes proportionally
+            total_asset_count = equity_count + fixed_income_count + hard_currency_count + alternative_count
+            if total_asset_count > 0:
+                equity_sample = min(equity_count, int((equity_count / total_asset_count) * sample_size))
+                fixed_income_sample = min(fixed_income_count, int((fixed_income_count / total_asset_count) * sample_size))
+                hard_currency_sample = min(hard_currency_count, int((hard_currency_count / total_asset_count) * sample_size))
+                alternative_sample = min(alternative_count, int((alternative_count / total_asset_count) * sample_size))
+                
+                # Ensure we take at least some from each category if available
+                equity_sample = max(equity_sample, min(equity_count, 100))
+                fixed_income_sample = max(fixed_income_sample, min(fixed_income_count, 100))
+                hard_currency_sample = max(hard_currency_sample, min(hard_currency_count, 100))
+                alternative_sample = max(alternative_sample, min(alternative_count, 100))
+                
+                # Take samples
+                import random
+                if equity_count > 0:
+                    sampled_positions.extend(random.sample(equity_positions, equity_sample))
+                if fixed_income_count > 0:
+                    sampled_positions.extend(random.sample(fixed_income_positions, fixed_income_sample))
+                if hard_currency_count > 0:
+                    sampled_positions.extend(random.sample(hard_currency_positions, hard_currency_sample))
+                if alternative_count > 0:
+                    sampled_positions.extend(random.sample(alternative_positions, alternative_sample))
+                
+                logger.info(f"Sampled {len(sampled_positions)} positions out of {position_count} total positions")
+                # Use the sampled positions instead of all positions
+                positions = sampled_positions
+            
         # Pass the cache for optimized lookups
-        for position in positions:
-            # Try to find the risk stats with cache
-            asset_class = position.asset_class.lower() if position.asset_class else ""
-            standardized_class = asset_class_map.get(asset_class, "other")
+        position_count = len(positions)
+        batch_size = 1000
+        for i in range(0, position_count, batch_size):
+            batch = positions[i:i+batch_size]
+            batch_start_time = time.time()
+            logger.info(f"Processing batch {i}-{i+len(batch)} of {position_count}")
+            
+            for position in batch:
+                processed_count += 1
+                # Try to find the risk stats with cache
+                asset_class = position.asset_class.lower() if position.asset_class else ""
+                standardized_class = asset_class_map.get(asset_class, "other")
+                
+                # Log progress every 5000 positions
+                if processed_count % 5000 == 0:
+                    elapsed = time.time() - start_time
+                    logger.info(f"Processed {processed_count}/{position_count} positions ({processed_count/position_count*100:.1f}%) in {elapsed:.1f} seconds")
             
             # Get the full asset class name for risk stat lookup
             asset_class_name = None

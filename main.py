@@ -285,9 +285,29 @@ def get_portfolio_risk_metrics():
         # Import the service
         from src.services.portfolio_risk_service import calculate_portfolio_risk_metrics
         
+        # Get sample_size parameter for performance optimization of large portfolios
+        sample_size = request.args.get('sample_size')
+        max_positions = None
+        
+        # Process sample_size if provided
+        if sample_size:
+            try:
+                max_positions = int(sample_size)
+                logger.info(f"Using user-specified sample size of {max_positions}")
+            except ValueError:
+                return jsonify({
+                    "success": False,
+                    "error": f"Invalid sample_size: {sample_size}. Expected integer."
+                }), 400
+                
+        # For "All Clients", use sampling by default to avoid timeouts with 90k+ records
+        if level == "client" and level_key == "All Clients" and not max_positions:
+            max_positions = 2000  # Use a reasonable default sample size for performance
+            logger.info(f"Using default sample size of {max_positions} for 'All Clients' performance optimization")
+            
         with get_db_connection() as db:
             # Calculate risk metrics
-            result = calculate_portfolio_risk_metrics(db, level, level_key, report_date)
+            result = calculate_portfolio_risk_metrics(db, level, level_key, report_date, max_positions=max_positions)
             return jsonify(result)
             
     except Exception as e:
