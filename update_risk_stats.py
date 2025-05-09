@@ -138,6 +138,7 @@ def main():
     parser.add_argument('--test', action='store_true', help='Use test file instead of downloading from Egnyte')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     parser.add_argument('--batch-size', type=int, default=100, help='Size of batches for database operations')
+    parser.add_argument('--max-retries', type=int, default=3, help='Maximum number of retry attempts for database operations')
     parser.add_argument('--output', type=str, default='risk_stats_update.log', help='Output file for logs')
     
     args = parser.parse_args()
@@ -146,7 +147,7 @@ def main():
     logger = setup_logging(output_file=args.output, debug=args.debug)
     
     logger.info("Starting risk statistics update script")
-    logger.info(f"Parameters: test={args.test}, debug={args.debug}, batch_size={args.batch_size}")
+    logger.info(f"Parameters: test={args.test}, debug={args.debug}, batch_size={args.batch_size}, max_retries={args.max_retries}")
     
     # Get database session
     db = get_db()
@@ -163,7 +164,8 @@ def main():
         result = fetch_and_process_risk_stats(
             db, 
             use_test_file=args.test,
-            batch_size=args.batch_size
+            batch_size=args.batch_size,
+            max_retries=args.max_retries
         )
         
         if result.get('success', False):
