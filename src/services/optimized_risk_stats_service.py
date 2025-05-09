@@ -185,12 +185,24 @@ def process_risk_stats_optimized(
                     
                     # Execute the bulk insert with UPSERT logic
                     if all_records:
-                        record_count = len(all_records)
-                        logger.info(f"Preparing to insert {record_count} total records in optimized batches")
+                        # First, deduplicate records to avoid the CardinalityViolation error
+                        # Create a dictionary with (import_date, position, asset_class) as key
+                        unique_records = {}
+                        for record in all_records:
+                            # Create a unique key for each record
+                            key = (record['import_date'], record['position'], record['asset_class'])
+                            # If duplicate found, keep the latest one
+                            unique_records[key] = record
+                        
+                        # Convert back to list
+                        deduplicated_records = list(unique_records.values())
+                        record_count = len(deduplicated_records)
+                        
+                        logger.info(f"Preparing to insert {record_count} unique records (removed {len(all_records) - record_count} duplicates)")
                         
                         # Process in appropriately sized batches
                         for i in range(0, record_count, batch_size):
-                            batch = all_records[i:i+batch_size]
+                            batch = deduplicated_records[i:i+batch_size]
                             batch_size_mb = sum(sys.getsizeof(r) for r in batch) / (1024 * 1024)
                             logger.info(f"Inserting batch {i//batch_size + 1} with {len(batch)} records (~{batch_size_mb:.2f} MB)")
                             

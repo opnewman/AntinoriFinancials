@@ -36,7 +36,16 @@ const RiskStatsJobManager = () => {
     statsStatus: null
   });
   
-  const toast = useToast();
+  // Create a simple toast function if ChakraUI's useToast is not available
+  const toast = typeof useToast === 'function' ? useToast() : {
+    toast: (props) => {
+      console.log(`Toast: ${props.title} - ${props.description}`);
+      // Fallback to browser alert for crucial messages
+      if (props.status === 'error') {
+        alert(`Error: ${props.description}`);
+      }
+    }
+  };
   
   // Poll for updates if a job is running
   useEffect(() => {
@@ -72,13 +81,23 @@ const RiskStatsJobManager = () => {
           currentJob: result
         }));
         
-        toast({
-          title: 'Job Started',
-          description: `Risk stats update job #${result.job_id} started successfully`,
-          status: 'success',
-          duration: 5000,
-          isClosable: true,
-        });
+        if (typeof toast === 'function') {
+          toast({
+            title: 'Job Started',
+            description: `Risk stats update job #${result.job_id} started successfully`,
+            status: 'success',
+            duration: 5000,
+            isClosable: true,
+          });
+        } else if (toast.toast) {
+          toast.toast({
+            title: 'Job Started',
+            description: `Risk stats update job #${result.job_id} started successfully`,
+            status: 'success',
+            duration: 5000,
+            isClosable: true,
+          });
+        }
       } else {
         throw new Error(result.error || 'Failed to start job');
       }
@@ -89,13 +108,23 @@ const RiskStatsJobManager = () => {
         error: error.message || 'Failed to start risk stats update' 
       }));
       
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to start risk stats update',
-        status: 'error',
-        duration: 5000,
-        isClosable: true,
-      });
+      if (typeof toast === 'function') {
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to start risk stats update',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      } else if (toast.toast) {
+        toast.toast({
+          title: 'Error',
+          description: error.message || 'Failed to start risk stats update',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      }
     }
   };
   
@@ -130,13 +159,23 @@ const RiskStatsJobManager = () => {
         // Immediately refresh status after completion
         fetchRiskStatsStatus();
         
-        toast({
-          title: 'High-Performance Update Complete',
-          description: `Processed ${result.total_records || result.processed_records || 0} records in ${(result.processing_time_seconds || result.total_api_time_seconds || 0).toFixed(2)} seconds`,
-          status: 'success',
-          duration: 5000,
-          isClosable: true,
-        });
+        if (typeof toast === 'function') {
+          toast({
+            title: 'High-Performance Update Complete',
+            description: `Processed ${result.total_records || result.processed_records || 0} records in ${(result.processing_time_seconds || result.total_api_time_seconds || 0).toFixed(2)} seconds`,
+            status: 'success',
+            duration: 5000,
+            isClosable: true,
+          });
+        } else if (toast.toast) {
+          toast.toast({
+            title: 'High-Performance Update Complete',
+            description: `Processed ${result.total_records || result.processed_records || 0} records in ${(result.processing_time_seconds || result.total_api_time_seconds || 0).toFixed(2)} seconds`,
+            status: 'success',
+            duration: 5000,
+            isClosable: true,
+          });
+        }
       } else {
         throw new Error(result.error || 'Failed to start optimized update');
       }
@@ -147,13 +186,23 @@ const RiskStatsJobManager = () => {
         error: error.message || 'Failed to start optimized risk stats update' 
       }));
       
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to start optimized risk stats update',
-        status: 'error',
-        duration: 5000,
-        isClosable: true,
-      });
+      if (typeof toast === 'function') {
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to start optimized risk stats update',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      } else if (toast.toast) {
+        toast.toast({
+          title: 'Error',
+          description: error.message || 'Failed to start optimized risk stats update',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      }
     }
   };
   
@@ -169,21 +218,41 @@ const RiskStatsJobManager = () => {
         if (result.status === 'completed') {
           fetchRiskStatsStatus();
           
-          toast({
-            title: 'Job Completed',
-            description: `Processed ${result.total_records} records in ${result.duration_seconds?.toFixed(2) || '?'} seconds`,
-            status: 'success',
-            duration: 5000,
-            isClosable: true,
-          });
+          if (typeof toast === 'function') {
+            toast({
+              title: 'Job Completed',
+              description: `Processed ${result.total_records} records in ${result.duration_seconds?.toFixed(2) || '?'} seconds`,
+              status: 'success',
+              duration: 5000,
+              isClosable: true,
+            });
+          } else if (toast.toast) {
+            toast.toast({
+              title: 'Job Completed',
+              description: `Processed ${result.total_records} records in ${result.duration_seconds?.toFixed(2) || '?'} seconds`,
+              status: 'success',
+              duration: 5000,
+              isClosable: true,
+            });
+          }
         } else if (result.status === 'failed') {
-          toast({
-            title: 'Job Failed',
-            description: result.error_message || 'Risk stats update failed',
-            status: 'error',
-            duration: 5000,
-            isClosable: true,
-          });
+          if (typeof toast === 'function') {
+            toast({
+              title: 'Job Failed',
+              description: result.error_message || 'Risk stats update failed',
+              status: 'error',
+              duration: 5000,
+              isClosable: true,
+            });
+          } else if (toast.toast) {
+            toast.toast({
+              title: 'Job Failed',
+              description: result.error_message || 'Risk stats update failed',
+              status: 'error',
+              duration: 5000,
+              isClosable: true,
+            });
+          }
         }
       }
     } catch (error) {
