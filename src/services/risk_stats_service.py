@@ -6,7 +6,9 @@ This uses an optimized approach for handling large Excel files and efficient dat
 import logging
 import os
 import time
-from datetime import date
+from datetime import date, datetime
+import pytz
+from decimal import Decimal
 import pandas as pd
 from sqlalchemy.orm import Session
 from src.models.models import EgnyteRiskStat
@@ -38,7 +40,13 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=200, max_ret
         fi_count = 0
         alt_count = 0
         error_count = 0
-        import_date = date.today()
+        
+        # Use current date/time in Eastern timezone (NYC) for consistency
+        eastern = pytz.timezone('US/Eastern')
+        current_time = datetime.now(eastern)
+        import_date = current_time.date()
+        logger.info(f"Using import date: {import_date} (current Eastern time: {current_time})")
+        
         file_path = None
         
         # 1. Download the risk stats file
