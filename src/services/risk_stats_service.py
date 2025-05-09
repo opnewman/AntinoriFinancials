@@ -212,18 +212,31 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=200, max_ret
                                     if vol_col and not pd.isna(row.get(vol_col)):
                                         try:
                                             vol_str = str(row.get(vol_col)).strip()
-                                            if vol_str.lower() != '#n/a invalid security' and vol_str.lower() != 'n/a':
+                                            # Enhanced check for various N/A formats and invalid values
+                                            invalid_values = ['#n/a invalid security', 'n/a', '#n/a', 'na', 'nan', '-']
+                                            if not any(val == vol_str.lower() for val in invalid_values):
                                                 vol_value = float(vol_str)
-                                        except (ValueError, TypeError):
+                                                # Log successful volatility capture for debugging
+                                                if vol_value > 0:
+                                                    logger.debug(f"Captured valid volatility {vol_value} for {position}")
+                                        except (ValueError, TypeError) as e:
+                                            # Log conversion errors for debugging
+                                            logger.debug(f"Volatility conversion error for {position}: {e} (value: '{row.get(vol_col)}')")
                                             # Just leave as None if we can't convert
                                             pass
                                     
                                     if beta_col and not pd.isna(row.get(beta_col)):
                                         try:
                                             beta_str = str(row.get(beta_col)).strip()
-                                            if beta_str.lower() != '#n/a invalid security' and beta_str.lower() != 'n/a':
+                                            # Enhanced check for various N/A formats and invalid values
+                                            invalid_values = ['#n/a invalid security', 'n/a', '#n/a', 'na', 'nan', '-']
+                                            if not any(val == beta_str.lower() for val in invalid_values):
                                                 beta_value = float(beta_str)
-                                        except (ValueError, TypeError):
+                                                # Log successful beta capture for debugging
+                                                logger.debug(f"Captured valid beta {beta_value} for {position}")
+                                        except (ValueError, TypeError) as e:
+                                            # Log conversion errors for debugging
+                                            logger.debug(f"Beta conversion error for {position}: {e} (value: '{row.get(beta_col)}')")
                                             # Just leave as None if we can't convert
                                             pass
                                     
@@ -356,17 +369,30 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=200, max_ret
                                     if vol_col and not pd.isna(row.get(vol_col)):
                                         try:
                                             vol_str = str(row.get(vol_col)).strip()
-                                            if vol_str.lower() != '#n/a invalid security' and vol_str.lower() != 'n/a':
+                                            # Enhanced check for various N/A formats and invalid values
+                                            invalid_values = ['#n/a invalid security', 'n/a', '#n/a', 'na', 'nan', '-']
+                                            if not any(val == vol_str.lower() for val in invalid_values):
                                                 vol_value = float(vol_str)
-                                        except (ValueError, TypeError):
+                                                # Log successful volatility capture for debugging
+                                                if vol_value > 0:
+                                                    logger.debug(f"Captured valid FI volatility {vol_value} for {position}")
+                                        except (ValueError, TypeError) as e:
+                                            # Log conversion errors for debugging
+                                            logger.debug(f"FI volatility conversion error for {position}: {e} (value: '{row.get(vol_col)}')")
                                             pass
                                     
                                     if beta_col and not pd.isna(row.get(beta_col)):
                                         try:
                                             beta_str = str(row.get(beta_col)).strip()
-                                            if beta_str.lower() != '#n/a invalid security' and beta_str.lower() != 'n/a':
+                                            # Enhanced check for various N/A formats and invalid values
+                                            invalid_values = ['#n/a invalid security', 'n/a', '#n/a', 'na', 'nan', '-']
+                                            if not any(val == beta_str.lower() for val in invalid_values):
                                                 beta_value = float(beta_str)
-                                        except (ValueError, TypeError):
+                                                # Log successful beta capture for debugging
+                                                logger.debug(f"Captured valid FI beta {beta_value} for {position}")
+                                        except (ValueError, TypeError) as e:
+                                            # Log conversion errors for debugging
+                                            logger.debug(f"FI beta conversion error for {position}: {e} (value: '{row.get(beta_col)}')")
                                             pass
                                     
                                     # Create record
@@ -463,9 +489,16 @@ def process_risk_stats(db: Session, use_test_file=False, batch_size=200, max_ret
                                     if vol_col and not pd.isna(row.get(vol_col)):
                                         try:
                                             vol_str = str(row.get(vol_col)).strip()
-                                            if vol_str.lower() != '#n/a invalid security' and vol_str.lower() != 'n/a':
+                                            # Enhanced check for various N/A formats and invalid values
+                                            invalid_values = ['#n/a invalid security', 'n/a', '#n/a', 'na', 'nan', '-']
+                                            if not any(val == vol_str.lower() for val in invalid_values):
                                                 vol_value = float(vol_str)
-                                        except (ValueError, TypeError):
+                                                # Log successful volatility capture for debugging
+                                                if vol_value > 0:
+                                                    logger.debug(f"Captured valid Alt volatility {vol_value} for {position}")
+                                        except (ValueError, TypeError) as e:
+                                            # Log conversion errors for debugging
+                                            logger.debug(f"Alt volatility conversion error for {position}: {e} (value: '{row.get(vol_col)}')")
                                             # Just leave as None if we can't convert
                                             pass
                                     
