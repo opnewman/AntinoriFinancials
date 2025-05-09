@@ -110,13 +110,15 @@ def download_risk_stats_file(token=None, domain=None, file_path=None, use_test_f
         raise
 
 
-def process_excel_file(file_path, db):
+def process_excel_file(file_path, db, batch_size=50, max_retries=3):
     """
     Process the downloaded Excel file and insert the data into the database.
     
     Args:
         file_path (str): Path to the Excel file
         db (Session): Database session
+        batch_size (int): Size of batches for database operations
+        max_retries (int): Maximum number of retry attempts for database operations
         
     Returns:
         dict: Summary statistics of the import
@@ -190,7 +192,8 @@ def process_excel_file(file_path, db):
     if equity_sheet:
         logger.info(f"Found Equity sheet: {equity_sheet}")
         try:
-            stats["equity_records"] = process_equity_sheet(file_path, equity_sheet, import_date, db)
+            stats["equity_records"] = process_equity_sheet(file_path, equity_sheet, import_date, db, 
+                                                          batch_size=batch_size, max_retries=max_retries)
             logger.info(f"Successfully processed Equity sheet with {stats['equity_records']} records")
         except Exception as e:
             logger.error(f"Error processing Equity sheet: {e}")
@@ -203,7 +206,8 @@ def process_excel_file(file_path, db):
     if fixed_income_sheet:
         logger.info(f"Found Fixed Income sheet: {fixed_income_sheet}")
         try:
-            stats["fixed_income_records"] = process_fixed_income_sheet(file_path, fixed_income_sheet, import_date, db)
+            stats["fixed_income_records"] = process_fixed_income_sheet(file_path, fixed_income_sheet, import_date, db,
+                                                                      batch_size=batch_size, max_retries=max_retries)
             logger.info(f"Successfully processed Fixed Income sheet with {stats['fixed_income_records']} records")
         except Exception as e:
             logger.error(f"Error processing Fixed Income sheet: {e}")
@@ -216,7 +220,8 @@ def process_excel_file(file_path, db):
     if alternatives_sheet:
         logger.info(f"Found Alternatives sheet: {alternatives_sheet}")
         try:
-            stats["alternatives_records"] = process_alternatives_sheet(file_path, alternatives_sheet, import_date, db)
+            stats["alternatives_records"] = process_alternatives_sheet(file_path, alternatives_sheet, import_date, db,
+                                                                      batch_size=batch_size, max_retries=max_retries)
             logger.info(f"Successfully processed Alternatives sheet with {stats['alternatives_records']} records")
         except Exception as e:
             logger.error(f"Error processing Alternatives sheet: {e}")
@@ -318,8 +323,21 @@ def process_excel_file(file_path, db):
     return stats
 
 
-def process_equity_sheet(file_path, sheet_name, import_date, db):
-    """Process the Equity sheet from the Excel file."""
+def process_equity_sheet(file_path, sheet_name, import_date, db, batch_size=50, max_retries=3):
+    """
+    Process the Equity sheet from the Excel file.
+    
+    Args:
+        file_path (str): Path to the Excel file
+        sheet_name (str): Name of the sheet to process
+        import_date (date): Date of the import
+        db (Session): Database session
+        batch_size (int): Size of batches for database operations
+        max_retries (int): Maximum number of retry attempts for database operations
+        
+    Returns:
+        int: Number of records successfully processed
+    """
     logger.info(f"Processing Equity sheet")
     
     # For large files, we need to handle them efficiently
@@ -567,8 +585,21 @@ def process_equity_sheet(file_path, sheet_name, import_date, db):
     return records_succeeded
 
 
-def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
-    """Process the Fixed Income sheet from the Excel file."""
+def process_fixed_income_sheet(file_path, sheet_name, import_date, db, batch_size=50, max_retries=3):
+    """
+    Process the Fixed Income sheet from the Excel file.
+    
+    Args:
+        file_path (str): Path to the Excel file
+        sheet_name (str): Name of the sheet to process
+        import_date (date): Date of the import
+        db (Session): Database session
+        batch_size (int): Size of batches for database operations
+        max_retries (int): Maximum number of retry attempts for database operations
+        
+    Returns:
+        int: Number of records successfully processed
+    """
     logger.info(f"Processing Fixed Income sheet")
     
     # For large files, we need to handle them efficiently
@@ -887,8 +918,21 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
     return records_succeeded
 
 
-def process_alternatives_sheet(file_path, sheet_name, import_date, db):
-    """Process the Alternatives sheet from the Excel file."""
+def process_alternatives_sheet(file_path, sheet_name, import_date, db, batch_size=50, max_retries=3):
+    """
+    Process the Alternatives sheet from the Excel file.
+    
+    Args:
+        file_path (str): Path to the Excel file
+        sheet_name (str): Name of the sheet to process
+        import_date (date): Date of the import
+        db (Session): Database session
+        batch_size (int): Size of batches for database operations
+        max_retries (int): Maximum number of retry attempts for database operations
+        
+    Returns:
+        int: Number of records successfully processed
+    """
     logger.info(f"Processing Alternatives sheet")
     
     # For large files, we need to handle them efficiently
