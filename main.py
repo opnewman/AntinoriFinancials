@@ -163,20 +163,50 @@ def update_risk_stats_optimized_endpoint():
         start_time = time.time()
         
         # Process risk statistics directly with the optimized implementation
-        with get_db_connection() as db:
-            results = process_risk_stats_optimized(
-                db=db,
-                use_test_file=use_test_file,
-                batch_size=batch_size,
-                max_workers=workers
-            )
+        # Create a fresh database connection with longer timeouts for this operation
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from src.database import engine_args
+        
+        # Use our engine configuration but with extended timeout
+        extended_args = engine_args.copy() if 'engine_args' in dir(src.database) else {}
+        # Add parameters to improve stability for long-running operations
+        extended_args.update({
+            'connect_args': {'connect_timeout': 60},  # Longer connect timeout
+            'pool_timeout': 60,  # Longer pool timeout
+            'pool_recycle': 300,  # Recycle connections every 5 minutes
+            'pool_pre_ping': True  # Check connection before using from pool
+        })
+        
+        try:
+            # Create a dedicated engine for this operation
+            engine = create_engine(os.environ.get('DATABASE_URL'), **extended_args)
+            Session = sessionmaker(bind=engine)
             
-            # Add total API request time
-            total_time = time.time() - start_time
-            results["total_api_time_seconds"] = total_time
-            
-            # Return results directly
-            return jsonify(results)
+            # Process risk statistics with a fresh session
+            with Session() as db:
+                # Use smaller batch size for better stability
+                if batch_size > 500:
+                    logger.info(f"Reducing batch size from {batch_size} to 500 for better stability")
+                    batch_size = 500
+                
+                results = process_risk_stats_optimized(
+                    db=db,
+                    use_test_file=use_test_file,
+                    batch_size=batch_size,
+                    max_workers=workers
+                )
+                
+                # Add total API request time
+                total_time = time.time() - start_time
+                results["total_api_time_seconds"] = total_time
+                
+                # Return results directly
+                return jsonify(results)
+        finally:
+            # Make sure to dispose of the engine
+            if 'engine' in locals():
+                engine.dispose()
             
     except Exception as e:
         logger.exception("Error in optimized risk stats update:")

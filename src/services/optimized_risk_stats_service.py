@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 def process_risk_stats_optimized(
     db: Session, 
     use_test_file: bool = False, 
-    batch_size: int = 1000,
+    batch_size: int = 500,  # Reduced batch size for better stability
     max_workers: int = 3
 ) -> Dict[str, Any]:
     """
@@ -200,7 +200,10 @@ def process_risk_stats_optimized(
                         
                         logger.info(f"Preparing to insert {record_count} unique records (removed {len(all_records) - record_count} duplicates)")
                         
-                        # Process in appropriately sized batches
+                        # Process in appropriately sized batches with per-batch transactions
+                        # for resilience against connection issues
+                        max_retries = 3
+                        
                         for i in range(0, record_count, batch_size):
                             batch = deduplicated_records[i:i+batch_size]
                             batch_size_mb = sum(sys.getsizeof(r) for r in batch) / (1024 * 1024)
@@ -224,11 +227,35 @@ def process_risk_stats_optimized(
                                 }
                             )
                             
-                            # Execute with a single transaction
-                            db.execute(stmt, batch)
-                        
-                        # Commit once after all batches
-                        db.commit()
+                            # Implement retry logic with fresh connections for resilience
+                            retry_count = 0
+                            success = False
+                            
+                            while retry_count < max_retries and not success:
+                                try:
+                                    # Execute with a per-batch transaction
+                                    db.execute(stmt, batch)
+                                    db.commit()
+                                    success = True
+                                    logger.info(f"Successfully inserted batch {i//batch_size + 1}")
+                                except Exception as batch_error:
+                                    retry_count += 1
+                                    logger.warning(f"Batch insert error (attempt {retry_count}/{max_retries}): {batch_error}")
+                                    db.rollback()
+                                    
+                                    if retry_count == max_retries:
+                                        logger.error(f"Failed to insert batch after {max_retries} attempts")
+                                        raise
+                                        
+                                    # Add a small delay before retrying
+                                    time.sleep(0.5)
+                                    
+                                    # Ensure connection is valid
+                                    try:
+                                        db.execute(text("SELECT 1"))
+                                    except:
+                                        logger.warning("Database connection issue detected, attempting to refresh")
+                                        # Let it reconnect on the next attempt
                         
                         results["total_records"] = record_count
                         logger.info(f"Successfully inserted all {record_count} records")

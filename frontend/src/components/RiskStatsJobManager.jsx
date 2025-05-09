@@ -474,27 +474,14 @@ const RiskStatsJobManager = () => {
           
           <button 
             onClick={startOptimizedRiskStatsUpdate} 
-            className="px-2 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold"
-            disabled={isLoading}
-            title="High-performance optimized update that completes in 2-3 seconds"
+            className="px-2 py-1 text-sm bg-green-500 hover:bg-green-600 text-white rounded font-semibold"
+            disabled={isLoading || (currentJob && ['pending', 'running'].includes(currentJob.status))}
+            title="High-performance optimized update of risk statistics"
           >
             {isLoading ? (
               <span>
                 <span className="inline-block w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
                 Processing...
-              </span>
-            ) : 'Fast Update (2-3s)'}
-          </button>
-          
-          <button 
-            onClick={startRiskStatsJob} 
-            className="px-2 py-1 text-sm bg-green-500 hover:bg-green-600 text-white rounded font-semibold"
-            disabled={isLoading || (currentJob && ['pending', 'running'].includes(currentJob.status))}
-          >
-            {isLoading ? (
-              <span>
-                <span className="inline-block w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                Loading...
               </span>
             ) : 'Update Risk Stats'}
           </button>
