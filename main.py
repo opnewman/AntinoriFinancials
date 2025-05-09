@@ -166,10 +166,10 @@ def update_risk_stats_optimized_endpoint():
         # Create a fresh database connection with longer timeouts for this operation
         from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
-        from src.database import engine_args
+        from src.database import connection_args
         
         # Use our engine configuration but with extended timeout
-        extended_args = engine_args.copy() if 'engine_args' in dir(src.database) else {}
+        extended_args = connection_args.copy()
         # Add parameters to improve stability for long-running operations
         extended_args.update({
             'connect_args': {'connect_timeout': 60},  # Longer connect timeout
