@@ -232,7 +232,89 @@ def process_excel_file(file_path, db):
         stats["alternatives_records"]
     )
     
+    # Verify with a count from database for double-checking
+    try:
+        latest_date = date.today()
+        db_count = db.query(EgnyteRiskStat).filter(EgnyteRiskStat.import_date == latest_date).count()
+        
+        # Record counts by asset class for validation
+        equity_db_count = db.query(EgnyteRiskStat).filter(
+            EgnyteRiskStat.import_date == latest_date,
+            EgnyteRiskStat.asset_class == 'Equity'
+        ).count()
+        
+        fi_db_count = db.query(EgnyteRiskStat).filter(
+            EgnyteRiskStat.import_date == latest_date,
+            EgnyteRiskStat.asset_class == 'Fixed Income'
+        ).count()
+        
+        alt_db_count = db.query(EgnyteRiskStat).filter(
+            EgnyteRiskStat.import_date == latest_date,
+            EgnyteRiskStat.asset_class == 'Alternatives'
+        ).count()
+        
+        # Log counts for comparison
+        logger.info(f"Database counts - Total: {db_count}, Equity: {equity_db_count}, "
+                    f"Fixed Income: {fi_db_count}, Alternatives: {alt_db_count}")
+        
+        # Add database counts to stats
+        stats["db_total"] = db_count
+        stats["db_equity"] = equity_db_count
+        stats["db_fixed_income"] = fi_db_count
+        stats["db_alternatives"] = alt_db_count
+        
+        # Check for discrepancies
+        if stats["total_records"] != db_count:
+            logger.warning(f"Discrepancy between calculated total ({stats['total_records']}) "
+                           f"and database count ({db_count})")
+                           
+        if stats["equity_records"] != equity_db_count:
+            logger.warning(f"Equity records discrepancy: calculated={stats['equity_records']}, database={equity_db_count}")
+            
+        if stats["fixed_income_records"] != fi_db_count:
+            logger.warning(f"Fixed Income records discrepancy: calculated={stats['fixed_income_records']}, database={fi_db_count}")
+            
+        if stats["alternatives_records"] != alt_db_count:
+            logger.warning(f"Alternatives records discrepancy: calculated={stats['alternatives_records']}, database={alt_db_count}")
+            
+    except Exception as count_error:
+        logger.error(f"Error verifying database record counts: {count_error}")
+        stats["db_count_error"] = str(count_error)
+    
     logger.info(f"Imported {stats['total_records']} risk statistics records")
+    
+    # Log some sample records to help with debugging
+    try:
+        logger.info("Getting sample records from each asset class for verification")
+        
+        # Get sample equity records
+        equity_samples = db.query(EgnyteRiskStat).filter(
+            EgnyteRiskStat.import_date == latest_date,
+            EgnyteRiskStat.asset_class == 'Equity'
+        ).limit(3).all()
+        
+        if equity_samples:
+            for i, sample in enumerate(equity_samples):
+                logger.info(f"Equity sample {i+1}: Position={sample.position}, "
+                           f"Ticker={sample.ticker_symbol}, Beta={sample.beta}")
+        else:
+            logger.warning("No equity samples found in database")
+            
+        # Get sample fixed income records
+        fi_samples = db.query(EgnyteRiskStat).filter(
+            EgnyteRiskStat.import_date == latest_date,
+            EgnyteRiskStat.asset_class == 'Fixed Income'
+        ).limit(3).all()
+        
+        if fi_samples:
+            for i, sample in enumerate(fi_samples):
+                logger.info(f"Fixed Income sample {i+1}: Position={sample.position}, "
+                           f"Duration={sample.duration}")
+        else:
+            logger.warning("No fixed income samples found in database")
+    except Exception as sample_error:
+        logger.error(f"Error retrieving sample records: {sample_error}")
+        
     return stats
 
 
@@ -394,17 +476,27 @@ def process_equity_sheet(file_path, sheet_name, import_date, db):
         
         # Insert the batch of records
         try:
-            # Add all records in the batch
-            db.add_all(batch_records)
-            # Commit the batch
-            db.commit()
-            logger.info(f"Committed equity batch {batch_count} with {len(batch_records)} records")
-            records_succeeded += len(batch_records)
+            # Process records individually using merge to handle duplicates gracefully (upsert)
+            success_count = 0
+            for risk_stat in batch_records:
+                try:
+                    # Use merge strategy to handle duplicates
+                    db.merge(risk_stat)
+                    # Commit after each record to ensure partial progress
+                    db.commit()
+                    success_count += 1
+                except Exception as inner_e:
+                    db.rollback()
+                    inner_msg = str(inner_e)
+                    logger.error(f"Error adding individual equity record for position {risk_stat.position}: {inner_e}")
+            
+            logger.info(f"Successfully processed equity batch {batch_count}: {success_count}/{len(batch_records)} records merged")
+            records_succeeded += success_count
         except Exception as e:
             # Roll back on error
             db.rollback()
             error_msg = str(e)
-            logger.error(f"Error committing equity batch {batch_count}: {error_msg}")
+            logger.error(f"Error processing equity batch {batch_count}: {error_msg}")
             
             # Check for specific error conditions
             if "duplicate key value violates unique constraint" in error_msg:
@@ -1122,14 +1214,40 @@ def fetch_and_process_risk_stats(db: Session, use_test_file=False):
         
         # Download the file first to avoid cleaning records if there's no file to process
         try:
-            file_path = download_risk_stats_file()
-            logger.info(f"Successfully downloaded risk stats file to {file_path}")
+            logger.info(f"Downloading risk stats file (use_test_file={use_test_file})")
+            file_path = download_risk_stats_file(use_test_file=use_test_file)
+            
+            if not file_path:
+                return {
+                    "success": False,
+                    "error": "Failed to download risk statistics: No file path returned"
+                }
+                
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            logger.info(f"Successfully downloaded risk stats file to {file_path} ({file_size} bytes)")
         except Exception as download_error:
-            logger.error(f"Failed to download risk stats file: {download_error}")
-            return {
-                "success": False,
-                "error": f"Failed to download risk statistics: {str(download_error)}"
-            }
+            error_msg = str(download_error)
+            logger.error(f"Failed to download risk stats file: {error_msg}")
+            
+            # Provide more specific error messages based on the exception type
+            if "EGNYTE_ACCESS_TOKEN" in error_msg:
+                return {
+                    "success": False,
+                    "error": "Egnyte API token is missing or invalid. Please set the EGNYTE_ACCESS_TOKEN environment variable.",
+                    "detail": error_msg
+                }
+            elif "connection" in error_msg.lower():
+                return {
+                    "success": False,
+                    "error": "Network error connecting to Egnyte. Please check your internet connection.",
+                    "detail": error_msg
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": f"Failed to download risk statistics: {error_msg}",
+                    "detail": error_msg
+                }
         
         # Now delete any existing records for today's date to prevent unique constraint violations
         try:
