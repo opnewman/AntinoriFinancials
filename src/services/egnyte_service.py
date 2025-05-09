@@ -795,17 +795,27 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db):
         
         # Insert the batch of records
         try:
-            # Add all records in the batch
-            db.add_all(batch_records)
-            # Commit the batch
-            db.commit()
-            logger.info(f"Committed fixed income batch {batch_count} with {len(batch_records)} records")
-            records_succeeded += len(batch_records)
+            # Process records individually using merge to handle duplicates gracefully (upsert)
+            success_count = 0
+            for risk_stat in batch_records:
+                try:
+                    # Use merge strategy to handle duplicates
+                    db.merge(risk_stat)
+                    # Commit after each record to ensure partial progress
+                    db.commit()
+                    success_count += 1
+                except Exception as inner_e:
+                    db.rollback()
+                    inner_msg = str(inner_e)
+                    logger.error(f"Error adding individual fixed income record for position {risk_stat.position}: {inner_e}")
+            
+            logger.info(f"Successfully processed fixed income batch {batch_count}: {success_count}/{len(batch_records)} records merged")
+            records_succeeded += success_count
         except Exception as e:
             # Roll back on error
             db.rollback()
             error_msg = str(e)
-            logger.error(f"Error committing fixed income batch {batch_count}: {error_msg}")
+            logger.error(f"Error processing fixed income batch {batch_count}: {error_msg}")
             
             # Check for specific error conditions
             if "duplicate key value violates unique constraint" in error_msg:
@@ -1113,17 +1123,27 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db):
         
         # Insert the batch of records
         try:
-            # Add all records in the batch
-            db.add_all(batch_records)
-            # Commit the batch
-            db.commit()
-            logger.info(f"Committed alternatives batch {batch_count} with {len(batch_records)} records")
-            records_succeeded += len(batch_records)
+            # Process records individually using merge to handle duplicates gracefully (upsert)
+            success_count = 0
+            for risk_stat in batch_records:
+                try:
+                    # Use merge strategy to handle duplicates
+                    db.merge(risk_stat)
+                    # Commit after each record to ensure partial progress
+                    db.commit()
+                    success_count += 1
+                except Exception as inner_e:
+                    db.rollback()
+                    inner_msg = str(inner_e)
+                    logger.error(f"Error adding individual alternatives record for position {risk_stat.position}: {inner_e}")
+            
+            logger.info(f"Successfully processed alternatives batch {batch_count}: {success_count}/{len(batch_records)} records merged")
+            records_succeeded += success_count
         except Exception as e:
             # Roll back on error
             db.rollback()
             error_msg = str(e)
-            logger.error(f"Error committing alternatives batch {batch_count}: {error_msg}")
+            logger.error(f"Error processing alternatives batch {batch_count}: {error_msg}")
             
             # Check for specific error conditions
             if "duplicate key value violates unique constraint" in error_msg:
@@ -1251,21 +1271,58 @@ def fetch_and_process_risk_stats(db: Session, use_test_file=False):
         
         # Now delete any existing records for today's date to prevent unique constraint violations
         try:
-            # Get count for logging
-            existing_count = db.query(EgnyteRiskStat).filter(
-                EgnyteRiskStat.import_date == import_date
+            # Get count for logging by asset class
+            equity_count = db.query(EgnyteRiskStat).filter(
+                EgnyteRiskStat.import_date == import_date,
+                EgnyteRiskStat.asset_class == 'Equity'
             ).count()
             
+            fixed_income_count = db.query(EgnyteRiskStat).filter(
+                EgnyteRiskStat.import_date == import_date,
+                EgnyteRiskStat.asset_class == 'Fixed Income'
+            ).count()
+            
+            alternatives_count = db.query(EgnyteRiskStat).filter(
+                EgnyteRiskStat.import_date == import_date,
+                EgnyteRiskStat.asset_class == 'Alternatives'
+            ).count()
+            
+            total_count = equity_count + fixed_income_count + alternatives_count
+            
             # Always do the delete even if count is 0, just to be safe
-            logger.info(f"Cleaning up {existing_count} existing records for import date {import_date}")
+            logger.info(f"Cleaning up {total_count} existing records for import date {import_date}")
+            logger.info(f"By asset class - Equity: {equity_count}, Fixed Income: {fixed_income_count}, Alternatives: {alternatives_count}")
             
             # Use raw SQL for better performance on large deletes
             # This is especially important when dealing with potential conflicts
             sql = text("DELETE FROM egnyte_risk_stats WHERE import_date = :import_date")
-            db.execute(sql, {"import_date": import_date})
+            result = db.execute(sql, {"import_date": import_date})
+            
+            # Log the actual number of rows deleted
+            logger.info(f"Deleted {result.rowcount} records from egnyte_risk_stats table")
             
             # Commit immediately to ensure clean state
             db.commit()
+            
+            # Verify the deletion worked
+            verify_count = db.query(EgnyteRiskStat).filter(
+                EgnyteRiskStat.import_date == import_date
+            ).count()
+            
+            if verify_count > 0:
+                logger.warning(f"Found {verify_count} records still remaining after deletion - attempting additional cleanup")
+                # Try an alternative deletion approach
+                try:
+                    # Delete records by asset class one by one
+                    for asset_class in ['Equity', 'Fixed Income', 'Alternatives']:
+                        asset_sql = text("DELETE FROM egnyte_risk_stats WHERE import_date = :import_date AND asset_class = :asset_class")
+                        asset_result = db.execute(asset_sql, {"import_date": import_date, "asset_class": asset_class})
+                        logger.info(f"Deleted {asset_result.rowcount} {asset_class} records in secondary cleanup")
+                        db.commit()
+                except Exception as sec_error:
+                    db.rollback()
+                    logger.error(f"Error in secondary cleanup: {sec_error}")
+            
             logger.info("Database cleanup completed successfully")
             
         except Exception as db_error:
