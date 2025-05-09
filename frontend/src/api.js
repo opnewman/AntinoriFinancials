@@ -365,6 +365,43 @@ window.api = {
     },
     
     /**
+     * Get portfolio risk metrics
+     * @param {string} date - Report date (YYYY-MM-DD)
+     * @param {string} level - Level for the report (client, portfolio, account)
+     * @param {string} levelKey - Key for the selected level
+     * @param {number} sampleSize - Optional sample size for large portfolios (for performance)
+     */
+    getPortfolioRiskMetrics: async (date, level, levelKey, sampleSize = null) => {
+        try {
+            const params = { 
+                date, 
+                level, 
+                level_key: levelKey 
+            };
+            
+            // Add sample_size parameter for large portfolios if provided
+            if (sampleSize && Number.isInteger(sampleSize) && sampleSize > 0) {
+                params.sample_size = sampleSize;
+            }
+            
+            const response = await axios.get(
+                `${API_BASE_URL}/api/portfolio/risk-metrics`,
+                { params }
+            );
+            
+            if (!response.data || response.data.error) {
+                console.warn('Portfolio risk metrics data error:', response.data?.error);
+                throw new Error(response.data?.error || 'Failed to fetch portfolio risk metrics');
+            }
+            
+            return response.data;
+        } catch (error) {
+            console.error('Portfolio risk metrics error:', error);
+            throw new Error(error.response?.data?.error || 'Failed to fetch portfolio risk metrics');
+        }
+    },
+    
+    /**
      * Get risk statistics status information
      * Returns information about the last update and available records
      */
@@ -424,18 +461,17 @@ window.api = {
     },
     
     /**
-     * Get status information about risk statistics
-     * Returns info about when risk stats were last updated and record counts
+     * Get metadata options for entity classifications, etc.
      */
-    getRiskStatsStatus: async () => {
+    getMetadataOptions: async () => {
         try {
-            const response = await axios.get(`${API_BASE_URL}/api/risk-stats/status`);
+            const response = await axios.get(`${API_BASE_URL}/api/metadata-options`);
             return response.data;
         } catch (error) {
-            console.error('Error fetching risk stats status:', error);
+            console.error('Error fetching metadata options:', error);
             return {
                 success: false,
-                error: error.message || 'Failed to fetch risk statistics status'
+                error: error.message || 'Failed to fetch metadata options'
             };
         }
     }

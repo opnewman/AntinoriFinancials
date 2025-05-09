@@ -2,7 +2,8 @@
  * Risk Statistics Page Component
  * 
  * Displays risk statistics and provides filtering options by asset class,
- * second level, and other criteria. Includes a manual refresh button.
+ * second level, and other criteria. Includes manual refresh button and
+ * portfolio risk metrics analysis with performance optimizations.
  */
 const React = window.React;
 const { useState, useEffect } = React;
@@ -19,6 +20,18 @@ const RiskStatsPage = () => {
   const [secondLevel, setSecondLevel] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   
+  // Portfolio risk metrics state
+  const [portfolioRiskMetrics, setPortfolioRiskMetrics] = useState(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsError, setMetricsError] = useState(null);
+  const [sampleSize, setSampleSize] = useState(2000); // Default sample size for large portfolios
+  
+  // Entity selection for risk metrics
+  const [reportLevel, setReportLevel] = useState('client');
+  const [levelKey, setLevelKey] = useState('All Clients');
+  const [levelOptions, setLevelOptions] = useState([]);
+  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]); // Today's date
+  
   // Available filter options
   const [secondLevelOptions, setSecondLevelOptions] = useState([]);
   
@@ -26,7 +39,45 @@ const RiskStatsPage = () => {
   useEffect(() => {
     fetchRiskStats();
     fetchRiskStatsStatus();
+    fetchEntityOptions('client');
   }, [assetClass, secondLevel]);
+  
+  // Fetch entity options for given level
+  const fetchEntityOptions = async (level) => {
+    try {
+      const options = await window.api.getEntityOptions(level);
+      setLevelOptions(options.map(opt => ({ value: opt.key, label: opt.display })));
+    } catch (err) {
+      console.error(`Error fetching ${level} options:`, err);
+    }
+  };
+  
+  // Fetch portfolio risk metrics
+  const fetchPortfolioRiskMetrics = async () => {
+    setMetricsLoading(true);
+    setMetricsError(null);
+    
+    try {
+      // For "All Clients" use sampling by default to prevent timeouts
+      const actualSampleSize = (reportLevel === 'client' && levelKey === 'All Clients') 
+        ? Math.max(2000, sampleSize) // Ensure a minimum sample size for All Clients
+        : sampleSize;
+      
+      const metrics = await window.api.getPortfolioRiskMetrics(
+        reportDate,
+        reportLevel,
+        levelKey,
+        actualSampleSize
+      );
+      
+      setPortfolioRiskMetrics(metrics);
+    } catch (err) {
+      console.error('Error fetching portfolio risk metrics:', err);
+      setMetricsError(err.message || 'Failed to fetch portfolio risk metrics');
+    } finally {
+      setMetricsLoading(false);
+    }
+  };
   
   // Fetch risk statistics status
   const fetchRiskStatsStatus = async () => {
@@ -312,6 +363,180 @@ const RiskStatsPage = () => {
           <span className="block sm:inline">{error}</span>
         </div>
       )}
+      
+      {/* Portfolio Risk Metrics Section */}
+      <div className="bg-white shadow rounded-lg p-4 mb-6">
+        <h2 className="text-lg font-semibold mb-3 text-green-800">Portfolio Risk Metrics</h2>
+        <p className="text-sm text-gray-600 mb-4">
+          Analyze risk metrics for a portfolio or client, with performance optimizations for large portfolios.
+        </p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          {/* Entity Level Selection */}
+          <div>
+            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="reportLevel">
+              Entity Level
+            </label>
+            <select
+              id="reportLevel"
+              value={reportLevel}
+              onChange={(e) => {
+                const newLevel = e.target.value;
+                setReportLevel(newLevel);
+                fetchEntityOptions(newLevel);
+              }}
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            >
+              <option value="client">Client</option>
+              <option value="portfolio">Portfolio</option>
+              <option value="account">Account</option>
+            </select>
+          </div>
+          
+          {/* Entity Selection */}
+          <div>
+            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="levelKey">
+              {reportLevel.charAt(0).toUpperCase() + reportLevel.slice(1)}
+            </label>
+            <select
+              id="levelKey"
+              value={levelKey}
+              onChange={(e) => setLevelKey(e.target.value)}
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            >
+              {levelOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+          
+          {/* Report Date */}
+          <div>
+            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="reportDate">
+              Report Date
+            </label>
+            <input
+              id="reportDate"
+              type="date"
+              value={reportDate}
+              onChange={(e) => setReportDate(e.target.value)}
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            />
+          </div>
+          
+          {/* Sample Size */}
+          <div>
+            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="sampleSize">
+              Sample Size 
+              <span className="text-xs text-gray-500 ml-1">(for large portfolios)</span>
+            </label>
+            <div className="flex">
+              <input
+                id="sampleSize"
+                type="number"
+                min="500"
+                max="10000"
+                step="500"
+                value={sampleSize}
+                onChange={(e) => setSampleSize(parseInt(e.target.value))}
+                className="shadow appearance-none border rounded-l w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              />
+              <button
+                onClick={fetchPortfolioRiskMetrics}
+                disabled={metricsLoading}
+                className="bg-green-700 hover:bg-green-800 text-white font-bold py-2 px-4 rounded-r"
+              >
+                {metricsLoading ? (
+                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        {/* Metrics Error Display */}
+        {metricsError && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+            <strong className="font-bold">Error: </strong>
+            <span className="block sm:inline">{metricsError}</span>
+          </div>
+        )}
+        
+        {/* Portfolio Risk Metrics Display */}
+        {portfolioRiskMetrics && (
+          <div className="mt-4">
+            <h3 className="text-md font-semibold mb-2 text-green-700">Results for {portfolioRiskMetrics.entity_name || levelKey}</h3>
+            
+            {/* Display metrics by asset class */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+              {/* Equity Metrics */}
+              <div className="bg-blue-50 p-3 rounded shadow">
+                <h4 className="font-semibold text-blue-800 mb-2">Equity</h4>
+                <div className="text-sm">
+                  <p className="flex justify-between py-1 border-b border-blue-100">
+                    <span>Weight:</span>
+                    <span className="font-medium">{portfolioRiskMetrics.equity?.weight ? (portfolioRiskMetrics.equity.weight * 100).toFixed(2) + '%' : 'N/A'}</span>
+                  </p>
+                  <p className="flex justify-between py-1 border-b border-blue-100">
+                    <span>Beta:</span>
+                    <span className="font-medium">{portfolioRiskMetrics.equity?.beta ? portfolioRiskMetrics.equity.beta.toFixed(2) : 'N/A'}</span>
+                  </p>
+                  <p className="flex justify-between py-1 border-b border-blue-100">
+                    <span>Volatility:</span>
+                    <span className="font-medium">{portfolioRiskMetrics.equity?.volatility ? (portfolioRiskMetrics.equity.volatility * 100).toFixed(2) + '%' : 'N/A'}</span>
+                  </p>
+                </div>
+              </div>
+              
+              {/* Fixed Income Metrics */}
+              <div className="bg-red-50 p-3 rounded shadow">
+                <h4 className="font-semibold text-red-800 mb-2">Fixed Income</h4>
+                <div className="text-sm">
+                  <p className="flex justify-between py-1 border-b border-red-100">
+                    <span>Weight:</span>
+                    <span className="font-medium">{portfolioRiskMetrics.fixed_income?.weight ? (portfolioRiskMetrics.fixed_income.weight * 100).toFixed(2) + '%' : 'N/A'}</span>
+                  </p>
+                  <p className="flex justify-between py-1 border-b border-red-100">
+                    <span>Duration:</span>
+                    <span className="font-medium">{portfolioRiskMetrics.fixed_income?.duration ? portfolioRiskMetrics.fixed_income.duration.toFixed(2) + ' years' : 'N/A'}</span>
+                  </p>
+                </div>
+              </div>
+              
+              {/* Alternatives Metrics */}
+              <div className="bg-orange-50 p-3 rounded shadow">
+                <h4 className="font-semibold text-orange-800 mb-2">Alternatives</h4>
+                <div className="text-sm">
+                  <p className="flex justify-between py-1 border-b border-orange-100">
+                    <span>Weight:</span>
+                    <span className="font-medium">{portfolioRiskMetrics.alternatives?.weight ? (portfolioRiskMetrics.alternatives.weight * 100).toFixed(2) + '%' : 'N/A'}</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Performance Info */}
+            {portfolioRiskMetrics.performance_notes && (
+              <div className="mt-4 bg-gray-50 p-3 rounded shadow">
+                <h4 className="font-semibold text-gray-700 mb-1">Performance Notes</h4>
+                <p className="text-sm text-gray-600">{portfolioRiskMetrics.performance_notes}</p>
+                {portfolioRiskMetrics.sample_size && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Calculated using a sample of {portfolioRiskMetrics.sample_size} positions out of {portfolioRiskMetrics.total_positions} total.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       
       {/* Risk Statistics Table */}
       <div className="bg-white shadow rounded-lg overflow-hidden">
