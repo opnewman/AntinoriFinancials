@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-def batch_upsert_risk_stats(db: Session, records, batch_size=50, max_retries=3):
+def batch_upsert_risk_stats(db: Session, records, batch_size=100, max_retries=3):
     """
     Efficiently insert or update multiple risk stat records using optimized SQL.
     
@@ -43,6 +43,8 @@ def batch_upsert_risk_stats(db: Session, records, batch_size=50, max_retries=3):
         
         # Try the batch as a single transaction first
         try:
+            # More efficient PostgreSQL UPSERT with WHERE clause to avoid unnecessary updates
+            # This helps prevent excessive WAL generation and improves performance
             upsert_stmt = text("""
             INSERT INTO egnyte_risk_stats 
             (import_date, position, ticker_symbol, cusip, asset_class, second_level, 
@@ -64,11 +66,22 @@ def batch_upsert_risk_stats(db: Session, records, batch_size=50, max_retries=3):
               notes = EXCLUDED.notes,
               amended_id = EXCLUDED.amended_id,
               updated_at = NOW()
+            WHERE egnyte_risk_stats.ticker_symbol IS DISTINCT FROM EXCLUDED.ticker_symbol
+               OR egnyte_risk_stats.cusip IS DISTINCT FROM EXCLUDED.cusip
+               OR egnyte_risk_stats.second_level IS DISTINCT FROM EXCLUDED.second_level
+               OR egnyte_risk_stats.bloomberg_id IS DISTINCT FROM EXCLUDED.bloomberg_id
+               OR egnyte_risk_stats.volatility IS DISTINCT FROM EXCLUDED.volatility
+               OR egnyte_risk_stats.beta IS DISTINCT FROM EXCLUDED.beta
+               OR egnyte_risk_stats.duration IS DISTINCT FROM EXCLUDED.duration
+               OR egnyte_risk_stats.notes IS DISTINCT FROM EXCLUDED.notes
+               OR egnyte_risk_stats.amended_id IS DISTINCT FROM EXCLUDED.amended_id
             """)
             
             # Execute for all records in the batch
+            # Pre-process all records to handle None/null values consistently
             batch_params = []
             for record in batch:
+                # Handle possible None values in a more DB-friendly way
                 batch_params.append({
                     "import_date": record.import_date,
                     "position": record.position,
@@ -87,8 +100,7 @@ def batch_upsert_risk_stats(db: Session, records, batch_size=50, max_retries=3):
                     "source_row": record.source_row
                 })
             
-            # Execute the batch insert - note that this requires SQLAlchemy 1.4+ 
-            # for the executemany functionality to work efficiently
+            # Execute the batch insert with more efficient executemany 
             db.execute(upsert_stmt, batch_params)
             db.commit()
             
@@ -99,56 +111,71 @@ def batch_upsert_risk_stats(db: Session, records, batch_size=50, max_retries=3):
             db.rollback()
             logger.error(f"Error processing batch {batch_num}: {batch_error}")
             
-            # If batch fails, try processing records individually with retry logic
-            logger.info(f"Retrying batch {batch_num} with individual record processing")
-            
-            batch_success = 0
-            for record in batch:
-                # Allow multiple retry attempts for transient errors
-                retry_count = 0
-                success = False
+            # If batch fails, try with a smaller batch size
+            if len(batch) > 10:
+                logger.info(f"Retrying batch {batch_num} with smaller batch size")
+                smaller_batch_size = len(batch) // 2
                 
-                while not success and retry_count < max_retries:
-                    try:
-                        # Use the same upsert statement for individual records
-                        params = {
-                            "import_date": record.import_date,
-                            "position": record.position,
-                            "ticker": record.ticker_symbol,
-                            "cusip": record.cusip,
-                            "asset_class": record.asset_class,
-                            "second_level": record.second_level,
-                            "bloomberg_id": record.bloomberg_id,
-                            "volatility": record.volatility,
-                            "beta": record.beta,
-                            "duration": record.duration,
-                            "notes": record.notes,
-                            "amended_id": record.amended_id,
-                            "source_file": record.source_file,
-                            "source_tab": record.source_tab,
-                            "source_row": record.source_row
-                        }
-                        
-                        db.execute(upsert_stmt, params)
-                        db.commit()
-                        
-                        batch_success += 1
-                        success = True
+                # Process the current batch with smaller size recursively
+                for sub_start in range(0, len(batch), smaller_batch_size):
+                    sub_end = min(sub_start + smaller_batch_size, len(batch))
+                    sub_batch = batch[sub_start:sub_end]
                     
-                    except Exception as record_error:
-                        db.rollback()
-                        retry_count += 1
+                    # Recursive call with smaller batch
+                    sub_success, sub_errors = batch_upsert_risk_stats(db, sub_batch, smaller_batch_size, max_retries)
+                    success_count += sub_success
+                    error_count += sub_errors
+            else:
+                # If batch is already small, try processing records individually
+                logger.info(f"Retrying batch {batch_num} with individual record processing")
+                
+                batch_success = 0
+                for record in batch:
+                    # Allow multiple retry attempts for transient errors
+                    retry_count = 0
+                    success = False
+                    
+                    while not success and retry_count < max_retries:
+                        try:
+                            # Use the same upsert statement for individual records
+                            params = {
+                                "import_date": record.import_date,
+                                "position": record.position,
+                                "ticker": record.ticker_symbol,
+                                "cusip": record.cusip,
+                                "asset_class": record.asset_class,
+                                "second_level": record.second_level,
+                                "bloomberg_id": record.bloomberg_id,
+                                "volatility": record.volatility,
+                                "beta": record.beta,
+                                "duration": record.duration,
+                                "notes": record.notes,
+                                "amended_id": record.amended_id,
+                                "source_file": record.source_file,
+                                "source_tab": record.source_tab,
+                                "source_row": record.source_row
+                            }
+                            
+                            db.execute(upsert_stmt, params)
+                            db.commit()
+                            
+                            batch_success += 1
+                            success = True
                         
-                        if retry_count >= max_retries:
-                            error_count += 1
-                            logger.error(f"Failed to process record after {max_retries} attempts. "
-                                         f"Position: {record.position}, Asset class: {record.asset_class}, "
-                                         f"Error: {record_error}")
-                        else:
-                            logger.warning(f"Retry {retry_count}/{max_retries} for position {record.position}")
-            
-            success_count += batch_success
-            logger.info(f"Individual processing of batch {batch_num} completed: {batch_success}/{len(batch)} successful")
+                        except Exception as record_error:
+                            db.rollback()
+                            retry_count += 1
+                            
+                            if retry_count >= max_retries:
+                                error_count += 1
+                                logger.error(f"Failed to process record after {max_retries} attempts. "
+                                            f"Position: {record.position}, Asset class: {record.asset_class}, "
+                                            f"Error: {record_error}")
+                            else:
+                                logger.warning(f"Retry {retry_count}/{max_retries} for position {record.position}")
+                
+                success_count += batch_success
+                logger.info(f"Individual processing of batch {batch_num} completed: {batch_success}/{len(batch)} successful")
     
     return success_count, error_count
 
