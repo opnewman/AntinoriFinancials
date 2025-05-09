@@ -314,4 +314,5 @@ const RiskStatsJobManager = () => {
   );
 };
 
-export default RiskStatsJobManager;
+// Make component available globally
+window.RiskStatsJobManager = RiskStatsJobManager;

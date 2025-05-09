@@ -301,5 +301,5 @@ class OwnershipTreePage extends React.Component {
     }
 }
 
-// Export the component
-export default OwnershipTreePage;
+// Make component available globally
+window.OwnershipTreePage = OwnershipTreePage;

@@ -327,4 +327,5 @@ const RiskStatsPage = () => {
   );
 };
 
-export default RiskStatsPage;
+// Make component available globally
+window.RiskStatsPage = RiskStatsPage;
