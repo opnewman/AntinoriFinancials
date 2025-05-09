@@ -356,9 +356,9 @@ def get_risk_stats():
                         "asset_class": stat.asset_class,
                         "second_level": stat.second_level,
                         "bloomberg_id": stat.bloomberg_id,
-                        "volatility": float(stat.volatility) if stat.volatility is not None else None,
-                        "beta": float(stat.beta) if stat.beta is not None else None,
-                        "duration": float(stat.duration) if stat.duration is not None else None,
+                        "volatility": float(str(stat.volatility)) if stat.volatility is not None else None,
+                        "beta": float(str(stat.beta)) if stat.beta is not None else None,
+                        "duration": float(str(stat.duration)) if stat.duration is not None else None,
                         "notes": stat.notes,
                         "amended_id": stat.amended_id
                     })

@@ -6,6 +6,7 @@ These utilities help avoid unique constraint violations while processing large d
 import logging
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from decimal import Decimal, InvalidOperation  # Import Decimal for proper numeric handling
 
 logger = logging.getLogger(__name__)
 
@@ -81,26 +82,86 @@ def batch_upsert_risk_stats(db: Session, records, batch_size=100, max_retries=3)
             # Pre-process all records to handle None/null values consistently
             batch_params = []
             for record in batch:
-                # Handle possible None values in a more DB-friendly way
-                # Convert numeric values to proper Decimal type and handle None safely
-                # This fixes issues with database type compatibility
-                batch_params.append({
-                    "import_date": record.import_date,
-                    "position": record.position,
-                    "ticker": record.ticker_symbol,
-                    "cusip": record.cusip,
-                    "asset_class": record.asset_class,
-                    "second_level": record.second_level,
-                    "bloomberg_id": record.bloomberg_id,
-                    "volatility": float(record.volatility) if record.volatility is not None else None,
-                    "beta": float(record.beta) if record.beta is not None else None,
-                    "duration": float(record.duration) if record.duration is not None else None,
-                    "notes": record.notes,
-                    "amended_id": record.amended_id,
-                    "source_file": record.source_file,
-                    "source_tab": record.source_tab,
-                    "source_row": record.source_row
-                })
+                # Handle possible None values and encoding issues for all fields
+                # Convert numeric values to proper Decimal type for precision
+                # Handle string fields carefully to avoid encoding issues
+                
+                try:
+                    # Clean and validate string fields
+                    position = str(record.position).strip() if record.position else ""
+                    ticker = str(record.ticker_symbol).strip() if record.ticker_symbol else None
+                    cusip = str(record.cusip).strip() if record.cusip else None
+                    asset_class = str(record.asset_class).strip() if record.asset_class else ""
+                    second_level = str(record.second_level).strip() if record.second_level else None
+                    bloomberg_id = str(record.bloomberg_id).strip() if record.bloomberg_id else None
+                    notes = str(record.notes).strip() if record.notes else None
+                    amended_id = str(record.amended_id).strip() if record.amended_id else None
+                    source_file = str(record.source_file).strip() if record.source_file else None
+                    source_tab = str(record.source_tab).strip() if record.source_tab else None
+                    source_row = int(record.source_row) if record.source_row is not None else None
+                    
+                    # Handle numeric fields safely with Decimal
+                    volatility = None
+                    beta = None
+                    duration = None
+                    
+                    if record.volatility is not None:
+                        try:
+                            volatility = Decimal(str(record.volatility))
+                        except (ValueError, TypeError, InvalidOperation):
+                            logger.warning(f"Invalid volatility value for {position}: {record.volatility}")
+                    
+                    if record.beta is not None:
+                        try:
+                            beta = Decimal(str(record.beta))
+                        except (ValueError, TypeError, InvalidOperation):
+                            logger.warning(f"Invalid beta value for {position}: {record.beta}")
+                    
+                    if record.duration is not None:
+                        try:
+                            duration = Decimal(str(record.duration))
+                        except (ValueError, TypeError, InvalidOperation):
+                            logger.warning(f"Invalid duration value for {position}: {record.duration}")
+                    
+                    # Add record with clean values
+                    batch_params.append({
+                        "import_date": record.import_date,
+                        "position": position,
+                        "ticker": ticker,
+                        "cusip": cusip,
+                        "asset_class": asset_class,
+                        "second_level": second_level,
+                        "bloomberg_id": bloomberg_id,
+                        "volatility": volatility,
+                        "beta": beta,
+                        "duration": duration,
+                        "notes": notes,
+                        "amended_id": amended_id,
+                        "source_file": source_file,
+                        "source_tab": source_tab,
+                        "source_row": source_row
+                    })
+                except Exception as e:
+                    # Log the error but continue with other records
+                    logger.error(f"Error preparing record {record.position}: {str(e)}")
+                    # Add a safe version of the record
+                    batch_params.append({
+                        "import_date": record.import_date,
+                        "position": str(record.position) if record.position else "",
+                        "ticker": None,
+                        "cusip": None,
+                        "asset_class": str(record.asset_class) if record.asset_class else "",
+                        "second_level": None,
+                        "bloomberg_id": None,
+                        "volatility": None,
+                        "beta": None,
+                        "duration": None,
+                        "notes": None,
+                        "amended_id": None,
+                        "source_file": None,
+                        "source_tab": None,
+                        "source_row": None
+                    })
             
             # Execute the batch insert with more efficient executemany 
             db.execute(upsert_stmt, batch_params)
@@ -140,24 +201,81 @@ def batch_upsert_risk_stats(db: Session, records, batch_size=100, max_retries=3)
                     while not success and retry_count < max_retries:
                         try:
                             # Use the same upsert statement for individual records
-                            # Apply the same numeric handling for individual records
-                            params = {
-                                "import_date": record.import_date,
-                                "position": record.position,
-                                "ticker": record.ticker_symbol,
-                                "cusip": record.cusip,
-                                "asset_class": record.asset_class,
-                                "second_level": record.second_level,
-                                "bloomberg_id": record.bloomberg_id,
-                                "volatility": float(record.volatility) if record.volatility is not None else None,
-                                "beta": float(record.beta) if record.beta is not None else None,
-                                "duration": float(record.duration) if record.duration is not None else None,
-                                "notes": record.notes,
-                                "amended_id": record.amended_id,
-                                "source_file": record.source_file,
-                                "source_tab": record.source_tab,
-                                "source_row": record.source_row
-                            }
+                            # Apply the same numeric and string handling for individual records
+                            try:
+                                # Clean and validate string fields
+                                position = str(record.position).strip() if record.position else ""
+                                ticker = str(record.ticker_symbol).strip() if record.ticker_symbol else None
+                                cusip = str(record.cusip).strip() if record.cusip else None
+                                asset_class = str(record.asset_class).strip() if record.asset_class else ""
+                                second_level = str(record.second_level).strip() if record.second_level else None
+                                bloomberg_id = str(record.bloomberg_id).strip() if record.bloomberg_id else None
+                                notes = str(record.notes).strip() if record.notes else None
+                                amended_id = str(record.amended_id).strip() if record.amended_id else None
+                                source_file = str(record.source_file).strip() if record.source_file else None
+                                source_tab = str(record.source_tab).strip() if record.source_tab else None
+                                source_row = int(record.source_row) if record.source_row is not None else None
+                                
+                                # Handle numeric fields safely with Decimal
+                                volatility = None
+                                beta = None
+                                duration = None
+                                
+                                if record.volatility is not None:
+                                    try:
+                                        volatility = Decimal(str(record.volatility))
+                                    except (ValueError, TypeError, InvalidOperation):
+                                        logger.warning(f"Invalid volatility value for individual record {position}: {record.volatility}")
+                                
+                                if record.beta is not None:
+                                    try:
+                                        beta = Decimal(str(record.beta))
+                                    except (ValueError, TypeError, InvalidOperation):
+                                        logger.warning(f"Invalid beta value for individual record {position}: {record.beta}")
+                                
+                                if record.duration is not None:
+                                    try:
+                                        duration = Decimal(str(record.duration))
+                                    except (ValueError, TypeError, InvalidOperation):
+                                        logger.warning(f"Invalid duration value for individual record {position}: {record.duration}")
+                                
+                                params = {
+                                    "import_date": record.import_date,
+                                    "position": position,
+                                    "ticker": ticker,
+                                    "cusip": cusip,
+                                    "asset_class": asset_class,
+                                    "second_level": second_level,
+                                    "bloomberg_id": bloomberg_id,
+                                    "volatility": volatility,
+                                    "beta": beta,
+                                    "duration": duration,
+                                    "notes": notes,
+                                    "amended_id": amended_id,
+                                    "source_file": source_file,
+                                    "source_tab": source_tab,
+                                    "source_row": source_row
+                                }
+                            except Exception as prep_error:
+                                logger.error(f"Error preparing individual record {record.position}: {prep_error}")
+                                # Fallback to a safe version of params
+                                params = {
+                                    "import_date": record.import_date,
+                                    "position": str(record.position) if record.position else "",
+                                    "ticker": None,
+                                    "cusip": None,
+                                    "asset_class": str(record.asset_class) if record.asset_class else "",
+                                    "second_level": None,
+                                    "bloomberg_id": None,
+                                    "volatility": None,
+                                    "beta": None,
+                                    "duration": None,
+                                    "notes": None,
+                                    "amended_id": None,
+                                    "source_file": None,
+                                    "source_tab": None,
+                                    "source_row": None
+                                }
                             
                             # Re-defining the statement here to avoid "upsert_stmt is possibly unbound" error
                             individual_upsert_stmt = text("""
