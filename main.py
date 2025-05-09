@@ -80,13 +80,35 @@ def update_risk_stats():
     This endpoint fetches the risk statistics file from Egnyte and processes it.
     It requires an Egnyte API token to be set in the environment variables.
     
+    Query parameters:
+    - debug: If set to 'true', enables extended debugging output
+    - use_test_file: If set to 'true', attempts to use a local test file if available
+    
     Returns:
         JSON with the status and summary of the update
     """
     try:
+        # Check query parameters
+        debug_mode = request.args.get('debug', 'false').lower() == 'true'
+        use_test_file = request.args.get('use_test_file', 'false').lower() == 'true'
+        
+        # Log the request mode
+        if debug_mode:
+            logger.info("Running risk stats update in DEBUG mode with extended logging")
+        if use_test_file:
+            logger.info("Attempting to use local test file if available")
+        
         # Check for required environment variables
         egnyte_token = os.environ.get('EGNYTE_ACCESS_TOKEN')
-        if not egnyte_token:
+        egnyte_domain = os.environ.get('EGNYTE_DOMAIN')
+        egnyte_path = os.environ.get('EGNYTE_RISK_STATS_PATH')
+        
+        # Log configuration details in debug mode
+        if debug_mode:
+            logger.info(f"Egnyte configuration: Domain={egnyte_domain or 'default'}, Path={egnyte_path or 'default'}")
+            logger.info(f"Token available: {'Yes' if egnyte_token else 'No'}")
+        
+        if not egnyte_token and not use_test_file:
             logger.error("EGNYTE_ACCESS_TOKEN not found in environment variables")
             return jsonify({
                 "success": False,
@@ -99,17 +121,66 @@ def update_risk_stats():
         
         logger.info("Starting risk statistics update process")
         with get_db_connection() as db:
-            # Get the risk stats from Egnyte and process them
-            result = fetch_and_process_risk_stats(db)
+            # Check database state before processing
+            if debug_mode:
+                try:
+                    # Count current records in the database
+                    from src.models.models import EgnyteRiskStat
+                    stats_count = db.query(EgnyteRiskStat).count()
+                    
+                    # Count by asset class
+                    equity_count = db.query(EgnyteRiskStat).filter_by(asset_class='Equity').count()
+                    fi_count = db.query(EgnyteRiskStat).filter_by(asset_class='Fixed Income').count()
+                    alt_count = db.query(EgnyteRiskStat).filter_by(asset_class='Alternatives').count()
+                    
+                    logger.info(f"Current EgnyteRiskStat record counts - Total: {stats_count}, "
+                                f"Equity: {equity_count}, Fixed Income: {fi_count}, Alternatives: {alt_count}")
+                except Exception as db_error:
+                    logger.warning(f"Could not retrieve current database stats: {db_error}")
+            
+            # Get the risk stats from Egnyte and process them with debug options if enabled
+            result = fetch_and_process_risk_stats(db, use_test_file=use_test_file)
             
             # Check if operation was successful
             if result.get("success", False):
-                logger.info(f"Risk statistics update completed successfully: {result}")
+                logger.info(f"Risk statistics update completed successfully")
+                
+                # Add detailed stats in the response for debugging
+                if debug_mode:
+                    try:
+                        # Count records after processing
+                        from src.models.models import EgnyteRiskStat
+                        stats_count = db.query(EgnyteRiskStat).count()
+                        
+                        # Count by asset class
+                        equity_count = db.query(EgnyteRiskStat).filter_by(asset_class='Equity').count()
+                        fi_count = db.query(EgnyteRiskStat).filter_by(asset_class='Fixed Income').count()
+                        alt_count = db.query(EgnyteRiskStat).filter_by(asset_class='Alternatives').count()
+                        
+                        # Add detailed counts to result
+                        result["detailed_counts"] = {
+                            "total": stats_count,
+                            "equity": equity_count,
+                            "fixed_income": fi_count,
+                            "alternatives": alt_count
+                        }
+                        
+                        logger.info(f"Updated EgnyteRiskStat record counts - Total: {stats_count}, "
+                                    f"Equity: {equity_count}, Fixed Income: {fi_count}, Alternatives: {alt_count}")
+                    except Exception as count_error:
+                        logger.warning(f"Could not retrieve updated database stats: {count_error}")
+                
                 return jsonify(result)
             else:
-                # Return the error from the service but with a 400 status
+                # Return the error from the service
                 logger.error(f"Risk statistics update failed: {result}")
-                return jsonify(result), 400
+                
+                # If warnings exist, use a 200 status but include warnings
+                if "warnings" in result:
+                    return jsonify(result), 200
+                else:
+                    # Otherwise return a 400 status for errors
+                    return jsonify(result), 400
             
     except Exception as e:
         error_details = str(e)
@@ -126,6 +197,18 @@ def update_risk_stats():
             return jsonify({
                 "success": False,
                 "error": "Egnyte API token is missing or invalid. Please check your configuration.",
+                "debug_info": error_details
+            }), 500
+        elif "connection" in error_details.lower() or "timeout" in error_details.lower():
+            return jsonify({
+                "success": False,
+                "error": "Connection error when contacting Egnyte. Please check network connectivity.",
+                "debug_info": error_details
+            }), 500
+        elif "excel" in error_details.lower() or "file" in error_details.lower():
+            return jsonify({
+                "success": False, 
+                "error": "Error processing Excel file. File may be corrupted or have an invalid format.",
                 "debug_info": error_details
             }), 500
         else:

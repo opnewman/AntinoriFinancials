@@ -26,7 +26,7 @@ def get_egnyte_token():
     return token
 
 
-def download_risk_stats_file(token=None, domain=None, file_path=None):
+def download_risk_stats_file(token=None, domain=None, file_path=None, use_test_file=False):
     """
     Download the Excel file containing risk statistics from Egnyte.
     
@@ -34,34 +34,80 @@ def download_risk_stats_file(token=None, domain=None, file_path=None):
         token (str, optional): Egnyte API token. If not provided, will be retrieved from env var.
         domain (str, optional): Egnyte domain. Defaults to "procapitalpartners.egnyte.com".
         file_path (str, optional): Path to the file in Egnyte. Defaults to shared risk stats file.
+        use_test_file (bool, optional): If True, use a local test file when available.
         
     Returns:
         str: Path to the downloaded temporary file
     """
+    # Check for any existing downloaded files first to help with debuging  
+    local_test_file = os.environ.get('LOCAL_RISK_STATS_FILE')
+    if use_test_file and local_test_file and os.path.exists(local_test_file):
+        logger.info(f"Using local test file: {local_test_file}")
+        # Create a copy to avoid modifying the original
+        temp_file = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+        with open(local_test_file, 'rb') as f:
+            temp_file.write(f.read())
+        temp_file.close()
+        return temp_file.name
+    
     # Use provided parameters or defaults
     token = token or get_egnyte_token()
-    domain = domain or "procapitalpartners.egnyte.com"
-    file_path = file_path or "/Shared/Internal Documents/Proficio Capital Partners/Asset Allocation/Portfolio Management/New Portfolio Sheets/Security Risk Stats.xlsx"
+    domain = domain or os.environ.get('EGNYTE_DOMAIN', "procapitalpartners.egnyte.com")
+    egnyte_path = os.environ.get('EGNYTE_RISK_STATS_PATH')
+    file_path = file_path or egnyte_path or "/Shared/Internal Documents/Proficio Capital Partners/Asset Allocation/Portfolio Management/New Portfolio Sheets/Security Risk Stats.xlsx"
     
     logger.info(f"Downloading risk statistics file from Egnyte: {file_path}")
+    logger.info(f"Using domain: {domain}")
     
     url = f"https://{domain}/pubapi/v1/fs-content{file_path}"
     headers = {"Authorization": f"Bearer {token}"}
     
-    response = requests.get(url, headers=headers)
-    
-    if response.status_code != 200:
-        logger.error(f"Failed to download file from Egnyte: HTTP {response.status_code}")
-        logger.error(f"Response: {response.text}")
-        raise Exception(f"Failed to download file from Egnyte: HTTP {response.status_code}")
-    
-    # Create a temporary file to store the downloaded file
-    temp_file = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
-    temp_file.write(response.content)
-    temp_file.close()
-    
-    logger.info(f"Risk statistics file downloaded to {temp_file.name}")
-    return temp_file.name
+    try:
+        logger.info(f"Sending request to: {url}")
+        response = requests.get(url, headers=headers, timeout=30)  # Add timeout
+        
+        if response.status_code != 200:
+            logger.error(f"Failed to download file from Egnyte: HTTP {response.status_code}")
+            logger.error(f"Response: {response.text}")
+            
+            # Try fallback to sample data if available and we're in test/debug mode
+            if use_test_file and os.path.exists('data/sample_risk_stats.xlsx'):
+                logger.warning("Using sample risk stats file for development/testing")
+                return 'data/sample_risk_stats.xlsx'
+                
+            raise Exception(f"Failed to download file from Egnyte: HTTP {response.status_code}. Response: {response.text}")
+        
+        # Check if we actually received an Excel file
+        content_type = response.headers.get('Content-Type', '')
+        if 'excel' not in content_type.lower() and 'spreadsheet' not in content_type.lower() and '.xlsx' not in content_type.lower():
+            logger.warning(f"Response may not be an Excel file. Content-Type: {content_type}")
+            # Still try to process it, but log a warning
+        
+        # Create a temporary file to store the downloaded file
+        temp_file = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+        temp_file.write(response.content)
+        temp_file.close()
+        
+        # Verify the file exists and has content
+        if os.path.getsize(temp_file.name) == 0:
+            logger.error("Downloaded file is empty (0 bytes)")
+            raise Exception("Downloaded file is empty. Check Egnyte permissions and file existence.")
+            
+        logger.info(f"Risk statistics file downloaded to {temp_file.name} ({os.path.getsize(temp_file.name)} bytes)")
+        return temp_file.name
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request error when downloading from Egnyte: {str(e)}")
+        
+        # For development/testing - use a sample file if available
+        if use_test_file and os.path.exists('data/sample_risk_stats.xlsx'):
+            logger.warning("Using sample risk stats file for development/testing due to connection error")
+            return 'data/sample_risk_stats.xlsx'
+        
+        raise Exception(f"Connection error when downloading from Egnyte: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error downloading risk stats file: {str(e)}")
+        raise
 
 
 def process_excel_file(file_path, db):
@@ -1057,7 +1103,7 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db):
     return records_succeeded
 
 
-def fetch_and_process_risk_stats(db: Session):
+def fetch_and_process_risk_stats(db: Session, use_test_file=False):
     """
     Main function to fetch and process risk statistics from Egnyte.
     
