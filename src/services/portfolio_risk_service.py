@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 def convert_position_value_to_decimal(position_value: str, position_name: str = "unknown") -> Decimal:
     """
-    Convert a position value string to Decimal, handling encrypted values.
+    Convert a position value string to Decimal, handling encrypted values 
+    and various invalid formats.
     
     Args:
         position_value: The position value as a string (may be encrypted or have formatting)
@@ -30,6 +31,22 @@ def convert_position_value_to_decimal(position_value: str, position_name: str = 
         Decimal value of the position
     """
     if not position_value:
+        logger.debug(f"Empty position value for {position_name}. Using 0.")
+        return Decimal('0.0')
+    
+    # Handle non-string inputs (safety check)
+    if not isinstance(position_value, str):
+        try:
+            # Try direct conversion for numeric types
+            return Decimal(str(position_value))
+        except (ValueError, TypeError, InvalidOperation) as e:
+            logger.warning(f"Non-string position value '{position_value}' for {position_name} couldn't be converted. Error: {str(e)}. Using 0.")
+            return Decimal('0.0')
+    
+    # Special value handling
+    special_values = ['N/A', '#N/A', 'None', 'NULL', '#N/A Invalid Security']
+    if any(val.lower() in position_value.lower() for val in special_values):
+        logger.debug(f"Special value '{position_value}' for {position_name}. Using 0.")
         return Decimal('0.0')
         
     try:
@@ -40,12 +57,22 @@ def convert_position_value_to_decimal(position_value: str, position_name: str = 
             # Decrypt the value and convert to Decimal
             decrypted_value = encryption_service.decrypt(encrypted_part)
             if decrypted_value:
-                return Decimal(decrypted_value.replace(',', '').replace('$', ''))
+                # Remove any currency symbols, commas, parentheses (negative values), and whitespace
+                cleaned_value = decrypted_value.replace(',', '').replace('$', '').replace('(', '-').replace(')', '').strip()
+                return Decimal(cleaned_value)
             else:
+                logger.warning(f"Decryption failed for position {position_name}. Using 0.")
                 return Decimal('0.0')
         else:
             # Regular non-encrypted value
-            return Decimal(position_value.replace(',', ''))
+            # Remove any currency symbols, commas, parentheses (negative values), and whitespace
+            cleaned_value = position_value.replace(',', '').replace('$', '').replace('(', '-').replace(')', '').strip()
+            
+            # Handle percentage values (convert to decimal)
+            if cleaned_value.endswith('%'):
+                return Decimal(cleaned_value.rstrip('%')) / 100
+                
+            return Decimal(cleaned_value)
     except (ValueError, TypeError, InvalidOperation) as e:
         logger.warning(f"Could not convert value '{position_value}' to Decimal for position {position_name}. Error: {str(e)}. Using 0.")
         return Decimal('0.0')
@@ -256,13 +283,26 @@ def process_equity_risk(
             
             # Beta calculation
             if risk_stat.beta is not None:
-                weighted_beta = position_weight * risk_stat.beta
-                risk_metrics["equity"]["beta"]["weighted_sum"] += Decimal(str(weighted_beta))
+                try:
+                    # Safe conversion to ensure we have a valid Decimal
+                    beta_value = Decimal(str(risk_stat.beta))
+                    weighted_beta = position_weight * beta_value
+                    risk_metrics["equity"]["beta"]["weighted_sum"] += weighted_beta
+                except (ValueError, TypeError, InvalidOperation) as e:
+                    logger.warning(f"Invalid beta value for {position.position}: {risk_stat.beta}. Error: {str(e)}")
             
             # Volatility calculation
             if risk_stat.volatility is not None:
-                weighted_vol = position_weight * risk_stat.volatility
-                risk_metrics["equity"]["volatility"]["weighted_sum"] += Decimal(str(weighted_vol))
+                try:
+                    # Safe conversion to ensure we have a valid Decimal
+                    volatility_value = Decimal(str(risk_stat.volatility))
+                    weighted_vol = position_weight * volatility_value
+                    risk_metrics["equity"]["volatility"]["weighted_sum"] += weighted_vol
+                except (ValueError, TypeError, InvalidOperation) as e:
+                    logger.warning(f"Invalid volatility value for {position.position}: {risk_stat.volatility}. Error: {str(e)}")
+            
+            # Track the total matched value for coverage calculation
+            matched_value += adjusted_value_decimal
             
             matched_value += adjusted_value_decimal
     
@@ -304,8 +344,13 @@ def process_fixed_income_risk(
             
             # Duration calculation
             if risk_stat.duration is not None:
-                weighted_duration = position_weight * risk_stat.duration
-                risk_metrics["fixed_income"]["duration"]["weighted_sum"] += Decimal(str(weighted_duration))
+                try:
+                    # Safe conversion to ensure we have a valid Decimal
+                    duration_value = Decimal(str(risk_stat.duration))
+                    weighted_duration = position_weight * duration_value
+                    risk_metrics["fixed_income"]["duration"]["weighted_sum"] += weighted_duration
+                except (ValueError, TypeError, InvalidOperation) as e:
+                    logger.warning(f"Invalid duration value for {position.position}: {risk_stat.duration}. Error: {str(e)}")
             
             matched_value += adjusted_value_decimal
     
@@ -354,8 +399,13 @@ def process_hard_currency_risk(
             
             # Beta calculation
             if risk_stat.beta is not None:
-                weighted_beta = position_weight * risk_stat.beta
-                risk_metrics["hard_currency"]["beta"]["weighted_sum"] += Decimal(str(weighted_beta))
+                try:
+                    # Safe conversion to ensure we have a valid Decimal
+                    beta_value = Decimal(str(risk_stat.beta))
+                    weighted_beta = position_weight * beta_value
+                    risk_metrics["hard_currency"]["beta"]["weighted_sum"] += weighted_beta
+                except (ValueError, TypeError, InvalidOperation) as e:
+                    logger.warning(f"Invalid beta value for hard currency {position.position}: {risk_stat.beta}. Error: {str(e)}")
             
             matched_value += adjusted_value_decimal
     
@@ -397,8 +447,13 @@ def process_alternatives_risk(
             
             # Beta calculation
             if risk_stat.beta is not None:
-                weighted_beta = position_weight * risk_stat.beta
-                risk_metrics["alternatives"]["beta"]["weighted_sum"] += Decimal(str(weighted_beta))
+                try:
+                    # Safe conversion to ensure we have a valid Decimal
+                    beta_value = Decimal(str(risk_stat.beta))
+                    weighted_beta = position_weight * beta_value
+                    risk_metrics["alternatives"]["beta"]["weighted_sum"] += weighted_beta
+                except (ValueError, TypeError, InvalidOperation) as e:
+                    logger.warning(f"Invalid beta value for alternative {position.position}: {risk_stat.beta}. Error: {str(e)}")
             
             matched_value += adjusted_value_decimal
     
