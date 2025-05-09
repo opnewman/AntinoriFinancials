@@ -4,9 +4,56 @@ Database models for the nori Financial Portfolio Reporting System.
 
 import sqlalchemy as sa
 from sqlalchemy.orm import relationship
-from datetime import date
+from datetime import date, datetime
+import enum
 
 from src.database import Base
+
+
+class JobStatus(enum.Enum):
+    """Job status enum for background tasks."""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELED = "canceled"
+
+
+class RiskStatsJob(Base):
+    """
+    Tracks risk statistics processing jobs for async operations.
+    Used to monitor the status of background jobs and provide feedback to the user.
+    """
+    __tablename__ = 'risk_stats_jobs'
+    
+    id = sa.Column(sa.Integer, primary_key=True)
+    status = sa.Column(sa.String, default=JobStatus.PENDING.value, nullable=False, index=True)
+    created_at = sa.Column(sa.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = sa.Column(sa.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    completed_at = sa.Column(sa.DateTime, nullable=True)
+    
+    # Job parameters
+    use_test_file = sa.Column(sa.Boolean, default=False)
+    debug_mode = sa.Column(sa.Boolean, default=False)
+    batch_size = sa.Column(sa.Integer, default=200)
+    max_retries = sa.Column(sa.Integer, default=3)
+    
+    # Results
+    total_records = sa.Column(sa.Integer, default=0)
+    equity_records = sa.Column(sa.Integer, default=0)
+    fixed_income_records = sa.Column(sa.Integer, default=0)
+    alternatives_records = sa.Column(sa.Integer, default=0)
+    
+    # Error information
+    error_message = sa.Column(sa.Text)
+    traceback = sa.Column(sa.Text)
+    
+    # Performance metrics
+    duration_seconds = sa.Column(sa.Float)
+    memory_usage_mb = sa.Column(sa.Float)
+    
+    # Result cache key (used for faster client lookups)
+    cache_key = sa.Column(sa.String)
 
 
 class OwnershipMetadata(Base):
