@@ -488,81 +488,102 @@ def find_matching_risk_stat(
     Returns:
         Optional[EgnyteRiskStat]: Matching risk statistic or None
     """
-    # Try matching by CUSIP first (most reliable)
-    if cusip and cusip.strip():
-        risk_stat = db.query(EgnyteRiskStat).filter(
-            EgnyteRiskStat.cusip == cusip.strip(),
-            EgnyteRiskStat.asset_class == asset_class,
-            EgnyteRiskStat.import_date == latest_date
-        ).first()
+    try:
+        # Sanitize inputs to prevent database errors
+        safe_position_name = position_name.strip() if position_name and isinstance(position_name, str) else ""
+        safe_cusip = cusip.strip() if cusip and isinstance(cusip, str) else ""
+        safe_ticker_symbol = ticker_symbol.strip() if ticker_symbol and isinstance(ticker_symbol, str) else ""
         
-        if risk_stat:
-            logger.debug(f"Matched {position_name} by CUSIP {cusip}")
-            return risk_stat
-    
-    # Try matching by ticker symbol
-    if ticker_symbol and ticker_symbol.strip():
-        risk_stat = db.query(EgnyteRiskStat).filter(
-            EgnyteRiskStat.ticker_symbol == ticker_symbol.strip(),
-            EgnyteRiskStat.asset_class == asset_class,
-            EgnyteRiskStat.import_date == latest_date
-        ).first()
+        # Try matching by CUSIP first (most reliable)
+        if safe_cusip:
+            try:
+                risk_stat = db.query(EgnyteRiskStat).filter(
+                    EgnyteRiskStat.cusip == safe_cusip,
+                    EgnyteRiskStat.asset_class == asset_class,
+                    EgnyteRiskStat.import_date == latest_date
+                ).first()
+                
+                if risk_stat:
+                    logger.debug(f"Matched {safe_position_name} by CUSIP {safe_cusip}")
+                    return risk_stat
+            except Exception as e:
+                logger.warning(f"Error matching by CUSIP: {str(e)}")
         
-        if risk_stat:
-            logger.debug(f"Matched {position_name} by ticker symbol {ticker_symbol}")
-            return risk_stat
+        # Try matching by ticker symbol
+        if safe_ticker_symbol:
+            try:
+                risk_stat = db.query(EgnyteRiskStat).filter(
+                    EgnyteRiskStat.ticker_symbol == safe_ticker_symbol,
+                    EgnyteRiskStat.asset_class == asset_class,
+                    EgnyteRiskStat.import_date == latest_date
+                ).first()
+                
+                if risk_stat:
+                    logger.debug(f"Matched {safe_position_name} by ticker symbol {safe_ticker_symbol}")
+                    return risk_stat
+                
+                # Also try matching by amended_id (could contain ticker ID for private securities)
+                risk_stat = db.query(EgnyteRiskStat).filter(
+                    EgnyteRiskStat.amended_id == safe_ticker_symbol,
+                    EgnyteRiskStat.asset_class == asset_class,
+                    EgnyteRiskStat.import_date == latest_date
+                ).first()
+                
+                if risk_stat:
+                    logger.debug(f"Matched {safe_position_name} by amended_id {safe_ticker_symbol}")
+                    return risk_stat
+            except Exception as e:
+                logger.warning(f"Error matching by ticker: {str(e)}")
         
-        # Also try matching by amended_id (could contain ticker ID for private securities)
-        risk_stat = db.query(EgnyteRiskStat).filter(
-            EgnyteRiskStat.amended_id == ticker_symbol.strip(),
-            EgnyteRiskStat.asset_class == asset_class,
-            EgnyteRiskStat.import_date == latest_date
-        ).first()
+        # Finally, try matching by position name (with case insensitive comparison for better matching)
+        if safe_position_name:
+            try:
+                # Try exact match first (most efficient query)
+                risk_stat = db.query(EgnyteRiskStat).filter(
+                    func.lower(EgnyteRiskStat.position) == func.lower(safe_position_name),
+                    EgnyteRiskStat.asset_class == asset_class,
+                    EgnyteRiskStat.import_date == latest_date
+                ).first()
+                
+                if risk_stat:
+                    logger.debug(f"Matched {safe_position_name} by exact name")
+                    return risk_stat
+                
+                # Only try more expensive partial matches for shorter position names (less than 50 chars)
+                # to avoid performance issues with large client portfolios
+                if len(safe_position_name) < 50:
+                    # Try exact match first
+                    risk_stat = db.query(EgnyteRiskStat).filter(
+                        func.lower(EgnyteRiskStat.position).contains(func.lower(safe_position_name)),
+                        EgnyteRiskStat.asset_class == asset_class,
+                        EgnyteRiskStat.import_date == latest_date
+                    ).first()
+                    
+                    if risk_stat:
+                        logger.debug(f"Matched {safe_position_name} by partial name")
+                        return risk_stat
+                    
+                    # Skip the LIKE pattern match for large portfolios to improve performance
+                    safe_pattern = f"%{safe_position_name.lower()}%"
+                    risk_stat = db.query(EgnyteRiskStat).filter(
+                        func.lower(EgnyteRiskStat.position).like(safe_pattern),
+                        EgnyteRiskStat.asset_class == asset_class,
+                        EgnyteRiskStat.import_date == latest_date
+                    ).first()
+                    
+                    if risk_stat:
+                        logger.debug(f"Matched {safe_position_name} by name pattern")
+                        return risk_stat
+            except Exception as e:
+                logger.warning(f"Error matching by position name: {str(e)}")
         
-        if risk_stat:
-            logger.debug(f"Matched {position_name} by amended_id {ticker_symbol}")
-            return risk_stat
-    
-    # Finally, try matching by position name (with case insensitive comparison for better matching)
-    if position_name and position_name.strip():
-        # Try exact match first
-        risk_stat = db.query(EgnyteRiskStat).filter(
-            func.lower(EgnyteRiskStat.position) == func.lower(position_name.strip()),
-            EgnyteRiskStat.asset_class == asset_class,
-            EgnyteRiskStat.import_date == latest_date
-        ).first()
+        # No match found
+        return None
         
-        if risk_stat:
-            logger.debug(f"Matched {position_name} by exact name")
-            return risk_stat
-        
-        # Try partial match if exact match fails
-        risk_stat = db.query(EgnyteRiskStat).filter(
-            func.lower(EgnyteRiskStat.position).contains(func.lower(position_name.strip())),
-            EgnyteRiskStat.asset_class == asset_class,
-            EgnyteRiskStat.import_date == latest_date
-        ).first()
-        
-        if risk_stat:
-            logger.debug(f"Matched {position_name} by partial name")
-            return risk_stat
-        
-        # Last resort: try if position name contains the risk stat position
-        # This helps with variations like "Apple Inc." vs "APPLE"
-        like_pattern = f"%{position_name.strip().lower()}%"
-        risk_stat = db.query(EgnyteRiskStat).filter(
-            func.lower(EgnyteRiskStat.position).like(like_pattern),
-            EgnyteRiskStat.asset_class == asset_class,
-            EgnyteRiskStat.import_date == latest_date
-        ).first()
-        
-        if risk_stat:
-            logger.debug(f"Matched {position_name} by name pattern")
-            return risk_stat
-    
-    # No match found
-    logger.debug(f"No risk stat match found for {position_name} ({asset_class})")
-    return None
+    except Exception as e:
+        # Catch all other exceptions to prevent crashes
+        logger.error(f"Unexpected error finding risk stat for {position_name}: {str(e)}")
+        return None
 
 def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]], percentages: Dict[str, Decimal]) -> None:
     """
