@@ -408,7 +408,7 @@ def process_equity_sheet(file_path, sheet_name, import_date, db, batch_size=50, 
     records_succeeded = 0
     
     # Process in smaller batches to avoid excessive parameter lists
-    batch_size = 100
+    # batch_size parameter is already provided from function call
     batch_count = 0
     
     # Log the sheet structure
@@ -727,7 +727,7 @@ def process_fixed_income_sheet(file_path, sheet_name, import_date, db, batch_siz
     records_succeeded = 0
     
     # Process in smaller batches to avoid excessive parameter lists
-    batch_size = 100
+    # batch_size parameter is already provided from function call
     batch_count = 0
     
     # Log the sheet structure
@@ -1060,7 +1060,7 @@ def process_alternatives_sheet(file_path, sheet_name, import_date, db, batch_siz
     records_succeeded = 0
     
     # Process in smaller batches to avoid excessive parameter lists
-    batch_size = 100
+    # batch_size parameter is already provided from function call
     batch_count = 0
     
     # Log the sheet structure
