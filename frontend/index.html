@@ -44,6 +44,19 @@
     
     <!-- Axios for API calls -->
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+    <!-- Emotion (required for Chakra UI) -->
+    <script src="https://unpkg.com/@emotion/react@11.7.0/dist/emotion-react.umd.min.js"></script>
+    <script src="https://unpkg.com/@emotion/styled@11.6.0/dist/emotion-styled.umd.min.js"></script>
+    <script src="https://unpkg.com/framer-motion@4.1.17/dist/framer-motion.umd.min.js"></script>
+    
+    <!-- Chakra UI -->
+    <script src="https://unpkg.com/@chakra-ui/system@1.11.2/dist/chakra-ui-system.umd.min.js"></script>
+    <script src="https://unpkg.com/@chakra-ui/react@1.8.8/dist/chakra-ui-react.umd.min.js"></script>
+    <script>
+        // Make Chakra UI components globally available
+        window.ChakraUI = ChakraUIReact;
+    </script>
     
     <style>
         /* Base styles */
