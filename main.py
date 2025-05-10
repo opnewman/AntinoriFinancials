@@ -384,6 +384,84 @@ def get_risk_stats_status_endpoint():
             "traceback": traceback.format_exc()
         }), 500
 
+@app.route("/api/risk-stats/update-turbo", methods=["GET", "POST"])
+def risk_stats_turbo_update_endpoint():
+    """
+    High-performance update of risk statistics designed to meet the 2-3 second target.
+    
+    This endpoint uses parallel processing, PostgreSQL COPY command for bulk data loading,
+    and other advanced optimization techniques to achieve maximum performance.
+    
+    Query parameters:
+    - debug: Enable debug mode (default: false)
+    - use_test_file: Use test file instead of downloading from Egnyte (default: false)
+    - batch_size: Batch size for database operations (default: 1000)
+    - workers: Number of parallel worker threads (default: 3)
+    
+    Returns:
+        JSON with processing results and timing information
+    """
+    try:
+        # Import our turbo implementation
+        from src.services.risk_stats_turbo_service import process_risk_stats_turbo
+        import traceback
+        import time
+        
+        # Parse query parameters
+        debug_mode = request.args.get('debug', 'false').lower() == 'true'
+        use_test_file = request.args.get('use_test_file', 'false').lower() == 'true'
+        
+        # Process batch size parameter
+        try:
+            batch_size = int(request.args.get('batch_size', '1000'))
+            if batch_size < 100 or batch_size > 5000:
+                batch_size = 1000  # Reset to default if out of reasonable range
+        except ValueError:
+            batch_size = 1000
+            
+        # Process workers parameter
+        try:
+            workers = int(request.args.get('workers', '3'))
+            if workers < 1 or workers > 8:
+                workers = 3  # Reset to default if out of reasonable range
+        except ValueError:
+            workers = 3
+            
+        # Get a database session
+        from src.database import get_db
+        db = next(get_db())
+        
+        # Track total API request time
+        start_time = time.time()
+        
+        # Process risk statistics with our turbo implementation
+        results = process_risk_stats_turbo(
+            db=db,
+            use_test_file=use_test_file,
+            batch_size=batch_size,
+            max_workers=workers,
+            debug=debug_mode
+        )
+        
+        # Track total API request time
+        total_time = time.time() - start_time
+        results["total_api_time_seconds"] = total_time
+        
+        # Return results directly
+        logger.info(f"Turbo processing complete, total execution time: {total_time:.2f} seconds")
+        return jsonify(results)
+            
+    except Exception as processing_error:
+        logger.error(f"Error during turbo risk stats processing: {str(processing_error)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        return jsonify({
+            "success": False,
+            "error": f"Processing error: {str(processing_error)}",
+            "error_type": type(processing_error).__name__,
+            "traceback": traceback.format_exc()
+        }), 500
+
 @app.route("/api/risk-stats/update-direct", methods=["GET", "POST"])
 def risk_stats_direct_update_endpoint():
     """
