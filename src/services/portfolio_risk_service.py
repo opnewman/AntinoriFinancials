@@ -614,7 +614,7 @@ def process_equity_risk(
     for p in positions:
         try:
             # Get the asset class, handle if it's a SQLAlchemy Column object
-            asset_class_val = p.asset_class
+            asset_class_val = getattr(p, 'asset_class', None)
             if hasattr(asset_class_val, 'key') and hasattr(asset_class_val, 'type'):
                 asset_class_val = str(asset_class_val)
                 
@@ -642,7 +642,7 @@ def process_equity_risk(
             if hasattr(ticker_symbol, 'key') and hasattr(ticker_symbol, 'type'):
                 ticker_symbol = str(ticker_symbol)
                 
-            logger.info(f"Finding risk stat for {position_name} (CUSIP: {cusip}, Ticker: {ticker_symbol}) in Equity asset class")
+            logger.debug(f"Finding risk stat for {position_name} (CUSIP: {cusip}, Ticker: {ticker_symbol}) in Equity asset class")
             
             # Try to find the risk stats by first using position name
             risk_stat = find_matching_risk_stat(
@@ -654,45 +654,59 @@ def process_equity_risk(
             continue
         
         if risk_stat:
-            # Convert adjusted_value from string to Decimal using the utility function
-            adjusted_value_decimal = convert_position_value_to_decimal(position.adjusted_value, position.position)
+            try:
+                # Safely extract adjusted_value attribute
+                adjusted_value = getattr(position, 'adjusted_value', None)
+                pos_name_for_log = getattr(position, 'position', "unknown")
                 
-            position_weight = adjusted_value_decimal / totals["equity"]
-            
-            # Beta calculation
-            if risk_stat.beta is not None:
-                try:
-                    # Safe conversion to ensure we have a valid Decimal
-                    beta_value = Decimal(str(risk_stat.beta))
-                    weighted_beta = position_weight * beta_value
-                    risk_metrics["equity"]["beta"]["weighted_sum"] += weighted_beta
-                except (ValueError, TypeError, InvalidOperation) as e:
-                    logger.warning(f"Invalid beta value for {position.position}: {risk_stat.beta}. Error: {str(e)}")
-            
-            # Volatility calculation - try both field names (vol and volatility)
-            volatility_value = None
-            
-            # First check if 'volatility' attribute exists and has a value
-            if hasattr(risk_stat, 'volatility') and risk_stat.volatility is not None:
-                try:
-                    volatility_value = Decimal(str(risk_stat.volatility))
-                except (ValueError, TypeError, InvalidOperation) as e:
-                    logger.warning(f"Invalid volatility value for {position.position}: {risk_stat.volatility}. Error: {str(e)}")
-            
-            # If not found, try 'vol' attribute as a fallback
-            if volatility_value is None and hasattr(risk_stat, 'vol') and risk_stat.vol is not None:
-                try:
-                    volatility_value = Decimal(str(risk_stat.vol))
-                except (ValueError, TypeError, InvalidOperation) as e:
-                    logger.warning(f"Invalid vol value for {position.position}: {risk_stat.vol}. Error: {str(e)}")
-            
-            # If we found a valid volatility value from either field, use it
-            if volatility_value is not None:
-                weighted_vol = position_weight * volatility_value
-                risk_metrics["equity"]["volatility"]["weighted_sum"] += weighted_vol
-            
-            # Track the total matched value for coverage calculation
-            matched_value += adjusted_value_decimal
+                # Convert SQLAlchemy Column objects to strings if needed
+                if hasattr(adjusted_value, 'key') and hasattr(adjusted_value, 'type'):
+                    adjusted_value = str(adjusted_value)
+                if hasattr(pos_name_for_log, 'key') and hasattr(pos_name_for_log, 'type'):
+                    pos_name_for_log = str(pos_name_for_log)
+                
+                # Convert adjusted_value from string to Decimal using the utility function
+                adjusted_value_decimal = convert_position_value_to_decimal(adjusted_value, pos_name_for_log)
+                
+                position_weight = adjusted_value_decimal / totals["equity"]
+                
+                # Beta calculation
+                if risk_stat.beta is not None:
+                    try:
+                        # Safe conversion to ensure we have a valid Decimal
+                        beta_value = Decimal(str(risk_stat.beta))
+                        weighted_beta = position_weight * beta_value
+                        risk_metrics["equity"]["beta"]["weighted_sum"] += weighted_beta
+                    except (ValueError, TypeError, InvalidOperation) as e:
+                        logger.warning(f"Invalid beta value for {pos_name_for_log}: {risk_stat.beta}. Error: {str(e)}")
+                
+                # Volatility calculation - try both field names (vol and volatility)
+                volatility_value = None
+                
+                # First check if 'volatility' attribute exists and has a value
+                if hasattr(risk_stat, 'volatility') and risk_stat.volatility is not None:
+                    try:
+                        volatility_value = Decimal(str(risk_stat.volatility))
+                    except (ValueError, TypeError, InvalidOperation) as e:
+                        logger.warning(f"Invalid volatility value for {pos_name_for_log}: {risk_stat.volatility}. Error: {str(e)}")
+                
+                # If not found, try 'vol' attribute as a fallback
+                if volatility_value is None and hasattr(risk_stat, 'vol') and risk_stat.vol is not None:
+                    try:
+                        volatility_value = Decimal(str(risk_stat.vol))
+                    except (ValueError, TypeError, InvalidOperation) as e:
+                        logger.warning(f"Invalid vol value for {pos_name_for_log}: {risk_stat.vol}. Error: {str(e)}")
+                
+                # If we found a valid volatility value from either field, use it
+                if volatility_value is not None:
+                    weighted_vol = position_weight * volatility_value
+                    risk_metrics["equity"]["volatility"]["weighted_sum"] += weighted_vol
+                
+                # Track the total matched value for coverage calculation
+                matched_value += adjusted_value_decimal
+            except Exception as e:
+                logger.error(f"Error calculating position metrics: {str(e)}")
+                continue
     
     # Calculate coverage
     if totals["equity"] > Decimal('0.0'):
@@ -708,39 +722,90 @@ def process_fixed_income_risk(
     latest_risk_stats_date: date
 ) -> None:
     """Process fixed income positions to calculate weighted duration."""
+    # Enhanced logging for debugging
+    logger.info("Starting fixed income risk processing")
+    
     # Skip if no fixed income positions
     if totals["fixed_income"] == Decimal('0.0'):
+        logger.info("No fixed income positions to process")
         return
     
-    fi_positions = [p for p in positions if 
-                   p.asset_class and p.asset_class.lower() in ['fixed income', 'fixed-income', 'bond', 'bonds']]
+    # Safely extract asset class string values, handling SQLAlchemy Column objects
+    fi_positions = []
+    for p in positions:
+        try:
+            # Get the asset class, handle if it's a SQLAlchemy Column object
+            asset_class_val = getattr(p, 'asset_class', None)
+            if hasattr(asset_class_val, 'key') and hasattr(asset_class_val, 'type'):
+                asset_class_val = str(asset_class_val)
+                
+            # Check if it's a fixed income position
+            if asset_class_val and isinstance(asset_class_val, str) and asset_class_val.lower() in ['fixed income', 'fixed-income', 'bond', 'bonds']:
+                fi_positions.append(p)
+        except Exception as e:
+            logger.warning(f"Error processing fixed income position asset class: {str(e)}")
+    logger.info(f"Found {len(fi_positions)} fixed income positions to process")
     
     matched_value = Decimal('0.0')
     
     for position in fi_positions:
-        # Try to find the risk stats
-        risk_stat = find_matching_risk_stat(
-            db, position.position, position.cusip, position.ticker_symbol, 
-            'Fixed Income', latest_risk_stats_date
-        )
+        try:
+            # Safely extract position attributes
+            position_name = getattr(position, 'position', None)
+            cusip = getattr(position, 'cusip', None)
+            ticker_symbol = getattr(position, 'ticker_symbol', None)
+            
+            # Convert SQLAlchemy Column objects to strings if needed
+            if hasattr(position_name, 'key') and hasattr(position_name, 'type'):
+                position_name = str(position_name)
+            if hasattr(cusip, 'key') and hasattr(cusip, 'type'):
+                cusip = str(cusip)
+            if hasattr(ticker_symbol, 'key') and hasattr(ticker_symbol, 'type'):
+                ticker_symbol = str(ticker_symbol)
+                
+            logger.debug(f"Finding risk stat for {position_name} (CUSIP: {cusip}, Ticker: {ticker_symbol}) in Fixed Income asset class")
+            
+            # Try to find the risk stats
+            risk_stat = find_matching_risk_stat(
+                db, position_name, cusip, ticker_symbol, 
+                'Fixed Income', latest_risk_stats_date
+            )
+        except Exception as e:
+            logger.error(f"Error processing fixed income position: {str(e)}")
+            continue
         
         if risk_stat:
-            # Convert adjusted_value from string to Decimal using the utility function
-            adjusted_value_decimal = convert_position_value_to_decimal(position.adjusted_value, position.position)
+            try:
+                # Safely extract adjusted_value attribute
+                adjusted_value = getattr(position, 'adjusted_value', None)
+                pos_name_for_log = getattr(position, 'position', "unknown")
                 
-            position_weight = adjusted_value_decimal / totals["fixed_income"]
-            
-            # Duration calculation
-            if risk_stat.duration is not None:
-                try:
-                    # Safe conversion to ensure we have a valid Decimal
-                    duration_value = Decimal(str(risk_stat.duration))
-                    weighted_duration = position_weight * duration_value
-                    risk_metrics["fixed_income"]["duration"]["weighted_sum"] += weighted_duration
-                except (ValueError, TypeError, InvalidOperation) as e:
-                    logger.warning(f"Invalid duration value for {position.position}: {risk_stat.duration}. Error: {str(e)}")
-            
-            matched_value += adjusted_value_decimal
+                # Convert SQLAlchemy Column objects to strings if needed
+                if hasattr(adjusted_value, 'key') and hasattr(adjusted_value, 'type'):
+                    adjusted_value = str(adjusted_value)
+                if hasattr(pos_name_for_log, 'key') and hasattr(pos_name_for_log, 'type'):
+                    pos_name_for_log = str(pos_name_for_log)
+                
+                # Convert adjusted_value from string to Decimal using the utility function
+                adjusted_value_decimal = convert_position_value_to_decimal(adjusted_value, pos_name_for_log)
+                
+                position_weight = adjusted_value_decimal / totals["fixed_income"]
+                
+                # Duration calculation
+                if risk_stat.duration is not None:
+                    try:
+                        # Safe conversion to ensure we have a valid Decimal
+                        duration_value = Decimal(str(risk_stat.duration))
+                        weighted_duration = position_weight * duration_value
+                        risk_metrics["fixed_income"]["duration"]["weighted_sum"] += weighted_duration
+                    except (ValueError, TypeError, InvalidOperation) as e:
+                        logger.warning(f"Invalid duration value for {pos_name_for_log}: {risk_stat.duration}. Error: {str(e)}")
+                
+                # Track the total matched value for coverage calculation
+                matched_value += adjusted_value_decimal
+            except Exception as e:
+                logger.error(f"Error calculating fixed income position metrics: {str(e)}")
+                continue
     
     # Calculate coverage
     if totals["fixed_income"] > Decimal('0.0'):
@@ -755,47 +820,97 @@ def process_hard_currency_risk(
     latest_risk_stats_date: date
 ) -> None:
     """Process hard currency positions to calculate weighted beta."""
+    # Enhanced logging for debugging
+    logger.info("Starting hard currency risk processing")
+    
     # Skip if no hard currency positions
     if totals["hard_currency"] == Decimal('0.0'):
+        logger.info("No hard currency positions to process")
         return
     
-    hc_positions = [p for p in positions if 
-                   p.asset_class and p.asset_class.lower() in 
-                   ['hard currency', 'precious metal', 'precious metals', 'gold', 'silver']]
+    # Safely extract asset class string values, handling SQLAlchemy Column objects
+    hc_positions = []
+    for p in positions:
+        try:
+            # Get the asset class, handle if it's a SQLAlchemy Column object
+            asset_class_val = getattr(p, 'asset_class', None)
+            if hasattr(asset_class_val, 'key') and hasattr(asset_class_val, 'type'):
+                asset_class_val = str(asset_class_val)
+                
+            # Check if it's a hard currency position
+            if asset_class_val and isinstance(asset_class_val, str) and asset_class_val.lower() in ['hard currency', 'precious metal', 'precious metals', 'gold', 'silver']:
+                hc_positions.append(p)
+        except Exception as e:
+            logger.warning(f"Error processing hard currency position asset class: {str(e)}")
+    logger.info(f"Found {len(hc_positions)} hard currency positions to process")
     
     matched_value = Decimal('0.0')
     
     for position in hc_positions:
-        # Try to find the risk stats (may be in Alternatives tab for gold-linked assets)
-        risk_stat = find_matching_risk_stat(
-            db, position.position, position.cusip, position.ticker_symbol, 
-            'Alternatives', latest_risk_stats_date
-        )
-        
-        if not risk_stat:
-            # Try in Equity tab as fallback
-            risk_stat = find_matching_risk_stat(
-                db, position.position, position.cusip, position.ticker_symbol, 
-                'Equity', latest_risk_stats_date
-            )
-        
-        if risk_stat:
-            # Convert adjusted_value from string to Decimal using the utility function
-            adjusted_value_decimal = convert_position_value_to_decimal(position.adjusted_value, position.position)
+        try:
+            # Safely extract position attributes
+            position_name = getattr(position, 'position', None)
+            cusip = getattr(position, 'cusip', None)
+            ticker_symbol = getattr(position, 'ticker_symbol', None)
+            
+            # Convert SQLAlchemy Column objects to strings if needed
+            if hasattr(position_name, 'key') and hasattr(position_name, 'type'):
+                position_name = str(position_name)
+            if hasattr(cusip, 'key') and hasattr(cusip, 'type'):
+                cusip = str(cusip)
+            if hasattr(ticker_symbol, 'key') and hasattr(ticker_symbol, 'type'):
+                ticker_symbol = str(ticker_symbol)
                 
-            position_weight = adjusted_value_decimal / totals["hard_currency"]
+            logger.debug(f"Finding risk stat for {position_name} (CUSIP: {cusip}, Ticker: {ticker_symbol}) in Hard Currency asset class")
             
-            # Beta calculation
-            if risk_stat.beta is not None:
+            # Try to find the risk stats (may be in Alternatives tab for gold-linked assets)
+            risk_stat = find_matching_risk_stat(
+                db, position_name, cusip, ticker_symbol, 
+                'Alternatives', latest_risk_stats_date
+            )
+            
+            if not risk_stat:
+                # Try in Equity tab as fallback
+                risk_stat = find_matching_risk_stat(
+                    db, position_name, cusip, ticker_symbol, 
+                    'Equity', latest_risk_stats_date
+                )
+                
+            if risk_stat:
                 try:
-                    # Safe conversion to ensure we have a valid Decimal
-                    beta_value = Decimal(str(risk_stat.beta))
-                    weighted_beta = position_weight * beta_value
-                    risk_metrics["hard_currency"]["beta"]["weighted_sum"] += weighted_beta
-                except (ValueError, TypeError, InvalidOperation) as e:
-                    logger.warning(f"Invalid beta value for hard currency {position.position}: {risk_stat.beta}. Error: {str(e)}")
-            
-            matched_value += adjusted_value_decimal
+                    # Safely extract adjusted_value attribute
+                    adjusted_value = getattr(position, 'adjusted_value', None)
+                    pos_name_for_log = getattr(position, 'position', "unknown")
+                    
+                    # Convert SQLAlchemy Column objects to strings if needed
+                    if hasattr(adjusted_value, 'key') and hasattr(adjusted_value, 'type'):
+                        adjusted_value = str(adjusted_value)
+                    if hasattr(pos_name_for_log, 'key') and hasattr(pos_name_for_log, 'type'):
+                        pos_name_for_log = str(pos_name_for_log)
+                    
+                    # Convert adjusted_value from string to Decimal using the utility function
+                    adjusted_value_decimal = convert_position_value_to_decimal(adjusted_value, pos_name_for_log)
+                    
+                    position_weight = adjusted_value_decimal / totals["hard_currency"]
+                    
+                    # Beta calculation
+                    if risk_stat.beta is not None:
+                        try:
+                            # Safe conversion to ensure we have a valid Decimal
+                            beta_value = Decimal(str(risk_stat.beta))
+                            weighted_beta = position_weight * beta_value
+                            risk_metrics["hard_currency"]["beta"]["weighted_sum"] += weighted_beta
+                        except (ValueError, TypeError, InvalidOperation) as e:
+                            logger.warning(f"Invalid beta value for hard currency {pos_name_for_log}: {risk_stat.beta}. Error: {str(e)}")
+                    
+                    # Track the total matched value for coverage calculation
+                    matched_value += adjusted_value_decimal
+                except Exception as e:
+                    logger.error(f"Error calculating hard currency position metrics: {str(e)}")
+                    continue
+        except Exception as e:
+            logger.error(f"Error processing hard currency position: {str(e)}")
+            continue
     
     # Calculate coverage
     if totals["hard_currency"] > Decimal('0.0'):
@@ -810,63 +925,122 @@ def process_alternatives_risk(
     latest_risk_stats_date: date
 ) -> None:
     """Process alternatives positions to calculate weighted beta."""
+    # Enhanced logging for debugging
+    logger.info("Starting alternatives risk processing")
+    
     # Skip if no alternatives positions
     if totals["alternatives"] == Decimal('0.0'):
+        logger.info("No alternatives positions to process")
         return
     
-    alt_positions = [p for p in positions if 
-                    p.asset_class and p.asset_class.lower() in 
-                    ['alternative', 'alternatives', 'alternative investment']]
+    # Safely extract asset class string values, handling SQLAlchemy Column objects
+    alt_positions = []
+    for p in positions:
+        try:
+            # Get the asset class, handle if it's a SQLAlchemy Column object
+            asset_class_val = getattr(p, 'asset_class', None)
+            if hasattr(asset_class_val, 'key') and hasattr(asset_class_val, 'type'):
+                asset_class_val = str(asset_class_val)
+                
+            # Check if it's an alternatives position
+            if asset_class_val and isinstance(asset_class_val, str) and asset_class_val.lower() in ['alternative', 'alternatives', 'alternative investment']:
+                alt_positions.append(p)
+        except Exception as e:
+            logger.warning(f"Error processing alternatives position asset class: {str(e)}")
+    logger.info(f"Found {len(alt_positions)} alternatives positions to process")
     
     matched_value = Decimal('0.0')
     
     for position in alt_positions:
-        # Try to find the risk stats
-        risk_stat = find_matching_risk_stat(
-            db, position.position, position.cusip, position.ticker_symbol, 
-            'Alternatives', latest_risk_stats_date
-        )
+        try:
+            # Safely extract position attributes
+            position_name = getattr(position, 'position', None)
+            cusip = getattr(position, 'cusip', None)
+            ticker_symbol = getattr(position, 'ticker_symbol', None)
+            
+            # Convert SQLAlchemy Column objects to strings if needed
+            if hasattr(position_name, 'key') and hasattr(position_name, 'type'):
+                position_name = str(position_name)
+            if hasattr(cusip, 'key') and hasattr(cusip, 'type'):
+                cusip = str(cusip)
+            if hasattr(ticker_symbol, 'key') and hasattr(ticker_symbol, 'type'):
+                ticker_symbol = str(ticker_symbol)
+                
+            logger.debug(f"Finding risk stat for {position_name} (CUSIP: {cusip}, Ticker: {ticker_symbol}) in Alternatives asset class")
+            
+            # Try to find the risk stats
+            risk_stat = find_matching_risk_stat(
+                db, position_name, cusip, ticker_symbol, 
+                'Alternatives', latest_risk_stats_date
+            )
+        except Exception as e:
+            logger.error(f"Error processing alternatives position: {str(e)}")
+            continue
         
         if risk_stat:
-            # Convert adjusted_value from string to Decimal using the utility function
-            adjusted_value_decimal = convert_position_value_to_decimal(position.adjusted_value, position.position)
+            try:
+                # Safely extract adjusted_value attribute
+                adjusted_value = getattr(position, 'adjusted_value', None)
+                pos_name_for_log = getattr(position, 'position', "unknown")
                 
-            position_weight = adjusted_value_decimal / totals["alternatives"]
-            
-            # Beta calculation
-            if risk_stat.beta is not None:
-                try:
-                    # Safe conversion to ensure we have a valid Decimal
-                    beta_value = Decimal(str(risk_stat.beta))
-                    weighted_beta = position_weight * beta_value
-                    risk_metrics["alternatives"]["beta"]["weighted_sum"] += weighted_beta
-                except (ValueError, TypeError, InvalidOperation) as e:
-                    logger.warning(f"Invalid beta value for alternative {position.position}: {risk_stat.beta}. Error: {str(e)}")
+                # Convert SQLAlchemy Column objects to strings if needed
+                if hasattr(adjusted_value, 'key') and hasattr(adjusted_value, 'type'):
+                    adjusted_value = str(adjusted_value)
+                if hasattr(pos_name_for_log, 'key') and hasattr(pos_name_for_log, 'type'):
+                    pos_name_for_log = str(pos_name_for_log)
+            except Exception as e:
+                logger.error(f"Error extracting attributes from alternatives position: {str(e)}")
+                continue
+                
+                # Convert SQLAlchemy Column objects to strings if needed
+                if hasattr(adjusted_value, 'key') and hasattr(adjusted_value, 'type'):
+                    adjusted_value = str(adjusted_value)
+                if hasattr(pos_name_for_log, 'key') and hasattr(pos_name_for_log, 'type'):
+                    pos_name_for_log = str(pos_name_for_log)
+                
+                # Convert adjusted_value from string to Decimal using the utility function
+                adjusted_value_decimal = convert_position_value_to_decimal(adjusted_value, pos_name_for_log)
+                
+                position_weight = adjusted_value_decimal / totals["alternatives"]
+                
+                # Beta calculation
+                if risk_stat.beta is not None:
+                    try:
+                        # Safe conversion to ensure we have a valid Decimal
+                        beta_value = Decimal(str(risk_stat.beta))
+                        weighted_beta = position_weight * beta_value
+                        risk_metrics["alternatives"]["beta"]["weighted_sum"] += weighted_beta
+                    except (ValueError, TypeError, InvalidOperation) as e:
+                        logger.warning(f"Invalid beta value for alternative {pos_name_for_log}: {risk_stat.beta}. Error: {str(e)}")
+                        
+                # Volatility calculation - try both field names (vol and volatility) if we're tracking volatility for alternatives
+                if "volatility" in risk_metrics["alternatives"]:
+                    volatility_value = None
                     
-            # Volatility calculation - try both field names (vol and volatility) if we're tracking volatility for alternatives
-            if "volatility" in risk_metrics["alternatives"]:
-                volatility_value = None
+                    # First check if 'volatility' attribute exists and has a value
+                    if hasattr(risk_stat, 'volatility') and risk_stat.volatility is not None:
+                        try:
+                            volatility_value = Decimal(str(risk_stat.volatility))
+                        except (ValueError, TypeError, InvalidOperation) as e:
+                            logger.warning(f"Invalid volatility value for alternative {pos_name_for_log}: {risk_stat.volatility}. Error: {str(e)}")
+                    
+                    # If not found, try 'vol' attribute as a fallback
+                    if volatility_value is None and hasattr(risk_stat, 'vol') and risk_stat.vol is not None:
+                        try:
+                            volatility_value = Decimal(str(risk_stat.vol))
+                        except (ValueError, TypeError, InvalidOperation) as e:
+                            logger.warning(f"Invalid vol value for alternative {pos_name_for_log}: {risk_stat.vol}. Error: {str(e)}")
+                    
+                    # If we found a valid volatility value from either field, use it
+                    if volatility_value is not None:
+                        weighted_vol = position_weight * volatility_value
+                        risk_metrics["alternatives"]["volatility"]["weighted_sum"] += weighted_vol
                 
-                # First check if 'volatility' attribute exists and has a value
-                if hasattr(risk_stat, 'volatility') and risk_stat.volatility is not None:
-                    try:
-                        volatility_value = Decimal(str(risk_stat.volatility))
-                    except (ValueError, TypeError, InvalidOperation) as e:
-                        logger.warning(f"Invalid volatility value for alternative {position.position}: {risk_stat.volatility}. Error: {str(e)}")
-                
-                # If not found, try 'vol' attribute as a fallback
-                if volatility_value is None and hasattr(risk_stat, 'vol') and risk_stat.vol is not None:
-                    try:
-                        volatility_value = Decimal(str(risk_stat.vol))
-                    except (ValueError, TypeError, InvalidOperation) as e:
-                        logger.warning(f"Invalid vol value for alternative {position.position}: {risk_stat.vol}. Error: {str(e)}")
-                
-                # If we found a valid volatility value from either field, use it
-                if volatility_value is not None:
-                    weighted_vol = position_weight * volatility_value
-                    risk_metrics["alternatives"]["volatility"]["weighted_sum"] += weighted_vol
-            
-            matched_value += adjusted_value_decimal
+                # Track the total matched value for coverage calculation
+                matched_value += adjusted_value_decimal
+            except Exception as e:
+                logger.error(f"Error calculating alternatives position metrics: {str(e)}")
+                continue
     
     # Calculate coverage
     if totals["alternatives"] > Decimal('0.0'):
