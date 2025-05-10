@@ -988,15 +988,6 @@ def process_alternatives_risk(
                     adjusted_value = str(adjusted_value)
                 if hasattr(pos_name_for_log, 'key') and hasattr(pos_name_for_log, 'type'):
                     pos_name_for_log = str(pos_name_for_log)
-            except Exception as e:
-                logger.error(f"Error extracting attributes from alternatives position: {str(e)}")
-                continue
-                
-                # Convert SQLAlchemy Column objects to strings if needed
-                if hasattr(adjusted_value, 'key') and hasattr(adjusted_value, 'type'):
-                    adjusted_value = str(adjusted_value)
-                if hasattr(pos_name_for_log, 'key') and hasattr(pos_name_for_log, 'type'):
-                    pos_name_for_log = str(pos_name_for_log)
                 
                 # Convert adjusted_value from string to Decimal using the utility function
                 adjusted_value_decimal = convert_position_value_to_decimal(adjusted_value, pos_name_for_log)
