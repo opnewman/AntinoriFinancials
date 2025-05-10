@@ -402,14 +402,14 @@ def calculate_portfolio_risk_metrics(
                                 logger.warning(f"Invalid beta value for {position.position}: {risk_stat.beta}. Error: {str(e)}")
                         
                         # Volatility calculation
-                        if risk_stat.volatility is not None:
+                        if risk_stat.vol is not None:
                             try:
                                 # Safe conversion to ensure we have a valid Decimal
-                                volatility_value = Decimal(str(risk_stat.volatility))
+                                volatility_value = Decimal(str(risk_stat.vol))
                                 weighted_vol = position_weight * volatility_value
                                 risk_metrics["equity"]["volatility"]["weighted_sum"] += weighted_vol
                             except (ValueError, TypeError, InvalidOperation) as e:
-                                logger.warning(f"Invalid volatility value for {position.position}: {risk_stat.volatility}. Error: {str(e)}")
+                                logger.warning(f"Invalid volatility value for {position.position}: {risk_stat.vol}. Error: {str(e)}")
                     except Exception as e:
                         logger.warning(f"Error processing equity position {position.position}: {str(e)}")
                             
