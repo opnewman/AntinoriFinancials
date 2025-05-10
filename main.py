@@ -1903,7 +1903,7 @@ def get_entity_options():
             "message": f"Error getting entity options: {str(e)}"
         }), 500
 
-@app.route("/api/portfolio-report", methods=["GET"])
+@app.route("/api/portfolio-report-template", methods=["GET"])
 def generate_portfolio_report():
     """
     Generate a comprehensive portfolio report that exactly matches the Excel template format.

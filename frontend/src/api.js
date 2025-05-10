@@ -152,7 +152,7 @@ window.api = {
     getPortfolioReport: async (date, level, levelKey, displayFormat = 'percent') => {
         try {
             const response = await axios.get(
-                `${API_BASE_URL}/api/portfolio-report`, {
+                `${API_BASE_URL}/api/portfolio-report-template`, {
                     params: { date, level, level_key: levelKey, display_format: displayFormat }
                 }
             );

@@ -206,64 +206,6 @@ const RiskStatsJobManager = () => {
     }
   };
   
-
-        
-        setJobState(prev => ({ 
-          ...prev, 
-          isLoading: false, 
-          currentJob: completedJob
-        }));
-        
-        // Immediately refresh status after completion
-        fetchRiskStatsStatus();
-        
-        if (typeof toast === 'function') {
-          toast({
-            title: 'High-Performance Update Complete',
-            description: `Processed ${result.total_records || result.processed_records || 0} records in ${(result.processing_time_seconds || result.total_api_time_seconds || 0).toFixed(2)} seconds`,
-            status: 'success',
-            duration: 5000,
-            isClosable: true,
-          });
-        } else if (toast.toast) {
-          toast.toast({
-            title: 'High-Performance Update Complete',
-            description: `Processed ${result.total_records || result.processed_records || 0} records in ${(result.processing_time_seconds || result.total_api_time_seconds || 0).toFixed(2)} seconds`,
-            status: 'success',
-            duration: 5000,
-            isClosable: true,
-          });
-        }
-      } else {
-        throw new Error(result.error || 'Failed to start optimized update');
-      }
-    } catch (error) {
-      setJobState(prev => ({ 
-        ...prev, 
-        isLoading: false, 
-        error: error.message || 'Failed to start optimized risk stats update' 
-      }));
-      
-      if (typeof toast === 'function') {
-        toast({
-          title: 'Error',
-          description: error.message || 'Failed to start optimized risk stats update',
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        });
-      } else if (toast.toast) {
-        toast.toast({
-          title: 'Error',
-          description: error.message || 'Failed to start optimized risk stats update',
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        });
-      }
-    }
-  };
-  
   // Check the status of a running job
   const checkJobStatus = async (jobId) => {
     try {
