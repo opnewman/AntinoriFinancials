@@ -458,6 +458,35 @@ window.api = {
     },
     
     /**
+     * Update risk statistics with high-performance turbo implementation
+     * This is the most efficient implementation, designed to meet the 2-3 second target
+     * 
+     * @param {boolean} useTestFile - Whether to use a test file instead of downloading from Egnyte
+     * @param {boolean} debugMode - Enable debug mode for detailed logging
+     * @param {number} batchSize - Size of batches for database operations (default: 1000)
+     * @param {number} workers - Number of parallel worker threads (default: 3)
+     * @returns {Object} Processing results including timing and record counts
+     */
+    updateRiskStatsTurbo: async (useTestFile = false, debugMode = false, batchSize = 1000, workers = 3) => {
+        try {
+            const params = {};
+            if (useTestFile) params.use_test_file = 'true';
+            if (debugMode) params.debug = 'true';
+            if (batchSize) params.batch_size = batchSize;
+            if (workers) params.workers = workers;
+            
+            const response = await axios.post(`${API_BASE_URL}/api/risk-stats/update-turbo`, null, { params });
+            return response.data;
+        } catch (error) {
+            console.error('Error starting turbo risk stats update:', error);
+            return {
+                success: false,
+                error: error.response?.data?.error || error.message || 'Failed to start turbo risk statistics update'
+            };
+        }
+    },
+    
+    /**
      * Get the status of a risk statistics update job
      * @param {number} jobId - The ID of the job to check
      * @returns {Object} Job status and details
