@@ -827,9 +827,9 @@ def process_alternatives_risk(
 
 def find_matching_risk_stat(
     db: Session,
-    position_name: str,
-    cusip: Optional[str],
-    ticker_symbol: Optional[str],
+    position_name: Any,
+    cusip: Optional[Any],
+    ticker_symbol: Optional[Any],
     asset_class: str,
     latest_date: date,
     cache: Optional[Dict[str, Any]] = None
