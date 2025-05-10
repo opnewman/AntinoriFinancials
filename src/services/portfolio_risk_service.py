@@ -615,15 +615,27 @@ def process_equity_risk(
                 except (ValueError, TypeError, InvalidOperation) as e:
                     logger.warning(f"Invalid beta value for {position.position}: {risk_stat.beta}. Error: {str(e)}")
             
-            # Volatility calculation
-            if risk_stat.vol is not None:
+            # Volatility calculation - try both field names (vol and volatility)
+            volatility_value = None
+            
+            # First check if 'volatility' attribute exists and has a value
+            if hasattr(risk_stat, 'volatility') and risk_stat.volatility is not None:
                 try:
-                    # Safe conversion to ensure we have a valid Decimal
-                    volatility_value = Decimal(str(risk_stat.vol))
-                    weighted_vol = position_weight * volatility_value
-                    risk_metrics["equity"]["volatility"]["weighted_sum"] += weighted_vol
+                    volatility_value = Decimal(str(risk_stat.volatility))
                 except (ValueError, TypeError, InvalidOperation) as e:
-                    logger.warning(f"Invalid volatility value for {position.position}: {risk_stat.vol}. Error: {str(e)}")
+                    logger.warning(f"Invalid volatility value for {position.position}: {risk_stat.volatility}. Error: {str(e)}")
+            
+            # If not found, try 'vol' attribute as a fallback
+            if volatility_value is None and hasattr(risk_stat, 'vol') and risk_stat.vol is not None:
+                try:
+                    volatility_value = Decimal(str(risk_stat.vol))
+                except (ValueError, TypeError, InvalidOperation) as e:
+                    logger.warning(f"Invalid vol value for {position.position}: {risk_stat.vol}. Error: {str(e)}")
+            
+            # If we found a valid volatility value from either field, use it
+            if volatility_value is not None:
+                weighted_vol = position_weight * volatility_value
+                risk_metrics["equity"]["volatility"]["weighted_sum"] += weighted_vol
             
             # Track the total matched value for coverage calculation
             matched_value += adjusted_value_decimal
@@ -776,6 +788,29 @@ def process_alternatives_risk(
                     risk_metrics["alternatives"]["beta"]["weighted_sum"] += weighted_beta
                 except (ValueError, TypeError, InvalidOperation) as e:
                     logger.warning(f"Invalid beta value for alternative {position.position}: {risk_stat.beta}. Error: {str(e)}")
+                    
+            # Volatility calculation - try both field names (vol and volatility) if we're tracking volatility for alternatives
+            if "volatility" in risk_metrics["alternatives"]:
+                volatility_value = None
+                
+                # First check if 'volatility' attribute exists and has a value
+                if hasattr(risk_stat, 'volatility') and risk_stat.volatility is not None:
+                    try:
+                        volatility_value = Decimal(str(risk_stat.volatility))
+                    except (ValueError, TypeError, InvalidOperation) as e:
+                        logger.warning(f"Invalid volatility value for alternative {position.position}: {risk_stat.volatility}. Error: {str(e)}")
+                
+                # If not found, try 'vol' attribute as a fallback
+                if volatility_value is None and hasattr(risk_stat, 'vol') and risk_stat.vol is not None:
+                    try:
+                        volatility_value = Decimal(str(risk_stat.vol))
+                    except (ValueError, TypeError, InvalidOperation) as e:
+                        logger.warning(f"Invalid vol value for alternative {position.position}: {risk_stat.vol}. Error: {str(e)}")
+                
+                # If we found a valid volatility value from either field, use it
+                if volatility_value is not None:
+                    weighted_vol = position_weight * volatility_value
+                    risk_metrics["alternatives"]["volatility"]["weighted_sum"] += weighted_vol
             
             matched_value += adjusted_value_decimal
     
