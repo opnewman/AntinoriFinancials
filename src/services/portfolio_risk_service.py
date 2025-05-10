@@ -578,12 +578,17 @@ def process_equity_risk(
     latest_risk_stats_date: date
 ) -> None:
     """Process equity positions to calculate weighted beta and volatility."""
+    # Enhanced logging for debugging
+    logger.info("Starting equity risk processing")
+    
     # Skip if no equity positions
     if totals["equity"] == Decimal('0.0'):
+        logger.info("No equity positions to process")
         return
     
     equity_positions = [p for p in positions if 
                        p.asset_class and p.asset_class.lower() in ['equity', 'equities']]
+    logger.info(f"Found {len(equity_positions)} equity positions to process")
     
     matched_value = Decimal('0.0')
     
@@ -611,14 +616,14 @@ def process_equity_risk(
                     logger.warning(f"Invalid beta value for {position.position}: {risk_stat.beta}. Error: {str(e)}")
             
             # Volatility calculation
-            if risk_stat.volatility is not None:
+            if risk_stat.vol is not None:
                 try:
                     # Safe conversion to ensure we have a valid Decimal
-                    volatility_value = Decimal(str(risk_stat.volatility))
+                    volatility_value = Decimal(str(risk_stat.vol))
                     weighted_vol = position_weight * volatility_value
                     risk_metrics["equity"]["volatility"]["weighted_sum"] += weighted_vol
                 except (ValueError, TypeError, InvalidOperation) as e:
-                    logger.warning(f"Invalid volatility value for {position.position}: {risk_stat.volatility}. Error: {str(e)}")
+                    logger.warning(f"Invalid volatility value for {position.position}: {risk_stat.vol}. Error: {str(e)}")
             
             # Track the total matched value for coverage calculation
             matched_value += adjusted_value_decimal
@@ -811,6 +816,9 @@ def find_matching_risk_stat(
     Returns:
         Optional[Any]: Matching risk statistic or None
     """
+    # Enhanced debugging for portfolio report troubleshooting
+    position_debug_str = f"{position_name} (CUSIP: {cusip or 'None'}, Ticker: {ticker_symbol or 'None'})"
+    logger.info(f"Finding risk stat for {position_debug_str} in asset class: {asset_class}")
     try:
         # Sanitize inputs to prevent database errors
         safe_position_name = position_name.strip() if position_name and isinstance(position_name, str) else ""
