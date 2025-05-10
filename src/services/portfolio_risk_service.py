@@ -21,7 +21,7 @@ from src.utils.encryption import encryption_service
 
 logger = logging.getLogger(__name__)
 
-def convert_position_value_to_decimal(position_value: str, position_name: str = "unknown") -> Decimal:
+def convert_position_value_to_decimal(position_value: Any, position_name: Any = "unknown") -> Decimal:
     """
     Convert a position value string to Decimal, handling encrypted values 
     and various invalid formats.
@@ -36,6 +36,23 @@ def convert_position_value_to_decimal(position_value: str, position_name: str = 
     if not position_value:
         logger.debug(f"Empty position value for {position_name}. Using 0.")
         return Decimal('0.0')
+    
+    # Handle SQLAlchemy Column objects
+    if hasattr(position_value, 'key') and hasattr(position_value, 'type'):
+        try:
+            # This is a SQLAlchemy Column object, extract the string value
+            logger.debug(f"Converting SQLAlchemy Column to string for {position_name}")
+            position_value = str(position_value)
+        except Exception as e:
+            logger.warning(f"Failed to convert SQLAlchemy Column to string for {position_name}: {str(e)}. Using 0.")
+            return Decimal('0.0')
+            
+    # Handle SQLAlchemy Column objects in position_name as well
+    if hasattr(position_name, 'key') and hasattr(position_name, 'type'):
+        try:
+            position_name = str(position_name)
+        except Exception:
+            position_name = "unknown"
     
     # Handle non-string inputs (safety check)
     if not isinstance(position_value, str):
@@ -592,18 +609,49 @@ def process_equity_risk(
         logger.info("No equity positions to process")
         return
     
-    equity_positions = [p for p in positions if 
-                       p.asset_class and p.asset_class.lower() in ['equity', 'equities']]
+    # Safely extract asset class string values, handling SQLAlchemy Column objects
+    equity_positions = []
+    for p in positions:
+        try:
+            # Get the asset class, handle if it's a SQLAlchemy Column object
+            asset_class_val = p.asset_class
+            if hasattr(asset_class_val, 'key') and hasattr(asset_class_val, 'type'):
+                asset_class_val = str(asset_class_val)
+                
+            # Check if it's an equity position
+            if asset_class_val and isinstance(asset_class_val, str) and asset_class_val.lower() in ['equity', 'equities']:
+                equity_positions.append(p)
+        except Exception as e:
+            logger.warning(f"Error processing position asset class: {str(e)}")
     logger.info(f"Found {len(equity_positions)} equity positions to process")
     
     matched_value = Decimal('0.0')
     
     for position in equity_positions:
-        # Try to find the risk stats by first using position name
-        risk_stat = find_matching_risk_stat(
-            db, position.position, position.cusip, position.ticker_symbol, 
-            'Equity', latest_risk_stats_date
-        )
+        try:
+            # Safely extract position attributes
+            position_name = getattr(position, 'position', None)
+            cusip = getattr(position, 'cusip', None)
+            ticker_symbol = getattr(position, 'ticker_symbol', None)
+            
+            # Convert SQLAlchemy Column objects to strings if needed
+            if hasattr(position_name, 'key') and hasattr(position_name, 'type'):
+                position_name = str(position_name)
+            if hasattr(cusip, 'key') and hasattr(cusip, 'type'):
+                cusip = str(cusip)
+            if hasattr(ticker_symbol, 'key') and hasattr(ticker_symbol, 'type'):
+                ticker_symbol = str(ticker_symbol)
+                
+            logger.info(f"Finding risk stat for {position_name} (CUSIP: {cusip}, Ticker: {ticker_symbol}) in Equity asset class")
+            
+            # Try to find the risk stats by first using position name
+            risk_stat = find_matching_risk_stat(
+                db, position_name, cusip, ticker_symbol, 
+                'Equity', latest_risk_stats_date
+            )
+        except Exception as e:
+            logger.error(f"Error processing equity position: {str(e)}")
+            continue
         
         if risk_stat:
             # Convert adjusted_value from string to Decimal using the utility function
