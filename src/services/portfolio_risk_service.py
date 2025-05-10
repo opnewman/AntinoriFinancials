@@ -288,6 +288,10 @@ def calculate_portfolio_risk_metrics(
             "beta": {
                 "weighted_sum": Decimal('0.0'),
                 "coverage_pct": Decimal('0.0')
+            },
+            "volatility": {
+                "weighted_sum": Decimal('0.0'),
+                "coverage_pct": Decimal('0.0')
             }
         },
         "portfolio": {
@@ -530,6 +534,8 @@ def calculate_portfolio_risk_metrics(
         if "matched_value" in risk_metrics["alternatives"] and totals["alternatives"] > Decimal('0.0'):
             coverage = (risk_metrics["alternatives"]["matched_value"] / totals["alternatives"]) * 100
             risk_metrics["alternatives"]["beta"]["coverage_pct"] = coverage
+            if "volatility" in risk_metrics["alternatives"]:
+                risk_metrics["alternatives"]["volatility"]["coverage_pct"] = coverage
     else:
         # For smaller portfolios, use the original approach without caching
         process_equity_risk(db, positions, totals, risk_metrics, latest_risk_stats_date)
@@ -1086,6 +1092,7 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
         risk_metrics["hard_currency"]["beta"]["beta_adjusted"] = Decimal('0.0')
     
     # Process alternatives metrics
+    # First handle beta
     if risk_metrics["alternatives"]["beta"]["coverage_pct"] > Decimal('0.0'):
         risk_metrics["alternatives"]["beta"]["value"] = risk_metrics["alternatives"]["beta"]["weighted_sum"]
         
@@ -1095,6 +1102,13 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
     else:
         risk_metrics["alternatives"]["beta"]["value"] = None
         risk_metrics["alternatives"]["beta"]["beta_adjusted"] = Decimal('0.0')
+        
+    # Then handle volatility
+    if "volatility" in risk_metrics["alternatives"]:
+        if risk_metrics["alternatives"]["volatility"]["coverage_pct"] > Decimal('0.0'):
+            risk_metrics["alternatives"]["volatility"]["value"] = risk_metrics["alternatives"]["volatility"]["weighted_sum"]
+        else:
+            risk_metrics["alternatives"]["volatility"]["value"] = None
     
     # Calculate total portfolio beta-adjusted metrics
     # Sum up all the beta-adjusted values
