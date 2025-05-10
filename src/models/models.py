@@ -253,13 +253,17 @@ class RiskStatisticEquity(Base):
     
     id = sa.Column(sa.Integer, primary_key=True)
     upload_date = sa.Column(sa.Date, nullable=False, index=True)  # Date the data was imported
-    position = sa.Column(sa.String, index=True)   # Security/position name
-    ticker_symbol = sa.Column(sa.String, index=True)              # Ticker symbol if available
-    cusip = sa.Column(sa.String, index=True)                      # CUSIP if available
+    position = sa.Column(sa.String(255), index=True)   # Security/position name
+    ticker_symbol = sa.Column(sa.String(64), index=True)              # Ticker symbol if available
+    cusip = sa.Column(sa.String(64), index=True)                      # CUSIP if available
     
     # Risk metrics specific to equity
-    vol = sa.Column(sa.Numeric(10, 6))                     # Volatility (standard deviation)
+    # Renamed for clarity and consistency
+    volatility = sa.Column(sa.Numeric(10, 6))                     # Volatility (standard deviation)
     beta = sa.Column(sa.Numeric(10, 6))                    # Beta (compared to benchmark)
+    
+    # Keeping old field for backward compatibility
+    vol = sa.Column(sa.Numeric(10, 6))                     # Old name - use volatility instead
     
     # For backward compatibility and future expansion
     alpha = sa.Column(sa.Numeric(10, 4), nullable=True)
@@ -286,9 +290,9 @@ class RiskStatisticFixedIncome(Base):
     
     id = sa.Column(sa.Integer, primary_key=True)
     upload_date = sa.Column(sa.Date, nullable=False, index=True)  # Date the data was imported
-    position = sa.Column(sa.String, index=True)   # Security/position name
-    ticker_symbol = sa.Column(sa.String, index=True)              # Ticker symbol if available
-    cusip = sa.Column(sa.String, index=True)                      # CUSIP if available
+    position = sa.Column(sa.String(255), index=True)   # Security/position name
+    ticker_symbol = sa.Column(sa.String(64), index=True)              # Ticker symbol if available
+    cusip = sa.Column(sa.String(64), index=True)                      # CUSIP if available
     
     # Risk metrics specific to fixed income
     duration = sa.Column(sa.Numeric(10, 6))                       # Duration (for fixed income)
@@ -299,7 +303,7 @@ class RiskStatisticFixedIncome(Base):
     yield_to_maturity = sa.Column(sa.Numeric(10, 4), nullable=True)
     yield_to_worst = sa.Column(sa.Numeric(10, 4), nullable=True)
     option_adjusted_spread = sa.Column(sa.Numeric(10, 4), nullable=True)
-    credit_rating = sa.Column(sa.String, nullable=True)
+    credit_rating = sa.Column(sa.String(32), nullable=True)
     meta = sa.Column(sa.JSON, nullable=True)  # For any additional fields
     
     created_at = sa.Column(sa.DateTime, server_default=sa.func.now())
@@ -319,9 +323,9 @@ class RiskStatisticAlternatives(Base):
     
     id = sa.Column(sa.Integer, primary_key=True)
     upload_date = sa.Column(sa.Date, nullable=False, index=True)  # Date the data was imported
-    position = sa.Column(sa.String, index=True)   # Security/position name
-    ticker_symbol = sa.Column(sa.String, index=True)              # Ticker symbol if available
-    cusip = sa.Column(sa.String, index=True)                      # CUSIP if available
+    position = sa.Column(sa.String(255), index=True)   # Security/position name
+    ticker_symbol = sa.Column(sa.String(64), index=True)              # Ticker symbol if available
+    cusip = sa.Column(sa.String(64), index=True)                      # CUSIP if available
     
     # Risk metrics specific to alternatives
     beta = sa.Column(sa.Numeric(10, 6))                           # Beta (compared to benchmark)
@@ -330,6 +334,7 @@ class RiskStatisticAlternatives(Base):
     correlation_equity = sa.Column(sa.Numeric(10, 4), nullable=True)
     correlation_fixed_income = sa.Column(sa.Numeric(10, 4), nullable=True)
     volatility = sa.Column(sa.Numeric(10, 4), nullable=True)
+    vol = sa.Column(sa.Numeric(10, 4), nullable=True)  # Alias for volatility for consistency
     max_drawdown = sa.Column(sa.Numeric(10, 4), nullable=True)
     illiquidity_premium = sa.Column(sa.Numeric(10, 4), nullable=True)
     meta = sa.Column(sa.JSON, nullable=True)  # For any additional fields
