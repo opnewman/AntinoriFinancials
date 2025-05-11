@@ -547,6 +547,23 @@ window.api = {
         }
     },
     
+    /**
+     * Get a list of securities that don't have matching risk statistics
+     * This is useful for identifying which securities need risk data to be uploaded
+     */
+    getUnmatchedSecurities: async () => {
+        try {
+            const response = await axios.get(`${API_BASE_URL}/api/risk-stats/unmatched`);
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching unmatched securities:', error);
+            return {
+                success: false,
+                error: error.message || 'Failed to fetch unmatched securities list'
+            };
+        }
+    },
+    
     // Legacy updateRiskStats function replaced by the implementation above
     
     /**
