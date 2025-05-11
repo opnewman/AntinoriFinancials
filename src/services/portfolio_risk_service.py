@@ -6,6 +6,9 @@ and calculates weighted risk metrics (beta, volatility, duration) by asset class
 """
 import logging
 import re
+import signal
+import time
+from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Set
@@ -31,6 +34,29 @@ UNMATCHED_SECURITIES = {
     "Alternatives": set(),
     "Hard Currency": set()
 }
+
+class TimeoutException(Exception):
+    """Custom exception for query timeout"""
+    pass
+
+@contextmanager
+def time_limit(seconds):
+    """
+    Context manager for imposing a time limit on a section of code.
+    Raises TimeoutException if the time limit is exceeded.
+    """
+    def signal_handler(signum, frame):
+        raise TimeoutException("Time limit exceeded")
+    
+    # Set the signal handler and an alarm
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    
+    try:
+        yield
+    finally:
+        # Cancel the alarm
+        signal.alarm(0)
 
 def convert_position_value_to_decimal(position_value: Any, position_name: Any = "unknown") -> Decimal:
     """
@@ -593,51 +619,60 @@ def find_matching_risk_stat(
     # Create a function for all database queries to reduce code duplication
     def execute_query(condition, identifier_type, identifier_value):
         """Execute a database query with proper connection handling and caching"""
-        try:
-            # Select only the specific columns we need to reduce memory usage
-            stmt = db.query(
-                model_class.id,
-                model_class.beta,
-                model_class.volatility,
-                getattr(model_class, 'duration', None)
-            ).filter(
-                condition,
-                model_class.upload_date == latest_date
-            ).limit(1)
-            
-            result = stmt.first()
-            
-            if result:
-                # Convert to dictionary with only needed fields
-                risk_dict = {}
+        # Check cache first for faster retrievals
+        if cache is not None:
+            cache_key = f"{cache_prefix}:{identifier_type}:{identifier_value}"
+            cached_result = cache.get(cache_key)
+            if cached_result is not None:
+                return cached_result
                 
-                # Always include id
-                risk_dict['id'] = result[0]
+        # Create a fresh session for each query to prevent cursor issues
+        from src.database import get_db_connection
+        with get_db_connection() as query_session:
+            try:
+                # Select only the specific columns we need to reduce memory usage
+                # Use with_entities to be more explicit about what we're selecting
+                risk_stat = query_session.query(model_class).with_entities(
+                    model_class.id,
+                    model_class.beta,
+                    model_class.volatility,
+                    getattr(model_class, 'duration', None)
+                ).filter(
+                    condition,
+                    model_class.upload_date == latest_date
+                ).limit(1).first()
                 
-                # Include beta if not None
-                if result[1] is not None:
-                    risk_dict['beta'] = result[1]
-                
-                # Include volatility if not None 
-                if result[2] is not None:
-                    risk_dict['volatility'] = result[2]
-                
-                # Include duration if not None (for fixed income)
-                if len(result) > 3 and result[3] is not None:
-                    risk_dict['duration'] = result[3]
-                
-                # Cache the result if cache is available
-                if cache is not None:
-                    cache_key = f"{cache_prefix}:{identifier_type}:{identifier_value}"
-                    cache[cache_key] = risk_dict
-                
-                return risk_dict
-                
-            return None
-        except Exception as e:
-            # Log and continue to next query method
-            logger.warning(f"Query error ({identifier_type}={identifier_value}): {str(e)}")
-            return None
+                if risk_stat is not None:
+                    # Convert to dictionary with only needed fields
+                    risk_dict = {}
+                    
+                    # Always include id
+                    risk_dict['id'] = risk_stat[0]
+                    
+                    # Include beta if not None
+                    if risk_stat[1] is not None:
+                        risk_dict['beta'] = risk_stat[1]
+                    
+                    # Include volatility if not None 
+                    if risk_stat[2] is not None:
+                        risk_dict['volatility'] = risk_stat[2]
+                    
+                    # Include duration if not None (for fixed income)
+                    if len(risk_stat) > 3 and risk_stat[3] is not None:
+                        risk_dict['duration'] = risk_stat[3]
+                    
+                    # Cache the result if cache is available
+                    if cache is not None:
+                        cache_key = f"{cache_prefix}:{identifier_type}:{identifier_value}"
+                        cache[cache_key] = risk_dict
+                    
+                    return risk_dict
+                    
+                return None
+            except Exception as e:
+                # Log and continue to next query method
+                logger.warning(f"Query error ({identifier_type}={identifier_value}): {str(e)}")
+                return None
     
     # Try lookup methods in order of reliability
     
