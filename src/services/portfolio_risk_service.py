@@ -154,7 +154,7 @@ def calculate_portfolio_risk_metrics(
             raise ValueError(f"Invalid level: {level}")
             
         # Add the date filter
-        filter_params['report_date'] = report_date
+        filter_params['date'] = report_date
         
         # Query for positions
         positions_query = db.query(FinancialPosition).filter_by(**filter_params)
