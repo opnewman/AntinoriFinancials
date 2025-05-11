@@ -303,20 +303,28 @@ def calculate_portfolio_risk_metrics(
     # Set a timeout limit for the entire risk metric calculation (10 seconds max)
     MAX_PROCESSING_TIME = 10  # seconds
     
+    # Use our thread-safe timeout implementation instead of signals
+    def process_all_risk_metrics():
+        # Process positions by asset class
+        logger.info(f"Processing equity risk metrics for {level} {level_key}")
+        process_equity_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
+        
+        logger.info(f"Processing fixed income risk metrics for {level} {level_key}")
+        process_fixed_income_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
+        
+        logger.info(f"Processing hard currency risk metrics for {level} {level_key}")
+        process_hard_currency_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
+        
+        logger.info(f"Processing alternatives risk metrics for {level} {level_key}")
+        process_alternatives_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
+    
+    # Execute with timeout
     try:
-        with time_limit(MAX_PROCESSING_TIME):
-            # Process positions by asset class
-            logger.info(f"Processing equity risk metrics for {level} {level_key}")
-            process_equity_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
-            
-            logger.info(f"Processing fixed income risk metrics for {level} {level_key}")
-            process_fixed_income_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
-            
-            logger.info(f"Processing hard currency risk metrics for {level} {level_key}")
-            process_hard_currency_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
-            
-            logger.info(f"Processing alternatives risk metrics for {level} {level_key}")
-            process_alternatives_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
+        # Use the thread-safe timeout function
+        with_timeout(
+            func=process_all_risk_metrics,
+            timeout_duration=MAX_PROCESSING_TIME
+        )
     except TimeoutException:
         logger.warning(f"Risk metrics calculation timed out after {MAX_PROCESSING_TIME} seconds")
         # Continue with partial results
