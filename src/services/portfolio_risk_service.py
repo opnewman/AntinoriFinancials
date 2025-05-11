@@ -1168,24 +1168,71 @@ def find_matching_risk_stat(
     else:
         return None
         
-    # Convert strings safely
+    # Convert strings safely with enhanced error handling and encoding protection
     try:
-        safe_position = str(position_name).strip() if position_name else ""
-        safe_cusip = str(cusip).strip() if cusip else ""
-        safe_ticker = str(ticker_symbol).strip() if ticker_symbol else ""
-    except:
-        # If conversion fails, use empty strings
+        # Handle potential non-string inputs
+        if position_name is not None:
+            try:
+                # First try UTF-8 re-encoding to handle any encoding issues
+                safe_position = str(position_name).encode('utf-8', errors='replace').decode('utf-8', errors='replace').strip()
+                # Log problematic strings to help identify issues
+                if safe_position != str(position_name).strip():
+                    logger.warning(f"Position name required encoding cleanup: {position_name} -> {safe_position}")
+            except Exception as e:
+                logger.warning(f"Position name encoding error: {str(e)}")
+                safe_position = str(position_name).strip() if position_name else ""
+        else:
+            safe_position = ""
+            
+        if cusip is not None:
+            try:
+                # First try UTF-8 re-encoding to handle any encoding issues  
+                safe_cusip = str(cusip).encode('utf-8', errors='replace').decode('utf-8', errors='replace').strip()
+            except Exception as e:
+                logger.warning(f"CUSIP encoding error: {str(e)}")
+                safe_cusip = str(cusip).strip() if cusip else ""
+        else:
+            safe_cusip = ""
+            
+        if ticker_symbol is not None:
+            try:
+                # First try UTF-8 re-encoding to handle any encoding issues
+                safe_ticker = str(ticker_symbol).encode('utf-8', errors='replace').decode('utf-8', errors='replace').strip()
+            except Exception as e:
+                logger.warning(f"Ticker symbol encoding error: {str(e)}")
+                safe_ticker = str(ticker_symbol).strip() if ticker_symbol else ""
+        else:
+            safe_ticker = ""
+    except Exception as e:
+        # If conversion fails, use empty strings and log the error
+        logger.error(f"Critical string conversion error: {str(e)}")
         safe_position = ""
         safe_cusip = ""
         safe_ticker = ""
         
     # Sanitize inputs to prevent database errors
-    # Remove non-ASCII characters that cause encoding errors
+    # Handle problematic characters that could cause encoding errors
     def sanitize(text):
         if not text:
             return ""
-        # Keep only ASCII printable characters
-        return ''.join(c for c in text if ord(c) < 128 and c.isprintable())
+            
+        try:
+            # First clean with encoding/decoding to handle any existing encoding issues
+            text_clean = text.encode('utf-8', errors='replace').decode('utf-8', errors='replace')
+            
+            # Then filter out problematic characters while preserving common extended characters
+            sanitized = ''.join(c for c in text_clean if (
+                # Keep basic ASCII
+                (ord(c) < 128 and c.isprintable()) or
+                # Keep common extended Latin characters (accented letters)
+                c in 'éèêëàáâäùúûüìíîïòóôöñçß'
+            ))
+            
+            return sanitized
+        except Exception as e:
+            logger.warning(f"Advanced sanitization failed: {str(e)}")
+            # Fall back to basic ASCII-only sanitization
+            return ''.join(c for c in text if ord(c) < 128 and c.isprintable())
         
     safe_position = sanitize(safe_position)
     safe_cusip = sanitize(safe_cusip)  
@@ -1257,29 +1304,115 @@ def find_matching_risk_stat(
                 except Exception as e:
                     logger.warning(f"Ticker lookup error: {str(e)}")
             
-            # Try by position name exactly
+            # Try by position name with progressive fallback strategies
             if safe_position:
-                stmt = select(model_class).where(
-                    model_class.position == safe_position,
-                    model_class.upload_date == latest_date
-                ).limit(1)
-                
                 try:
-                    result = db.execute(stmt).scalar_one_or_none()
-                    if result:
-                        return {
-                            'id': getattr(result, 'id', None),
-                            'upload_date': getattr(result, 'upload_date', None),
-                            'position': getattr(result, 'position', None),
-                            'ticker_symbol': getattr(result, 'ticker_symbol', None),
-                            'cusip': getattr(result, 'cusip', None),
-                            'beta': getattr(result, 'beta', None),
-                            'volatility': getattr(result, 'volatility', None),
-                            'vol': getattr(result, 'vol', None),
-                            'duration': getattr(result, 'duration', None)
-                        }
+                    # First try exact match (most accurate)
+                    stmt = select(model_class).where(
+                        model_class.position == safe_position,
+                        model_class.upload_date == latest_date
+                    ).limit(1)
+                    
+                    try:
+                        result = db.execute(stmt).scalar_one_or_none()
+                        if result:
+                            # Create risk stat response with error protection
+                            risk_stat = {
+                                'id': getattr(result, 'id', None),
+                                'upload_date': getattr(result, 'upload_date', None),
+                                'position': getattr(result, 'position', None),
+                                'ticker_symbol': getattr(result, 'ticker_symbol', None),
+                                'cusip': getattr(result, 'cusip', None),
+                                'beta': getattr(result, 'beta', None),
+                                'volatility': getattr(result, 'volatility', None),
+                                'vol': getattr(result, 'vol', None),
+                                'duration': getattr(result, 'duration', None)
+                            }
+                            
+                            # Cache the result if caching is enabled
+                            if cache is not None and safe_position:
+                                cache_prefix = asset_class_str.replace(" ", "_")
+                                cache[f"{cache_prefix}:position:{safe_position}"] = risk_stat
+                                
+                            return risk_stat
+                    except Exception as e:
+                        # Log error but continue with fallback strategies
+                        logger.warning(f"Exact position lookup error: {str(e)}")
+                    
+                    # If exact match fails, try case-insensitive match
+                    try:
+                        stmt = select(model_class).where(
+                            func.lower(model_class.position) == func.lower(safe_position),
+                            model_class.upload_date == latest_date
+                        ).limit(1)
+                        
+                        result = db.execute(stmt).scalar_one_or_none()
+                        if result:
+                            # Create risk stat response with error protection
+                            risk_stat = {
+                                'id': getattr(result, 'id', None),
+                                'upload_date': getattr(result, 'upload_date', None),
+                                'position': getattr(result, 'position', None),
+                                'ticker_symbol': getattr(result, 'ticker_symbol', None),
+                                'cusip': getattr(result, 'cusip', None),
+                                'beta': getattr(result, 'beta', None),
+                                'volatility': getattr(result, 'volatility', None),
+                                'vol': getattr(result, 'vol', None),
+                                'duration': getattr(result, 'duration', None)
+                            }
+                            
+                            # Cache the result if caching is enabled
+                            if cache is not None and safe_position:
+                                cache_prefix = asset_class_str.replace(" ", "_")
+                                cache[f"{cache_prefix}:position:{safe_position}"] = risk_stat
+                                
+                            return risk_stat
+                    except Exception as e:
+                        # Log error but continue with fallback strategies
+                        logger.warning(f"Case-insensitive position lookup error: {str(e)}")
+                        
+                    # Final attempt: try partial match (most lenient but may reduce accuracy)
+                    # Only try this if position name is longer than 5 characters
+                    if len(safe_position) > 5:
+                        try:
+                            # Extract first 5+ letters removing spaces
+                            simplified = ''.join(c for c in safe_position if c.isalnum()).lower()
+                            if len(simplified) >= 5:
+                                partial_search = simplified[:5] + '%'  # First 5 chars + wildcard
+                                
+                                # Create a text pattern for searching
+                                stmt = select(model_class).where(
+                                    func.lower(model_class.position).like(partial_search),
+                                    model_class.upload_date == latest_date
+                                ).limit(1)
+                                
+                                result = db.execute(stmt).scalar_one_or_none()
+                                if result:
+                                    # Create risk stat response with error protection
+                                    risk_stat = {
+                                        'id': getattr(result, 'id', None),
+                                        'upload_date': getattr(result, 'upload_date', None),
+                                        'position': getattr(result, 'position', None),
+                                        'ticker_symbol': getattr(result, 'ticker_symbol', None),
+                                        'cusip': getattr(result, 'cusip', None),
+                                        'beta': getattr(result, 'beta', None),
+                                        'volatility': getattr(result, 'volatility', None),
+                                        'vol': getattr(result, 'vol', None),
+                                        'duration': getattr(result, 'duration', None)
+                                    }
+                                    
+                                    # Cache the result if caching is enabled
+                                    if cache is not None and safe_position:
+                                        cache_prefix = asset_class_str.replace(" ", "_")
+                                        cache[f"{cache_prefix}:position:{safe_position}"] = risk_stat
+                                        
+                                    return risk_stat
+                        except Exception as e:
+                            # Log error for final attempt
+                            logger.warning(f"Partial position lookup error: {str(e)}")
                 except Exception as e:
-                    logger.warning(f"Position lookup error: {str(e)}")
+                    # Log overall position lookup failure
+                    logger.warning(f"All position lookup strategies failed: {str(e)}")
             
             # No matches found
             return None

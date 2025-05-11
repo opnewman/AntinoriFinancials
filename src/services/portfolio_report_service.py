@@ -544,6 +544,23 @@ def generate_portfolio_report(db: Session, report_date: date, level: str, level_
     Returns:
         Dict with complete portfolio report data
     """
+    import time
+    
+    # Start a timeout timer to prevent worker crashes
+    start_time = time.time()
+    max_execution_time = 25  # Maximum seconds to allow for execution before returning partial results
+    
+    # Initialize a timeout flag
+    timeout_occurred = False
+    
+    # Define timeout checker
+    def check_timeout():
+        elapsed = time.time() - start_time
+        if elapsed > max_execution_time:
+            logger.warning(f"Execution time approaching limit ({elapsed:.2f}s). Returning partial results.")
+            return True
+        return False
+    
     logger.info(f"Generating portfolio report for {level}={level_key} on date {report_date}")
     
     # Get total portfolio value
