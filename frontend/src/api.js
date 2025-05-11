@@ -151,9 +151,11 @@ window.api = {
      */
     getPortfolioReport: async (date, level, levelKey, displayFormat = 'percent') => {
         try {
+            // Set a longer timeout for this request (30 seconds)
             const response = await axios.get(
                 `${API_BASE_URL}/api/portfolio-report-template`, {
-                    params: { date, level, level_key: levelKey, display_format: displayFormat }
+                    params: { date, level, level_key: levelKey, display_format: displayFormat },
+                    timeout: 30000 // 30 seconds timeout
                 }
             );
             
@@ -163,11 +165,42 @@ window.api = {
                 throw new Error('No portfolio data available');
             }
             
+            // Check for timeout_occurred flag in the response
+            if (response.data && response.data.timeout_occurred) {
+                console.warn('Portfolio report generated with partial data due to timeout');
+                // Return the partial data but mark it as having timeout issues
+                return {
+                    ...response.data,
+                    warning: 'The report may have incomplete risk metrics due to processing timeout.'
+                };
+            }
+            
             return response.data;
         } catch (error) {
             console.error('Portfolio report error:', error);
-            // Let the component handle this error
-            throw new Error(error.response?.data?.detail || 'Failed to generate portfolio report');
+            
+            // Create a more user-friendly error message
+            let errorMessage = 'Failed to generate portfolio report.';
+            
+            if (error.response) {
+                // Server returned an error response
+                if (error.response.status === 500) {
+                    errorMessage = 'The server encountered an error while processing the report. This might be due to complex data or encoding issues with security names.';
+                } else if (error.response.status === 404) {
+                    errorMessage = 'No data found for the selected date and portfolio.';
+                } else if (error.response.data && error.response.data.error) {
+                    errorMessage = error.response.data.error;
+                }
+            } else if (error.code === 'ECONNABORTED') {
+                // Timeout error
+                errorMessage = 'The report generation timed out. Try again or select a different portfolio with fewer positions.';
+            } else if (!error.response) {
+                // Network error
+                errorMessage = 'Network error. Please check your connection and try again.';
+            }
+            
+            // Throw enhanced error
+            throw new Error(errorMessage);
         }
     },
     

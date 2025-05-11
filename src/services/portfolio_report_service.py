@@ -651,8 +651,58 @@ def generate_portfolio_report(db: Session, report_date: date, level: str, level_
             'hard_currency': {'beta': None, 'coverage_pct': None}
         }
         
-        # Attempt to calculate risk metrics with error protection
-        risk_metrics_result = calculate_portfolio_risk_metrics(db, level, level_key, report_date)
+        # Check for timeout before major calculation
+        if check_timeout():
+            logger.warning("Timeout occurred before risk metrics calculation. Returning report with empty risk metrics.")
+            report_data["timeout_occurred"] = True
+            return report_data
+            
+        try:
+            # Attempt to calculate risk metrics with error protection and timeout limit
+            import threading
+            import queue
+            
+            # Use a queue to get the result from the thread
+            result_queue = queue.Queue()
+            
+            def calculate_metrics_with_timeout():
+                try:
+                    # Calculate risk metrics
+                    result = calculate_portfolio_risk_metrics(db, level, level_key, report_date)
+                    # Put the result in the queue
+                    result_queue.put(result)
+                except Exception as e:
+                    logger.error(f"Error in risk metrics calculation thread: {str(e)}")
+                    # Put an error result in the queue
+                    result_queue.put({"success": False, "error": str(e)})
+            
+            # Start the calculation in a separate thread
+            calculation_thread = threading.Thread(target=calculate_metrics_with_timeout)
+            calculation_thread.start()
+            
+            # Wait for the thread to complete or timeout
+            calculation_thread.join(timeout=15)  # 15 second timeout
+            
+            # Check if thread is still alive (timeout occurred)
+            if calculation_thread.is_alive():
+                logger.warning("Risk metrics calculation timed out after 15 seconds")
+                report_data["timeout_occurred"] = True
+                # Use default risk metrics
+                risk_metrics_result = {
+                    "success": False, 
+                    "error": "Calculation timed out",
+                    "risk_metrics": report_data['risk_metrics']
+                }
+            else:
+                # Get the result from the queue
+                try:
+                    risk_metrics_result = result_queue.get(block=False)
+                except queue.Empty:
+                    logger.error("Risk metrics calculation thread didn't return a result")
+                    risk_metrics_result = {"success": False, "error": "No result from calculation"}
+        except Exception as e:
+            logger.error(f"Critical error in risk metrics calculation setup: {str(e)}")
+            risk_metrics_result = {"success": False, "error": str(e)}
         
         # Only process if calculation was successful
         if risk_metrics_result.get('success', False):
