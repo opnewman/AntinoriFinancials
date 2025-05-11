@@ -299,17 +299,33 @@ def process_equity_risk(
             cache
         )
         
-        if risk_stat:
+        if risk_stat is not None:
             # We found a match - update weighted sums
-            if "beta" in risk_stat and risk_stat["beta"] is not None:
-                beta = Decimal(str(risk_stat["beta"]))
-                weighted_beta = (beta * position_value) / totals["equity"] if totals["equity"] > Decimal('0.0') else Decimal('0.0')
+            beta_value = risk_stat.get("beta") if isinstance(risk_stat, dict) else None
+            if beta_value is not None:
+                # Ensure we're working with Decimal for all calculations
+                beta = Decimal(str(beta_value))
+                
+                # Safe division
+                if totals["equity"] > Decimal('0.0'):
+                    weighted_beta = (beta * position_value) / totals["equity"]
+                else:
+                    weighted_beta = Decimal('0.0')
+                    
                 risk_metrics["equity"]["beta"]["weighted_sum"] += weighted_beta
                 matched_value += position_value
                 
-            if "volatility" in risk_stat and risk_stat["volatility"] is not None:
-                volatility = Decimal(str(risk_stat["volatility"]))
-                weighted_volatility = (volatility * position_value) / totals["equity"] if totals["equity"] > Decimal('0.0') else Decimal('0.0')
+            volatility_value = risk_stat.get("volatility") if isinstance(risk_stat, dict) else None
+            if volatility_value is not None:
+                # Ensure we're working with Decimal for all calculations
+                volatility = Decimal(str(volatility_value))
+                
+                # Safe division
+                if totals["equity"] > Decimal('0.0'):
+                    weighted_volatility = (volatility * position_value) / totals["equity"]
+                else:
+                    weighted_volatility = Decimal('0.0')
+                    
                 risk_metrics["equity"]["volatility"]["weighted_sum"] += weighted_volatility
     
     # Calculate coverage percentages
@@ -351,11 +367,19 @@ def process_fixed_income_risk(
             cache
         )
         
-        if risk_stat:
+        if risk_stat is not None:
             # We found a match - update weighted sums
-            if "duration" in risk_stat and risk_stat["duration"] is not None:
-                duration = Decimal(str(risk_stat["duration"]))
-                weighted_duration = (duration * position_value) / totals["fixed_income"] if totals["fixed_income"] > Decimal('0.0') else Decimal('0.0')
+            duration_value = risk_stat.get("duration") if isinstance(risk_stat, dict) else None
+            if duration_value is not None:
+                # Ensure we're working with Decimal for all calculations
+                duration = Decimal(str(duration_value))
+                
+                # Safe division
+                if totals["fixed_income"] > Decimal('0.0'):
+                    weighted_duration = (duration * position_value) / totals["fixed_income"]
+                else:
+                    weighted_duration = Decimal('0.0')
+                    
                 risk_metrics["fixed_income"]["duration"]["weighted_sum"] += weighted_duration
                 matched_value += position_value
     
@@ -397,11 +421,19 @@ def process_hard_currency_risk(
             cache
         )
         
-        if risk_stat:
+        if risk_stat is not None:
             # We found a match - update weighted sums
-            if "beta" in risk_stat and risk_stat["beta"] is not None:
-                beta = Decimal(str(risk_stat["beta"]))
-                weighted_beta = (beta * position_value) / totals["hard_currency"] if totals["hard_currency"] > Decimal('0.0') else Decimal('0.0')
+            beta_value = risk_stat.get("beta") if isinstance(risk_stat, dict) else None
+            if beta_value is not None:
+                # Ensure we're working with Decimal for all calculations
+                beta = Decimal(str(beta_value))
+                
+                # Safe division
+                if totals["hard_currency"] > Decimal('0.0'):
+                    weighted_beta = (beta * position_value) / totals["hard_currency"]
+                else:
+                    weighted_beta = Decimal('0.0')
+                    
                 risk_metrics["hard_currency"]["beta"]["weighted_sum"] += weighted_beta
                 matched_value += position_value
     
@@ -443,11 +475,19 @@ def process_alternatives_risk(
             cache
         )
         
-        if risk_stat:
+        if risk_stat is not None:
             # We found a match - update weighted sums
-            if "beta" in risk_stat and risk_stat["beta"] is not None:
-                beta = Decimal(str(risk_stat["beta"]))
-                weighted_beta = (beta * position_value) / totals["alternatives"] if totals["alternatives"] > Decimal('0.0') else Decimal('0.0')
+            beta_value = risk_stat.get("beta") if isinstance(risk_stat, dict) else None
+            if beta_value is not None:
+                # Ensure we're working with Decimal for all calculations
+                beta = Decimal(str(beta_value))
+                
+                # Safe division
+                if totals["alternatives"] > Decimal('0.0'):
+                    weighted_beta = (beta * position_value) / totals["alternatives"]
+                else:
+                    weighted_beta = Decimal('0.0')
+                    
                 risk_metrics["alternatives"]["beta"]["weighted_sum"] += weighted_beta
                 matched_value += position_value
     
