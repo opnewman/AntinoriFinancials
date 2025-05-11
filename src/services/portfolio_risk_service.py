@@ -843,6 +843,10 @@ def process_fixed_income_risk(
             except Exception as e:
                 logger.error(f"Error calculating fixed income position metrics: {str(e)}")
                 continue
+        else:
+            # Track unmatched fixed income securities
+            if position_name:
+                track_unmatched_security(position_name, "Fixed Income")
     
     # Calculate coverage
     if totals["fixed_income"] > Decimal('0.0'):
@@ -951,6 +955,10 @@ def process_hard_currency_risk(
                 except Exception as e:
                     logger.error(f"Error calculating hard currency position metrics: {str(e)}")
                     continue
+            else:
+                # Track unmatched hard currency securities
+                if position_name:
+                    track_unmatched_security(position_name, "Hard Currency")
         except Exception as e:
             logger.error(f"Error processing hard currency position: {str(e)}")
             continue
@@ -1101,6 +1109,10 @@ def process_alternatives_risk(
             except Exception as e:
                 logger.error(f"Error calculating alternatives position metrics: {str(e)}")
                 continue
+        else:
+            # Track unmatched alternatives securities
+            if position_name:
+                track_unmatched_security(position_name, "Alternatives")
     
     # Calculate coverage
     if totals["alternatives"] > Decimal('0.0'):
