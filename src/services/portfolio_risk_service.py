@@ -268,11 +268,30 @@ def calculate_portfolio_risk_metrics(
     # Create a risk statistics cache to reduce database queries
     risk_stats_cache = {}
     
-    # Process positions by asset class
-    process_equity_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
-    process_fixed_income_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
-    process_hard_currency_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
-    process_alternatives_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
+    # Set a timeout limit for the entire risk metric calculation (10 seconds max)
+    MAX_PROCESSING_TIME = 10  # seconds
+    
+    try:
+        with time_limit(MAX_PROCESSING_TIME):
+            # Process positions by asset class
+            logger.info(f"Processing equity risk metrics for {level} {level_key}")
+            process_equity_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
+            
+            logger.info(f"Processing fixed income risk metrics for {level} {level_key}")
+            process_fixed_income_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
+            
+            logger.info(f"Processing hard currency risk metrics for {level} {level_key}")
+            process_hard_currency_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
+            
+            logger.info(f"Processing alternatives risk metrics for {level} {level_key}")
+            process_alternatives_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
+    except TimeoutException:
+        logger.warning(f"Risk metrics calculation timed out after {MAX_PROCESSING_TIME} seconds")
+        # Continue with partial results
+        logger.warning("Using partial risk metrics calculation results")
+    except Exception as e:
+        logger.error(f"Error calculating risk metrics: {str(e)}")
+        # Keep going with what we have
     
     # Calculate percentages of each asset class
     total_value = sum(totals.values())
@@ -631,16 +650,26 @@ def find_matching_risk_stat(
         with get_db_connection() as query_session:
             try:
                 # Select only the specific columns we need to reduce memory usage
-                # Use with_entities to be more explicit about what we're selecting
-                risk_stat = query_session.query(model_class).with_entities(
+                # Create query using select to better support column selection
+                columns_to_select = [
                     model_class.id,
                     model_class.beta,
-                    model_class.volatility,
-                    getattr(model_class, 'duration', None)
-                ).filter(
+                    model_class.volatility
+                ]
+                
+                # Add duration column only if it exists on this model class
+                if hasattr(model_class, 'duration'):
+                    columns_to_select.append(model_class.duration)
+                
+                # Create the query
+                stmt = select(*columns_to_select).where(
                     condition,
                     model_class.upload_date == latest_date
-                ).limit(1).first()
+                ).limit(1)
+                
+                # Execute the query
+                result = query_session.execute(stmt)
+                risk_stat = result.first()
                 
                 if risk_stat is not None:
                     # Convert to dictionary with only needed fields
