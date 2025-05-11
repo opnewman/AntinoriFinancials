@@ -1042,7 +1042,7 @@ def find_matching_risk_stat(
     db: Session,
     position_name: Any,
     cusip: Optional[Any],
-    ticker_symbol: Optional[Any],
+    ticker_symbol: Optional[Any], 
     asset_class: str,
     latest_date: date,
     cache: Optional[Dict[str, Any]] = None
@@ -1051,12 +1051,7 @@ def find_matching_risk_stat(
     Find a matching risk statistic for a position using different identifiers.
     
     Uses the new table structure with separate tables for each asset class.
-    
-    Try matching in this order of priority:
-    1. Use cache if provided (for optimized lookups)
-    2. CUSIP (if provided) - most reliable unique identifier
-    3. Ticker symbol (if provided) - good for public securities
-    4. Position name (exact match only) - less reliable but necessary fallback
+    Simplified and optimized implementation to avoid timeout errors.
     
     Args:
         db (Session): Database session
@@ -1070,168 +1065,137 @@ def find_matching_risk_stat(
     Returns:
         Optional[Any]: Matching risk statistic or None
     """
+    # Safety check for inputs
+    if not position_name and not cusip and not ticker_symbol:
+        return None
+        
+    if not asset_class:
+        return None
+        
+    # Determine model class without complex logic
+    model_class = None
+    asset_class_str = str(asset_class).lower()
+    
+    if "equity" in asset_class_str:
+        model_class = RiskStatisticEquity
+    elif "fixed" in asset_class_str:
+        model_class = RiskStatisticFixedIncome
+    elif "alternative" in asset_class_str:
+        model_class = RiskStatisticAlternatives
+    elif "hard" in asset_class_str and "currency" in asset_class_str:
+        model_class = RiskStatisticAlternatives
+    else:
+        return None
+        
+    # Convert strings safely
     try:
-        # Reduce logging verbosity to improve performance
-        logger.debug(f"Finding risk stat for position in asset class: {asset_class}")
-        
-        # Safely handle all input types
-        if asset_class is None:
-            logger.warning("No asset class provided for risk stat lookup")
-            return None
-            
-        # Normalize asset class
-        if hasattr(asset_class, 'key') and hasattr(asset_class, 'type'):
-            asset_class = str(asset_class)
-        
-        # Use simple direct handling for string conversion
-        try:
-            if position_name is not None and not isinstance(position_name, str):
-                position_name = str(position_name)
-            if cusip is not None and not isinstance(cusip, str):
-                cusip = str(cusip)
-            if ticker_symbol is not None and not isinstance(ticker_symbol, str):
-                ticker_symbol = str(ticker_symbol)
-        except Exception as e:
-            logger.warning(f"Error converting values to strings: {str(e)}")
-                
-        # Clean inputs and remove problematic characters
-        safe_position_name = ""
+        safe_position = str(position_name).strip() if position_name else ""
+        safe_cusip = str(cusip).strip() if cusip else ""
+        safe_ticker = str(ticker_symbol).strip() if ticker_symbol else ""
+    except:
+        # If conversion fails, use empty strings
+        safe_position = ""
         safe_cusip = ""
-        safe_ticker_symbol = ""
+        safe_ticker = ""
         
-        try:
-            if position_name:
-                safe_position_name = position_name.strip()
-                safe_position_name = ''.join(c for c in safe_position_name if c.isascii() and c.isprintable())
+    # Sanitize inputs to prevent database errors
+    # Remove non-ASCII characters that cause encoding errors
+    def sanitize(text):
+        if not text:
+            return ""
+        # Keep only ASCII printable characters
+        return ''.join(c for c in text if ord(c) < 128 and c.isprintable())
+        
+    safe_position = sanitize(safe_position)
+    safe_cusip = sanitize(safe_cusip)  
+    safe_ticker = sanitize(safe_ticker)
+    
+    # Check cache first (no database query)
+    if cache is not None:
+        cache_prefix = asset_class_str.replace(" ", "_")
+        
+        if safe_cusip and f"{cache_prefix}:cusip:{safe_cusip}" in cache:
+            return cache[f"{cache_prefix}:cusip:{safe_cusip}"]
             
-            if cusip:
-                safe_cusip = cusip.strip()
-                safe_cusip = ''.join(c for c in safe_cusip if c.isascii() and c.isprintable())
-                
-            if ticker_symbol:
-                safe_ticker_symbol = ticker_symbol.strip()
-                safe_ticker_symbol = ''.join(c for c in safe_ticker_symbol if c.isascii() and c.isprintable())
-        except Exception as e:
-            logger.warning(f"Error cleaning input values: {str(e)}")
-        
-        # Determine which model class to use based on asset class - simplified logic
-        model_class = None
-        if isinstance(asset_class, str):
-            asset_class_lower = asset_class.lower()
-            if 'equity' in asset_class_lower:
-                model_class = RiskStatisticEquity
-            elif 'fixed' in asset_class_lower:
-                model_class = RiskStatisticFixedIncome
-            elif 'alternatives' in asset_class_lower or 'alternative' in asset_class_lower:
-                model_class = RiskStatisticAlternatives
-            elif 'hard' in asset_class_lower and 'currency' in asset_class_lower:
-                # Hard currency is tracked in the Alternatives table
-                model_class = RiskStatisticAlternatives
-        
-        if model_class is None:
-            logger.warning(f"Unsupported asset class: {asset_class}")
-            return None
+        if safe_ticker and f"{cache_prefix}:ticker:{safe_ticker}" in cache:
+            return cache[f"{cache_prefix}:ticker:{safe_ticker}"]
             
-        # Cache key prefix for better organization - simpler calculation
-        cache_prefix = str(asset_class).lower().replace(' ', '_')
-        
-        # Check cache first if provided (most efficient)
-        if cache is not None:
-            # Try CUSIP cache
-            if safe_cusip:
-                cache_key = f"{cache_prefix}:cusip:{safe_cusip}"
-                if cache_key in cache:
-                    return cache[cache_key]
-                    
-            # Try ticker cache
-            if safe_ticker_symbol:
-                cache_key = f"{cache_prefix}:ticker:{safe_ticker_symbol}"
-                if cache_key in cache:
-                    return cache[cache_key]
-                    
-            # Try position name cache
-            if safe_position_name:
-                cache_key = f"{cache_prefix}:position:{safe_position_name}"
-                if cache_key in cache:
-                    return cache[cache_key]
-        
-        # Use a single try-except block for all database operations to reduce overhead
-        try:
-            # Try matching by CUSIP first (most reliable)
-            if safe_cusip:
-                risk_stat = db.query(model_class).filter(
-                    model_class.cusip == safe_cusip,
-                    model_class.upload_date == latest_date
-                ).first()
+        if safe_position and f"{cache_prefix}:position:{safe_position}" in cache:
+            return cache[f"{cache_prefix}:position:{safe_position}"]
+    
+    # Find match in database with minimal risk of errors
+    try:
+        # Try by CUSIP first (most reliable)
+        if safe_cusip:
+            try:
+                query = f"""
+                    SELECT id, upload_date, position, ticker_symbol, cusip,
+                           beta, volatility, vol, duration
+                    FROM {model_class.__tablename__}
+                    WHERE cusip = '{safe_cusip}'
+                    AND upload_date = '{latest_date}'
+                    LIMIT 1
+                """
                 
-                if risk_stat:
-                    # Add to cache if provided
-                    if cache is not None:
-                        cache[f"{cache_prefix}:cusip:{safe_cusip}"] = risk_stat
+                result = db.execute(text(query)).first()
+                if result:
+                    # Convert to dictionary
+                    columns = ['id', 'upload_date', 'position', 'ticker_symbol', 'cusip', 
+                               'beta', 'volatility', 'vol', 'duration']
+                    risk_stat = {col: result[i] for i, col in enumerate(columns) if i < len(result)}
                     return risk_stat
-            
-            # Try matching by ticker symbol
-            if safe_ticker_symbol:
-                risk_stat = db.query(model_class).filter(
-                    model_class.ticker_symbol == safe_ticker_symbol,
-                    model_class.upload_date == latest_date
-                ).first()
+            except Exception as e:
+                logger.warning(f"CUSIP lookup error: {str(e)}")
+        
+        # Try by ticker
+        if safe_ticker:
+            try:
+                query = f"""
+                    SELECT id, upload_date, position, ticker_symbol, cusip,
+                           beta, volatility, vol, duration
+                    FROM {model_class.__tablename__}
+                    WHERE ticker_symbol = '{safe_ticker}'
+                    AND upload_date = '{latest_date}'
+                    LIMIT 1
+                """
                 
-                if risk_stat:
-                    # Add to cache if provided
-                    if cache is not None:
-                        cache[f"{cache_prefix}:ticker:{safe_ticker_symbol}"] = risk_stat
+                result = db.execute(text(query)).first()
+                if result:
+                    # Convert to dictionary
+                    columns = ['id', 'upload_date', 'position', 'ticker_symbol', 'cusip', 
+                               'beta', 'volatility', 'vol', 'duration']
+                    risk_stat = {col: result[i] for i, col in enumerate(columns) if i < len(result)}
                     return risk_stat
-            
-            # Try matching by position name - exact match only for performance
-            if safe_position_name:
-                # Try direct match first (fastest)
-                risk_stat = db.query(model_class).filter(
-                    model_class.position == safe_position_name,
-                    model_class.upload_date == latest_date
-                ).first()
+            except Exception as e:
+                logger.warning(f"Ticker lookup error: {str(e)}")
+        
+        # Try by position exactly (most efficient)
+        if safe_position:
+            try:
+                query = f"""
+                    SELECT id, upload_date, position, ticker_symbol, cusip,
+                           beta, volatility, vol, duration
+                    FROM {model_class.__tablename__}
+                    WHERE position = '{safe_position}'
+                    AND upload_date = '{latest_date}'
+                    LIMIT 1
+                """
                 
-                if risk_stat:
-                    # Add to cache if provided
-                    if cache is not None:
-                        cache[f"{cache_prefix}:position:{safe_position_name}"] = risk_stat
+                result = db.execute(text(query)).first()
+                if result:
+                    # Convert to dictionary
+                    columns = ['id', 'upload_date', 'position', 'ticker_symbol', 'cusip', 
+                               'beta', 'volatility', 'vol', 'duration']
+                    risk_stat = {col: result[i] for i, col in enumerate(columns) if i < len(result)}
                     return risk_stat
+            except Exception as e:
+                logger.warning(f"Position lookup error: {str(e)}")
                 
-                # For smaller searches or when critical, try case-insensitive match
-                if len(safe_position_name) > 3 and len(safe_position_name) < 50:
-                    # Try lowercase comparison
-                    risk_stat = db.query(model_class).filter(
-                        func.lower(model_class.position) == func.lower(safe_position_name),
-                        model_class.upload_date == latest_date
-                    ).first()
-                    
-                    if risk_stat:
-                        if cache is not None:
-                            cache[f"{cache_prefix}:position:{safe_position_name}"] = risk_stat
-                        return risk_stat
-            
-            # Skip these expensive operations for large portfolios to prevent timeouts
-            if cache is None and safe_position_name and len(safe_position_name) > 3 and len(safe_position_name) < 30:
-                # Try a limited contains match for critical lookups only
-                risk_stat = db.query(model_class).filter(
-                    model_class.position.contains(safe_position_name),
-                    model_class.upload_date == latest_date
-                ).limit(1).first()
-                
-                if risk_stat:
-                    return risk_stat
-            
-            # No match found after all attempts
-            return None
-            
-        except Exception as e:
-            # Log the error but continue processing to avoid breaking the entire report
-            logger.warning(f"Error finding risk stat for {asset_class}: {str(e)}")
-            return None
+        # No matches found
+        return None
         
     except Exception as e:
-        # Catch all other exceptions to prevent crashes
-        logger.error(f"Unexpected error finding risk stat for {position_name}: {str(e)}")
+        logger.error(f"Critical database error in risk stat lookup: {str(e)}")
         return None
 
 def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]], percentages: Dict[str, Decimal]) -> None:
