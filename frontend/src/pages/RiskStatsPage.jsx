@@ -47,6 +47,9 @@ const RiskStatsPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [riskStats, setRiskStats] = useState([]);
+  const [unmatchedSecurities, setUnmatchedSecurities] = useState({});
+  const [loadingUnmatched, setLoadingUnmatched] = useState(false);
+  const [activeTab, setActiveTab] = useState(0); // 0 = Risk Stats, 1 = Unmatched Securities
   const [filters, setFilters] = useState({
     assetClass: '',
     secondLevel: '',
@@ -66,6 +69,13 @@ const RiskStatsPage = () => {
   useEffect(() => {
     fetchRiskStats();
   }, [filters, pagination.offset, pagination.limit]);
+  
+  // Load unmatched securities when the tab is selected
+  useEffect(() => {
+    if (activeTab === 1) {
+      fetchUnmatchedSecurities();
+    }
+  }, [activeTab]);
   
   const fetchRiskStats = async () => {
     setLoading(true);
@@ -142,6 +152,38 @@ const RiskStatsPage = () => {
         ...prev,
         offset: Math.max(0, prev.offset - prev.limit)
       }));
+    }
+  };
+  
+  // Fetch unmatched securities from the API
+  const fetchUnmatchedSecurities = async () => {
+    setLoadingUnmatched(true);
+    
+    try {
+      const response = await window.api.getUnmatchedSecurities();
+      
+      if (response.success) {
+        setUnmatchedSecurities(response.unmatched_securities || {});
+      } else {
+        toast({
+          title: 'Error',
+          description: response.error || 'Failed to load unmatched securities',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching unmatched securities:', err);
+      toast({
+        title: 'Error',
+        description: err.message || 'An unexpected error occurred',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setLoadingUnmatched(false);
     }
   };
   
