@@ -625,36 +625,70 @@ def generate_portfolio_report(db: Session, report_date: date, level: str, level_
     elif level == 'account':
         report_data['account'] = level_key
     
-    # Calculate and integrate risk metrics
-    risk_metrics_result = calculate_portfolio_risk_metrics(db, level, level_key, report_date)
-    
-    # Only include risk metrics if the calculation was successful
-    if risk_metrics_result.get('success', False):
-        report_data['risk_metrics'] = {}
+    # Calculate and integrate risk metrics with timeout handling
+    try:
+        # Set a default empty structure in case calculation fails
+        report_data['risk_metrics'] = {
+            'equity': {'beta': None, 'volatility': None, 'coverage_pct': None},
+            'fixed_income': {'duration': None, 'short_duration_pct': None, 'market_duration_pct': None, 'long_duration_pct': None},
+            'hard_currency': {'beta': None, 'coverage_pct': None}
+        }
         
-        # Process equity risk metrics
-        if 'equity' in risk_metrics_result.get('risk_metrics', {}):
-            equity_metrics = risk_metrics_result['risk_metrics']['equity']
-            report_data['risk_metrics']['equity'] = {
-                'beta': float(equity_metrics['beta']['value']) if equity_metrics['beta']['value'] is not None else None,
-                'volatility': float(equity_metrics['volatility']['value']) if equity_metrics['volatility']['value'] is not None else None,
-                'coverage_pct': float(equity_metrics['beta']['coverage_pct']) if equity_metrics['beta']['coverage_pct'] is not None else None
-            }
-            
-            # Calculate beta adjusted value
-            if report_data['risk_metrics']['equity']['beta'] is not None:
-                # Beta adjusted = Equity % × Portfolio's Equity Beta
-                report_data['equities']['beta_adjusted'] = (report_data['equities']['total_pct'] * 
-                                                          report_data['risk_metrics']['equity']['beta']) / 100.0
+        # Attempt to calculate risk metrics with error protection
+        risk_metrics_result = calculate_portfolio_risk_metrics(db, level, level_key, report_date)
+        
+        # Only process if calculation was successful
+        if risk_metrics_result.get('success', False):
+            # Process equity risk metrics
+            if 'equity' in risk_metrics_result.get('risk_metrics', {}) and risk_metrics_result['risk_metrics']['equity'] is not None:
+                try:
+                    equity_metrics = risk_metrics_result['risk_metrics']['equity']
+                    
+                    # Safely extract values
+                    beta_value = equity_metrics.get('beta', {}).get('value')
+                    volatility_value = equity_metrics.get('volatility', {}).get('value')
+                    coverage_pct = equity_metrics.get('beta', {}).get('coverage_pct')
+                    
+                    # Create the risk metrics structure with safe conversion
+                    report_data['risk_metrics']['equity'] = {
+                        'beta': float(beta_value) if beta_value is not None else None,
+                        'volatility': float(volatility_value) if volatility_value is not None else None,
+                        'coverage_pct': float(coverage_pct) if coverage_pct is not None else None
+                    }
+                    
+                    # Calculate beta adjusted value with safety checks
+                    if report_data['risk_metrics']['equity']['beta'] is not None and report_data['equities'].get('total_pct') is not None:
+                        # Beta adjusted = Equity % × Portfolio's Equity Beta
+                        report_data['equities']['beta_adjusted'] = (report_data['equities']['total_pct'] * 
+                                                                report_data['risk_metrics']['equity']['beta']) / 100.0
+                    else:
+                        report_data['equities']['beta_adjusted'] = None
+                        
+                except Exception as e:
+                    logger.warning(f"Error processing equity risk metrics: {str(e)}")
+                    # Keep default values if processing fails
         
         # Process fixed income risk metrics
-        if 'fixed_income' in risk_metrics_result.get('risk_metrics', {}):
-            fi_metrics = risk_metrics_result['risk_metrics']['fixed_income']
-            report_data['risk_metrics']['fixed_income'] = {
-                'duration': float(fi_metrics['duration']['value']) if fi_metrics['duration']['value'] is not None else None,
-                'coverage_pct': float(fi_metrics['duration']['coverage_pct']) if fi_metrics['duration']['coverage_pct'] is not None else None
-            }
-            
+        if 'fixed_income' in risk_metrics_result.get('risk_metrics', {}) and risk_metrics_result['risk_metrics']['fixed_income'] is not None:
+            try:
+                fi_metrics = risk_metrics_result['risk_metrics']['fixed_income']
+                
+                # Safely extract values
+                duration_value = fi_metrics.get('duration', {}).get('value')
+                coverage_pct = fi_metrics.get('duration', {}).get('coverage_pct')
+                
+                # Create the risk metrics structure with safe conversion
+                report_data['risk_metrics']['fixed_income'] = {
+                    'duration': float(duration_value) if duration_value is not None else None,
+                    'coverage_pct': float(coverage_pct) if coverage_pct is not None else None,
+                    'short_duration_pct': float(fi_metrics.get('short_duration_pct', 0)) if fi_metrics.get('short_duration_pct') is not None else None,
+                    'market_duration_pct': float(fi_metrics.get('market_duration_pct', 0)) if fi_metrics.get('market_duration_pct') is not None else None,
+                    'long_duration_pct': float(fi_metrics.get('long_duration_pct', 0)) if fi_metrics.get('long_duration_pct') is not None else None
+                }
+            except Exception as e:
+                logger.warning(f"Error processing fixed income risk metrics: {str(e)}")
+                # Keep default values if processing fails
+                
             # Categorize fixed income durations based on duration values
             # Process durations for municipal bonds, government bonds, and investment grade
             # Update according to our defined duration categories: 
@@ -753,16 +787,32 @@ def generate_portfolio_report(db: Session, report_date: date, level: str, level_
                         report_data['fixed_income']['subcategories'][category]['market_duration'] += position_pct
         
         # Process hard currency risk metrics
-        if 'hard_currency' in risk_metrics_result.get('risk_metrics', {}):
-            hc_metrics = risk_metrics_result['risk_metrics']['hard_currency']
-            report_data['risk_metrics']['hard_currency'] = {
-                'beta': float(hc_metrics['beta']['value']) if hc_metrics['beta']['value'] is not None else None,
-                'coverage_pct': float(hc_metrics['beta']['coverage_pct']) if hc_metrics['beta']['coverage_pct'] is not None else None
-            }
-            
-            # Calculate beta adjusted value for hard currency
-            if report_data['risk_metrics']['hard_currency']['beta'] is not None:
-                report_data['risk_metrics']['hard_currency']['beta_adjusted'] = (report_data['hard_currency']['total_pct'] * 
-                                                                               report_data['risk_metrics']['hard_currency']['beta']) / 100.0
+        if 'hard_currency' in risk_metrics_result.get('risk_metrics', {}) and risk_metrics_result['risk_metrics']['hard_currency'] is not None:
+            try:
+                hc_metrics = risk_metrics_result['risk_metrics']['hard_currency']
+                
+                # Safely extract values
+                beta_value = hc_metrics.get('beta', {}).get('value')
+                coverage_pct = hc_metrics.get('beta', {}).get('coverage_pct')
+                
+                # Create the risk metrics structure with safe conversion
+                report_data['risk_metrics']['hard_currency'] = {
+                    'beta': float(beta_value) if beta_value is not None else None,
+                    'coverage_pct': float(coverage_pct) if coverage_pct is not None else None
+                }
+                
+                # Calculate beta adjusted value for hard currency with safety checks
+                if report_data['risk_metrics']['hard_currency']['beta'] is not None and 'hard_currency' in report_data and 'total_pct' in report_data['hard_currency']:
+                    report_data['risk_metrics']['hard_currency']['beta_adjusted'] = (report_data['hard_currency']['total_pct'] * 
+                                                                                  report_data['risk_metrics']['hard_currency']['beta']) / 100.0
+                else:
+                    report_data['risk_metrics']['hard_currency']['beta_adjusted'] = None
+            except Exception as e:
+                logger.warning(f"Error processing hard currency risk metrics: {str(e)}")
+                # Keep default values if processing fails
+                
+    except Exception as e:
+        # Log critical error but continue with report generation
+        logger.error(f"Error calculating risk metrics for portfolio report: {str(e)}")
     
     return report_data

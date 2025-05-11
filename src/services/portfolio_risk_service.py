@@ -1155,120 +1155,79 @@ def find_matching_risk_stat(
                 if cache_key in cache:
                     return cache[cache_key]
         
-        # Try matching by CUSIP first (most reliable)
-        if safe_cusip:
-            try:
-                # Use a more defensive approach with explicit transactions and error handling
-                logger.debug(f"Attempting to find risk stat by CUSIP: '{safe_cusip}' for asset class: {asset_class}")
+        # Use a single try-except block for all database operations to reduce overhead
+        try:
+            # Try matching by CUSIP first (most reliable)
+            if safe_cusip:
+                risk_stat = db.query(model_class).filter(
+                    model_class.cusip == safe_cusip,
+                    model_class.upload_date == latest_date
+                ).first()
                 
-                # Handle potential encoding issues with CUSIP
-                if not safe_cusip.isascii():
-                    logger.warning(f"Non-ASCII characters in CUSIP: {repr(safe_cusip)} - sanitizing")
-                    safe_cusip = ''.join(c for c in safe_cusip if c.isascii())
+                if risk_stat:
+                    # Add to cache if provided
+                    if cache is not None:
+                        cache[f"{cache_prefix}:cusip:{safe_cusip}"] = risk_stat
+                    return risk_stat
+            
+            # Try matching by ticker symbol
+            if safe_ticker_symbol:
+                risk_stat = db.query(model_class).filter(
+                    model_class.ticker_symbol == safe_ticker_symbol,
+                    model_class.upload_date == latest_date
+                ).first()
                 
-                try:
-                    # First try with exact match
-                    risk_stat = db.query(model_class).filter(
-                        model_class.cusip == safe_cusip,
-                        model_class.upload_date == latest_date
-                    ).first()
-                    
-                    if risk_stat:
-                        logger.debug(f"Found risk stat by CUSIP match for {safe_cusip}")
-                        # Add to cache if provided
-                        if cache is not None:
-                            cache[f"{cache_prefix}:cusip:{safe_cusip}"] = risk_stat
-                        return risk_stat
-                except Exception as specific_e:
-                    logger.warning(f"Specific error in CUSIP query for {safe_cusip}: {str(specific_e)}")
-                    # Fall through to other matching methods
-            except Exception as e:
-                logger.warning(f"General error matching by CUSIP for {asset_class}: {str(e)}")
-        
-        # Try matching by ticker symbol
-        if safe_ticker_symbol:
-            try:
-                logger.debug(f"Attempting to find risk stat by ticker: '{safe_ticker_symbol}' for asset class: {asset_class}")
+                if risk_stat:
+                    # Add to cache if provided
+                    if cache is not None:
+                        cache[f"{cache_prefix}:ticker:{safe_ticker_symbol}"] = risk_stat
+                    return risk_stat
+            
+            # Try matching by position name - exact match only for performance
+            if safe_position_name:
+                # Try direct match first (fastest)
+                risk_stat = db.query(model_class).filter(
+                    model_class.position == safe_position_name,
+                    model_class.upload_date == latest_date
+                ).first()
                 
-                # Handle potential encoding issues with ticker
-                if not safe_ticker_symbol.isascii():
-                    logger.warning(f"Non-ASCII characters in ticker: {repr(safe_ticker_symbol)} - sanitizing")
-                    safe_ticker_symbol = ''.join(c for c in safe_ticker_symbol if c.isascii())
+                if risk_stat:
+                    # Add to cache if provided
+                    if cache is not None:
+                        cache[f"{cache_prefix}:position:{safe_position_name}"] = risk_stat
+                    return risk_stat
                 
-                try:
-                    risk_stat = db.query(model_class).filter(
-                        model_class.ticker_symbol == safe_ticker_symbol,
-                        model_class.upload_date == latest_date
-                    ).first()
-                    
-                    if risk_stat:
-                        logger.debug(f"Found risk stat by ticker match for {safe_ticker_symbol}")
-                        # Add to cache if provided
-                        if cache is not None:
-                            cache[f"{cache_prefix}:ticker:{safe_ticker_symbol}"] = risk_stat
-                        return risk_stat
-                except Exception as specific_e:
-                    logger.warning(f"Specific error in ticker query for {safe_ticker_symbol}: {str(specific_e)}")
-                    # Fall through to other matching methods
-            except Exception as e:
-                logger.warning(f"General error matching by ticker for {asset_class}: {str(e)}")
-        
-        # Finally, try matching by position name (exact match only for performance)
-        if safe_position_name:
-            try:
-                logger.debug(f"Attempting to find risk stat by position name: '{safe_position_name}' for asset class: {asset_class}")
-                
-                # Handle potential encoding issues with position name
-                if not safe_position_name.isascii():
-                    logger.warning(f"Non-ASCII characters in position name: {repr(safe_position_name)} - sanitizing")
-                    safe_position_name = ''.join(c for c in safe_position_name if c.isascii())
-                
-                # Try exact match first (most reliable)
-                try:
+                # For smaller searches or when critical, try case-insensitive match
+                if len(safe_position_name) > 3 and len(safe_position_name) < 50:
+                    # Try lowercase comparison
                     risk_stat = db.query(model_class).filter(
                         func.lower(model_class.position) == func.lower(safe_position_name),
                         model_class.upload_date == latest_date
                     ).first()
                     
                     if risk_stat:
-                        logger.debug(f"Found risk stat by position name match for {safe_position_name}")
-                        # Add to cache if provided
                         if cache is not None:
                             cache[f"{cache_prefix}:position:{safe_position_name}"] = risk_stat
                         return risk_stat
-                except Exception as exact_e:
-                    logger.warning(f"Error with exact position name match for {safe_position_name}: {str(exact_e)}")
+            
+            # Skip these expensive operations for large portfolios to prevent timeouts
+            if cache is None and safe_position_name and len(safe_position_name) > 3 and len(safe_position_name) < 30:
+                # Try a limited contains match for critical lookups only
+                risk_stat = db.query(model_class).filter(
+                    model_class.position.contains(safe_position_name),
+                    model_class.upload_date == latest_date
+                ).limit(1).first()
                 
-                # Only try partial matches for non-cached, smaller portfolios
-                if cache is None and len(safe_position_name) > 3 and len(safe_position_name) < 50:
-                    try:
-                        # Try contains match (only if position name is substantial enough)
-                        risk_stat = db.query(model_class).filter(
-                            func.lower(model_class.position).contains(func.lower(safe_position_name)),
-                            model_class.upload_date == latest_date
-                        ).first()
-                        
-                        if risk_stat:
-                            logger.debug(f"Found risk stat by CONTAINS match for {safe_position_name}")
-                            return risk_stat
-                            
-                        # Try LIKE pattern match as last resort
-                        safe_pattern = f"%{safe_position_name.lower()}%"
-                        risk_stat = db.query(model_class).filter(
-                            func.lower(model_class.position).like(safe_pattern),
-                            model_class.upload_date == latest_date
-                        ).first()
-                        
-                        if risk_stat:
-                            logger.debug(f"Found risk stat by LIKE pattern match for {safe_position_name}")
-                            return risk_stat
-                    except Exception as pattern_e:
-                        logger.warning(f"Error with pattern matching for {safe_position_name}: {str(pattern_e)}")
-            except Exception as e:
-                logger.warning(f"General error matching by position name for {safe_position_name}: {str(e)}")
-        
-        # No match found
-        return None
+                if risk_stat:
+                    return risk_stat
+            
+            # No match found after all attempts
+            return None
+            
+        except Exception as e:
+            # Log the error but continue processing to avoid breaking the entire report
+            logger.warning(f"Error finding risk stat for {asset_class}: {str(e)}")
+            return None
         
     except Exception as e:
         # Catch all other exceptions to prevent crashes
