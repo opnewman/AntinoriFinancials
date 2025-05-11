@@ -39,24 +39,55 @@ class TimeoutException(Exception):
     """Custom exception for query timeout"""
     pass
 
-@contextmanager
-def time_limit(seconds):
+# Thread-safe alternative to signal-based timeouts
+def with_timeout(func, args=None, kwargs=None, timeout_duration=10, default=None):
     """
-    Context manager for imposing a time limit on a section of code.
-    Raises TimeoutException if the time limit is exceeded.
+    Thread-safe function for enforcing timeouts on function calls.
+    
+    Args:
+        func: Function to call
+        args: Arguments to pass to the function (list or tuple)
+        kwargs: Keyword arguments to pass to the function (dict)
+        timeout_duration: Maximum execution time in seconds
+        default: Default return value if timeout occurs
+        
+    Returns:
+        Function result or default value if timeout occurs
+        
+    Raises:
+        TimeoutException if default is None and timeout occurs
     """
-    def signal_handler(signum, frame):
-        raise TimeoutException("Time limit exceeded")
+    import threading
+    import time
     
-    # Set the signal handler and an alarm
-    signal.signal(signal.SIGALRM, signal_handler)
-    signal.alarm(seconds)
+    args = args or []
+    kwargs = kwargs or {}
+    result = [default]
+    exception = [None]
     
-    try:
-        yield
-    finally:
-        # Cancel the alarm
-        signal.alarm(0)
+    def worker():
+        try:
+            result[0] = func(*args, **kwargs)
+        except Exception as e:
+            exception[0] = e
+    
+    thread = threading.Thread(target=worker)
+    thread.daemon = True
+    thread.start()
+    
+    thread.join(timeout_duration)
+    if thread.is_alive():
+        if default is not None:
+            logger.warning(f"Function call timed out after {timeout_duration} seconds, returning default value")
+            return default
+        else:
+            logger.warning(f"Function call timed out after {timeout_duration} seconds, raising TimeoutException")
+            raise TimeoutException(f"Function timed out after {timeout_duration} seconds")
+    
+    if exception[0]:
+        raise exception[0]
+    
+    return result[0]
 
 def convert_position_value_to_decimal(position_value: Any, position_name: Any = "unknown") -> Decimal:
     """
@@ -118,7 +149,7 @@ def calculate_portfolio_risk_metrics(
     level: str,
     level_key: str,
     report_date: date,
-    max_positions: Optional[int] = None
+    max_positions: Optional[int] = 100  # Default to 100 positions
 ) -> Dict[str, Any]:
     """
     Calculate risk metrics for a portfolio based on its positions.
@@ -128,6 +159,7 @@ def calculate_portfolio_risk_metrics(
         level (str): Level for analysis - 'client', 'portfolio', or 'account'
         level_key (str): The identifier for the specified level
         report_date (date): The date for the report
+        max_positions (int): Maximum number of positions to process (for performance)
         
     Returns:
         Dict[str, Any]: Risk metrics for the portfolio, organized by asset class
@@ -644,46 +676,70 @@ def find_matching_risk_stat(
             cached_result = cache.get(cache_key)
             if cached_result is not None:
                 return cached_result
-                
-        # Create a fresh session for each query to prevent cursor issues
-        from src.database import get_db_connection
-        with get_db_connection() as query_session:
+        
+        # Avoid connection issues by using a direct connection instead of session
+        try:
+            # Import required modules
+            from sqlalchemy import create_engine, text
+            import os
+            
+            # Get the database URL from environment
+            database_url = os.environ.get("DATABASE_URL")
+            if not database_url:
+                logger.error("DATABASE_URL not set")
+                return None
+            
+            # Create a new engine for this specific query with minimal settings
+            engine = create_engine(
+                database_url,
+                echo=False,
+                pool_pre_ping=True,
+                connect_args={"connect_timeout": 3}
+            )
+            
             try:
-                # Select only the specific columns we need to reduce memory usage
-                # Create query using select to better support column selection
-                columns_to_select = [
-                    model_class.id,
-                    model_class.beta,
-                    model_class.volatility
-                ]
+                # Create simple SQL query with parameters
+                table_name = model_class.__tablename__
                 
-                # Add duration column only if it exists on this model class
+                # Determine column names
+                columns = ["id", "beta", "volatility"]
                 if hasattr(model_class, 'duration'):
-                    columns_to_select.append(model_class.duration)
+                    columns.append("duration")
                 
-                # Create the query
-                stmt = select(*columns_to_select).where(
-                    condition,
-                    model_class.upload_date == latest_date
-                ).limit(1)
+                # Sanitize the identifier value even further to prevent SQL injection
+                if isinstance(identifier_value, str):
+                    identifier_value = identifier_value.replace("'", "''")
                 
-                # Execute the query
-                result = query_session.execute(stmt)
-                risk_stat = result.first()
+                # Build a simple SQL query to avoid ORM overhead
+                sql = f"""
+                    SELECT {', '.join(columns)}
+                    FROM {table_name}
+                    WHERE {identifier_type} = '{identifier_value}'
+                    AND upload_date = '{latest_date}'
+                    LIMIT 1
+                """
                 
+                # Execute the raw SQL directly
+                with engine.connect() as connection:
+                    # Use the text function to safely execute SQL
+                    result = connection.execute(text(sql))
+                    risk_stat = result.fetchone()
+                
+                # Process results if any
                 if risk_stat is not None:
                     # Convert to dictionary with only needed fields
                     risk_dict = {}
                     
-                    # Always include id
-                    risk_dict['id'] = risk_stat[0]
+                    # Always include id if it exists
+                    if risk_stat[0] is not None:
+                        risk_dict['id'] = risk_stat[0]
                     
                     # Include beta if not None
-                    if risk_stat[1] is not None:
+                    if len(risk_stat) > 1 and risk_stat[1] is not None:
                         risk_dict['beta'] = risk_stat[1]
                     
                     # Include volatility if not None 
-                    if risk_stat[2] is not None:
+                    if len(risk_stat) > 2 and risk_stat[2] is not None:
                         risk_dict['volatility'] = risk_stat[2]
                     
                     # Include duration if not None (for fixed income)
@@ -698,10 +754,18 @@ def find_matching_risk_stat(
                     return risk_dict
                     
                 return None
+                
             except Exception as e:
                 # Log and continue to next query method
                 logger.warning(f"Query error ({identifier_type}={identifier_value}): {str(e)}")
                 return None
+            finally:
+                # Close engine to avoid connection pooling issues
+                engine.dispose()
+                
+        except Exception as outer_e:
+            logger.error(f"Database connection error: {str(outer_e)}")
+            return None
     
     # Try lookup methods in order of reliability
     

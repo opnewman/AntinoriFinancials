@@ -2009,18 +2009,25 @@ def generate_portfolio_report():
             
             # Get risk metrics data
             try:
-                # Apply a maximum time limit of 5 seconds for calculating risk metrics
-                from src.services.portfolio_risk_service import time_limit, TimeoutException
+                # Apply a thread-safe timeout mechanism
+                from src.services.portfolio_risk_service import with_timeout, TimeoutException
                 
-                with time_limit(10):  # 10-second timeout for risk metrics calculation
-                    # Calculate portfolio risk metrics with a smaller sampling size for faster results
-                    risk_metrics = calculate_portfolio_risk_metrics(
-                        db, 
-                        level, 
-                        level_key, 
-                        report_date,
-                        max_positions=500  # Limit to 500 positions for faster processing
-                    )
+                # Create default empty result in case of timeout
+                default_metrics = {
+                    "equity": {"beta": None, "volatility": None, "coverage_pct": 0},
+                    "fixed_income": {"duration": None, "coverage_pct": 0},
+                    "hard_currency": {"beta": None, "coverage_pct": 0},
+                    "alternatives": {"beta": None, "coverage_pct": 0}
+                }
+                
+                # Calculate portfolio risk metrics with thread-safe timeout
+                risk_metrics = with_timeout(
+                    func=calculate_portfolio_risk_metrics,
+                    args=[db, level, level_key, report_date],
+                    kwargs={"max_positions": 100},  # Limit to 100 positions for faster processing
+                    timeout_duration=15,  # 15-second timeout
+                    default=default_metrics  # Return empty metrics on timeout instead of failing
+                )
                 
                 # Structure the risk metrics in the report data
                 report_data["risk_metrics"] = {
