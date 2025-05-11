@@ -384,6 +384,49 @@ def get_risk_stats_status_endpoint():
             "traceback": traceback.format_exc()
         }), 500
 
+@app.route("/api/risk-stats/unmatched", methods=["GET"])
+def get_unmatched_securities_endpoint():
+    """
+    Get a list of securities that don't have matching risk statistics.
+    
+    This endpoint returns a list of securities by asset class that are present in the
+    financial positions data but don't have matching risk statistics. This is useful
+    for identifying which securities need risk data to be uploaded.
+    
+    Returns:
+        JSON with lists of unmatched securities by asset class
+    """
+    from src.services.portfolio_risk_service import get_unmatched_securities
+    
+    try:
+        # Get the unmatched securities from the portfolio risk service
+        unmatched = get_unmatched_securities()
+        
+        # Count the total number of unmatched securities
+        total_unmatched = sum(len(securities) for securities in unmatched.values())
+        
+        return jsonify({
+            "success": True,
+            "unmatched_securities": unmatched,
+            "counts": {
+                "equity": len(unmatched.get("equity", [])),
+                "fixed_income": len(unmatched.get("fixed_income", [])),
+                "hard_currency": len(unmatched.get("hard_currency", [])),
+                "alternatives": len(unmatched.get("alternatives", [])),
+                "total": total_unmatched
+            },
+            "status": f"Found {total_unmatched} securities without matching risk statistics."
+        })
+    except Exception as e:
+        import traceback
+        logger.error(f"Error getting unmatched securities: {str(e)}")
+        logger.error(f"Error details: {traceback.format_exc()}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
 @app.route("/api/risk-stats/update-turbo", methods=["GET", "POST"])
 def risk_stats_turbo_update_endpoint():
     """
