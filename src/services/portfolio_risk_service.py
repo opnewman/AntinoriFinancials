@@ -1070,47 +1070,70 @@ def find_matching_risk_stat(
     Returns:
         Optional[Any]: Matching risk statistic or None
     """
-    # Enhanced debugging for portfolio report troubleshooting
-    position_debug_str = f"{position_name} (CUSIP: {cusip or 'None'}, Ticker: {ticker_symbol or 'None'})"
-    logger.info(f"Finding risk stat for {position_debug_str} in asset class: {asset_class}")
-    
-    # Add safeguards for non-string values
-    if position_name is None:
-        position_name = ""
-    if not isinstance(position_name, str):
-        position_name = str(position_name)
-        
-    if cusip is None:
-        cusip = ""
-    if not isinstance(cusip, str):
-        cusip = str(cusip)
-        
-    if ticker_symbol is None:
-        ticker_symbol = ""
-    if not isinstance(ticker_symbol, str):
-        ticker_symbol = str(ticker_symbol)
     try:
-        # Sanitize inputs to prevent database errors
-        safe_position_name = position_name.strip() if position_name and isinstance(position_name, str) else ""
-        safe_cusip = cusip.strip() if cusip and isinstance(cusip, str) else ""
-        safe_ticker_symbol = ticker_symbol.strip() if ticker_symbol and isinstance(ticker_symbol, str) else ""
+        # Reduce logging verbosity to improve performance
+        logger.debug(f"Finding risk stat for position in asset class: {asset_class}")
         
-        # Determine which model class to use based on asset class
-        if asset_class == 'Equity':
-            model_class = RiskStatisticEquity
-        elif asset_class == 'Fixed Income':
-            model_class = RiskStatisticFixedIncome
-        elif asset_class == 'Alternatives':
-            model_class = RiskStatisticAlternatives
-        elif asset_class == 'Hard Currency':
-            # Hard currency is tracked in the Alternatives table
-            model_class = RiskStatisticAlternatives
-        else:
+        # Safely handle all input types
+        if asset_class is None:
+            logger.warning("No asset class provided for risk stat lookup")
+            return None
+            
+        # Normalize asset class
+        if hasattr(asset_class, 'key') and hasattr(asset_class, 'type'):
+            asset_class = str(asset_class)
+        
+        # Use simple direct handling for string conversion
+        try:
+            if position_name is not None and not isinstance(position_name, str):
+                position_name = str(position_name)
+            if cusip is not None and not isinstance(cusip, str):
+                cusip = str(cusip)
+            if ticker_symbol is not None and not isinstance(ticker_symbol, str):
+                ticker_symbol = str(ticker_symbol)
+        except Exception as e:
+            logger.warning(f"Error converting values to strings: {str(e)}")
+                
+        # Clean inputs and remove problematic characters
+        safe_position_name = ""
+        safe_cusip = ""
+        safe_ticker_symbol = ""
+        
+        try:
+            if position_name:
+                safe_position_name = position_name.strip()
+                safe_position_name = ''.join(c for c in safe_position_name if c.isascii() and c.isprintable())
+            
+            if cusip:
+                safe_cusip = cusip.strip()
+                safe_cusip = ''.join(c for c in safe_cusip if c.isascii() and c.isprintable())
+                
+            if ticker_symbol:
+                safe_ticker_symbol = ticker_symbol.strip()
+                safe_ticker_symbol = ''.join(c for c in safe_ticker_symbol if c.isascii() and c.isprintable())
+        except Exception as e:
+            logger.warning(f"Error cleaning input values: {str(e)}")
+        
+        # Determine which model class to use based on asset class - simplified logic
+        model_class = None
+        if isinstance(asset_class, str):
+            asset_class_lower = asset_class.lower()
+            if 'equity' in asset_class_lower:
+                model_class = RiskStatisticEquity
+            elif 'fixed' in asset_class_lower:
+                model_class = RiskStatisticFixedIncome
+            elif 'alternatives' in asset_class_lower or 'alternative' in asset_class_lower:
+                model_class = RiskStatisticAlternatives
+            elif 'hard' in asset_class_lower and 'currency' in asset_class_lower:
+                # Hard currency is tracked in the Alternatives table
+                model_class = RiskStatisticAlternatives
+        
+        if model_class is None:
             logger.warning(f"Unsupported asset class: {asset_class}")
             return None
-        
-        # Cache key prefix for better organization 
-        cache_prefix = asset_class.lower().replace(' ', '_')
+            
+        # Cache key prefix for better organization - simpler calculation
+        cache_prefix = str(asset_class).lower().replace(' ', '_')
         
         # Check cache first if provided (most efficient)
         if cache is not None:
