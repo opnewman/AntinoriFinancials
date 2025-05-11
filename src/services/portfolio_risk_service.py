@@ -926,15 +926,21 @@ def process_hard_currency_risk(
                     
                     position_weight = adjusted_value_decimal / totals["hard_currency"]
                     
-                    # Beta calculation
-                    if risk_stat.beta is not None:
+                    # Beta calculation - handle both dictionary and object formats
+                    beta = None
+                    if isinstance(risk_stat, dict):
+                        beta = risk_stat.get('beta')
+                    else:
+                        beta = getattr(risk_stat, 'beta', None)
+                        
+                    if beta is not None:
                         try:
                             # Safe conversion to ensure we have a valid Decimal
-                            beta_value = Decimal(str(risk_stat.beta))
+                            beta_value = Decimal(str(beta))
                             weighted_beta = position_weight * beta_value
                             risk_metrics["hard_currency"]["beta"]["weighted_sum"] += weighted_beta
                         except (ValueError, TypeError, InvalidOperation) as e:
-                            logger.warning(f"Invalid beta value for hard currency {pos_name_for_log}: {risk_stat.beta}. Error: {str(e)}")
+                            logger.warning(f"Invalid beta value for hard currency {pos_name_for_log}: {beta}. Error: {str(e)}")
                     
                     # Track the total matched value for coverage calculation
                     matched_value += adjusted_value_decimal
@@ -1027,33 +1033,59 @@ def process_alternatives_risk(
                 
                 position_weight = adjusted_value_decimal / totals["alternatives"]
                 
-                # Beta calculation
-                if risk_stat.beta is not None:
+                # Beta calculation - handle both dictionary and object formats
+                beta = None
+                if isinstance(risk_stat, dict):
+                    beta = risk_stat.get('beta')
+                else:
+                    beta = getattr(risk_stat, 'beta', None)
+                    
+                if beta is not None:
                     try:
                         # Safe conversion to ensure we have a valid Decimal
-                        beta_value = Decimal(str(risk_stat.beta))
+                        beta_value = Decimal(str(beta))
                         weighted_beta = position_weight * beta_value
                         risk_metrics["alternatives"]["beta"]["weighted_sum"] += weighted_beta
                     except (ValueError, TypeError, InvalidOperation) as e:
-                        logger.warning(f"Invalid beta value for alternative {pos_name_for_log}: {risk_stat.beta}. Error: {str(e)}")
+                        logger.warning(f"Invalid beta value for alternative {pos_name_for_log}: {beta}. Error: {str(e)}")
                         
                 # Volatility calculation - try both field names (vol and volatility) if we're tracking volatility for alternatives
                 if "volatility" in risk_metrics["alternatives"]:
                     volatility_value = None
                     
-                    # First check if 'volatility' attribute exists and has a value
-                    if hasattr(risk_stat, 'volatility') and risk_stat.volatility is not None:
-                        try:
-                            volatility_value = Decimal(str(risk_stat.volatility))
-                        except (ValueError, TypeError, InvalidOperation) as e:
-                            logger.warning(f"Invalid volatility value for alternative {pos_name_for_log}: {risk_stat.volatility}. Error: {str(e)}")
-                    
-                    # If not found, try 'vol' attribute as a fallback
-                    if volatility_value is None and hasattr(risk_stat, 'vol') and risk_stat.vol is not None:
-                        try:
-                            volatility_value = Decimal(str(risk_stat.vol))
-                        except (ValueError, TypeError, InvalidOperation) as e:
-                            logger.warning(f"Invalid vol value for alternative {pos_name_for_log}: {risk_stat.vol}. Error: {str(e)}")
+                    # Get volatility from either dictionary or object format
+                    if isinstance(risk_stat, dict):
+                        # Try 'volatility' first
+                        volatility = risk_stat.get('volatility')
+                        if volatility is not None:
+                            try:
+                                volatility_value = Decimal(str(volatility))
+                            except (ValueError, TypeError, InvalidOperation) as e:
+                                logger.warning(f"Invalid volatility value for alternative {pos_name_for_log}: {volatility}. Error: {str(e)}")
+                        
+                        # If not found, try 'vol'
+                        if volatility_value is None:
+                            vol = risk_stat.get('vol')
+                            if vol is not None:
+                                try:
+                                    volatility_value = Decimal(str(vol))
+                                except (ValueError, TypeError, InvalidOperation) as e:
+                                    logger.warning(f"Invalid vol value for alternative {pos_name_for_log}: {vol}. Error: {str(e)}")
+                    else:
+                        # Original object-based approach
+                        # First check if 'volatility' attribute exists and has a value
+                        if hasattr(risk_stat, 'volatility') and risk_stat.volatility is not None:
+                            try:
+                                volatility_value = Decimal(str(risk_stat.volatility))
+                            except (ValueError, TypeError, InvalidOperation) as e:
+                                logger.warning(f"Invalid volatility value for alternative {pos_name_for_log}: {risk_stat.volatility}. Error: {str(e)}")
+                        
+                        # If not found, try 'vol' attribute as a fallback
+                        if volatility_value is None and hasattr(risk_stat, 'vol') and risk_stat.vol is not None:
+                            try:
+                                volatility_value = Decimal(str(risk_stat.vol))
+                            except (ValueError, TypeError, InvalidOperation) as e:
+                                logger.warning(f"Invalid vol value for alternative {pos_name_for_log}: {risk_stat.vol}. Error: {str(e)}")
                     
                     # If we found a valid volatility value from either field, use it
                     if volatility_value is not None:
