@@ -44,8 +44,21 @@ def convert_position_value_to_decimal(position_value: Any, position_name: Any = 
     Returns:
         Decimal value of the position
     """
+    # Import the encryption service
+    from src.utils.encryption import encryption_service
+    
     if position_value is None:
         return Decimal('0.0')
+    
+    # Handle encrypted values with "ENC:" prefix
+    if isinstance(position_value, str) and position_value.startswith('ENC:'):
+        try:
+            # Use the encryption service to decrypt the value
+            decrypted_value = encryption_service.decrypt_to_float(position_value)
+            return Decimal(str(decrypted_value))
+        except Exception as e:
+            logger.warning(f"Could not decrypt position value {position_value} for {position_name}: {str(e)}")
+            return Decimal('0.0')
     
     # Convert to string first if it's not already
     if not isinstance(position_value, str):

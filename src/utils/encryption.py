@@ -89,7 +89,19 @@ class EncryptionService:
         try:
             # For values with 'ENC:' prefix, remove it before decryption
             if isinstance(encrypted_value, str) and encrypted_value.startswith('ENC:'):
-                encrypted_value = encrypted_value[4:]  # Remove the 'ENC:' prefix
+                # Extract the value after the prefix
+                value_part = encrypted_value[4:]  # Remove the 'ENC:' prefix
+                
+                # For our specific case, if the part after 'ENC:' is just a number
+                # and not an encrypted value, return it directly
+                if value_part and value_part.replace('.', '', 1).isdigit():
+                    return value_part
+                
+                # If we have a blank or invalid encrypted value, return 0
+                if not value_part or len(value_part) < 10:  # Fernet tokens are much longer
+                    return "0.0"
+                
+                encrypted_value = value_part
                 
             # Decrypt the value with proper encoding
             decrypted_value = self.cipher.decrypt(encrypted_value.encode('ascii')).decode('ascii')
@@ -109,6 +121,13 @@ class EncryptionService:
         Returns:
             float: Decrypted value as float
         """
+        # For our specific case, check if we have 'ENC:' followed directly by a number
+        if isinstance(encrypted_value, str) and encrypted_value.startswith('ENC:'):
+            value_part = encrypted_value[4:]
+            if value_part and value_part.replace('.', '', 1).isdigit():
+                # It's already a number, so just return it
+                return float(value_part)
+        
         decrypted = self.decrypt(encrypted_value)
         if decrypted is None:
             return 0.0
