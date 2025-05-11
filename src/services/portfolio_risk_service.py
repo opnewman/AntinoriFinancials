@@ -10,7 +10,7 @@ from datetime import date
 from typing import Dict, List, Optional, Tuple, Any, Union
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import func, text
+from sqlalchemy import func, text, select
 from sqlalchemy.orm import Session
 
 from src.models.models import (
@@ -734,6 +734,10 @@ def process_equity_risk(
             except Exception as e:
                 logger.error(f"Error calculating position metrics: {str(e)}")
                 continue
+        else:
+            # Track unmatched securities
+            if position_name:
+                track_unmatched_security(position_name, "Equity")
     
     # Calculate coverage
     if totals["equity"] > Decimal('0.0'):
@@ -1190,78 +1194,137 @@ def find_matching_risk_stat(
     
     # Find match in database with minimal risk of errors
     try:
-        # Try by CUSIP first (most reliable)
-        if safe_cusip:
-            try:
-                query = f"""
-                    SELECT id, upload_date, position, ticker_symbol, cusip,
-                           beta, volatility, vol, duration
-                    FROM {model_class.__tablename__}
-                    WHERE cusip = '{safe_cusip}'
-                    AND upload_date = '{latest_date}'
-                    LIMIT 1
-                """
+        # Use SQLAlchemy ORM directly - much safer than raw SQL
+        try:
+            # Try by CUSIP first (most reliable)
+            if safe_cusip:
+                # Use proper parameter binding to prevent SQL injection and encoding issues
+                stmt = select(model_class).where(
+                    model_class.cusip == safe_cusip,
+                    model_class.upload_date == latest_date
+                ).limit(1)
                 
-                result = db.execute(text(query)).first()
-                if result:
-                    # Convert to dictionary
-                    columns = ['id', 'upload_date', 'position', 'ticker_symbol', 'cusip', 
-                               'beta', 'volatility', 'vol', 'duration']
-                    risk_stat = {col: result[i] for i, col in enumerate(columns) if i < len(result)}
-                    return risk_stat
-            except Exception as e:
-                logger.warning(f"CUSIP lookup error: {str(e)}")
+                try:
+                    result = db.execute(stmt).scalar_one_or_none()
+                    if result:
+                        return {
+                            'id': getattr(result, 'id', None),
+                            'upload_date': getattr(result, 'upload_date', None),
+                            'position': getattr(result, 'position', None),
+                            'ticker_symbol': getattr(result, 'ticker_symbol', None),
+                            'cusip': getattr(result, 'cusip', None),
+                            'beta': getattr(result, 'beta', None),
+                            'volatility': getattr(result, 'volatility', None),
+                            'vol': getattr(result, 'vol', None),
+                            'duration': getattr(result, 'duration', None)
+                        }
+                except Exception as e:
+                    logger.warning(f"CUSIP lookup error: {str(e)}")
+            
+            # Try by ticker
+            if safe_ticker:
+                stmt = select(model_class).where(
+                    model_class.ticker_symbol == safe_ticker,
+                    model_class.upload_date == latest_date
+                ).limit(1)
+                
+                try:
+                    result = db.execute(stmt).scalar_one_or_none()
+                    if result:
+                        return {
+                            'id': getattr(result, 'id', None),
+                            'upload_date': getattr(result, 'upload_date', None),
+                            'position': getattr(result, 'position', None),
+                            'ticker_symbol': getattr(result, 'ticker_symbol', None),
+                            'cusip': getattr(result, 'cusip', None),
+                            'beta': getattr(result, 'beta', None),
+                            'volatility': getattr(result, 'volatility', None),
+                            'vol': getattr(result, 'vol', None),
+                            'duration': getattr(result, 'duration', None)
+                        }
+                except Exception as e:
+                    logger.warning(f"Ticker lookup error: {str(e)}")
+            
+            # Try by position name exactly
+            if safe_position:
+                stmt = select(model_class).where(
+                    model_class.position == safe_position,
+                    model_class.upload_date == latest_date
+                ).limit(1)
+                
+                try:
+                    result = db.execute(stmt).scalar_one_or_none()
+                    if result:
+                        return {
+                            'id': getattr(result, 'id', None),
+                            'upload_date': getattr(result, 'upload_date', None),
+                            'position': getattr(result, 'position', None),
+                            'ticker_symbol': getattr(result, 'ticker_symbol', None),
+                            'cusip': getattr(result, 'cusip', None),
+                            'beta': getattr(result, 'beta', None),
+                            'volatility': getattr(result, 'volatility', None),
+                            'vol': getattr(result, 'vol', None),
+                            'duration': getattr(result, 'duration', None)
+                        }
+                except Exception as e:
+                    logger.warning(f"Position lookup error: {str(e)}")
+            
+            # No matches found
+            return None
         
-        # Try by ticker
-        if safe_ticker:
-            try:
-                query = f"""
-                    SELECT id, upload_date, position, ticker_symbol, cusip,
-                           beta, volatility, vol, duration
-                    FROM {model_class.__tablename__}
-                    WHERE ticker_symbol = '{safe_ticker}'
-                    AND upload_date = '{latest_date}'
-                    LIMIT 1
-                """
-                
-                result = db.execute(text(query)).first()
-                if result:
-                    # Convert to dictionary
-                    columns = ['id', 'upload_date', 'position', 'ticker_symbol', 'cusip', 
-                               'beta', 'volatility', 'vol', 'duration']
-                    risk_stat = {col: result[i] for i, col in enumerate(columns) if i < len(result)}
-                    return risk_stat
-            except Exception as e:
-                logger.warning(f"Ticker lookup error: {str(e)}")
-        
-        # Try by position exactly (most efficient)
-        if safe_position:
-            try:
-                query = f"""
-                    SELECT id, upload_date, position, ticker_symbol, cusip,
-                           beta, volatility, vol, duration
-                    FROM {model_class.__tablename__}
-                    WHERE position = '{safe_position}'
-                    AND upload_date = '{latest_date}'
-                    LIMIT 1
-                """
-                
-                result = db.execute(text(query)).first()
-                if result:
-                    # Convert to dictionary
-                    columns = ['id', 'upload_date', 'position', 'ticker_symbol', 'cusip', 
-                               'beta', 'volatility', 'vol', 'duration']
-                    risk_stat = {col: result[i] for i, col in enumerate(columns) if i < len(result)}
-                    return risk_stat
-            except Exception as e:
-                logger.warning(f"Position lookup error: {str(e)}")
-                
-        # No matches found
-        return None
-        
+        except Exception as e:
+            logger.error(f"Database error in risk stat lookup: {str(e)}")
+            return None
+            
     except Exception as e:
         logger.error(f"Critical database error in risk stat lookup: {str(e)}")
         return None
+
+# Create a global dictionary to track unmatched securities
+_unmatched_securities = {
+    'equity': set(),
+    'fixed_income': set(),
+    'hard_currency': set(),
+    'alternatives': set()
+}
+
+def get_unmatched_securities():
+    """
+    Return a dictionary of securities that couldn't be matched with risk statistics.
+    This is useful for identifying which securities need risk data.
+    
+    Returns:
+        Dict[str, List[str]]: Dictionary with asset classes as keys and lists of 
+                             unmatched security names as values
+    """
+    return {
+        'equity': sorted(list(_unmatched_securities['equity'])),
+        'fixed_income': sorted(list(_unmatched_securities['fixed_income'])),
+        'hard_currency': sorted(list(_unmatched_securities['hard_currency'])),
+        'alternatives': sorted(list(_unmatched_securities['alternatives']))
+    }
+
+def track_unmatched_security(position_name, asset_class):
+    """
+    Track securities that don't have matching risk statistics
+    
+    Args:
+        position_name (str): Name of the security
+        asset_class (str): Asset class of the security
+    """
+    if not position_name:
+        return
+        
+    asset_class_lower = str(asset_class).lower()
+    
+    if 'equity' in asset_class_lower:
+        _unmatched_securities['equity'].add(str(position_name))
+    elif 'fixed' in asset_class_lower:
+        _unmatched_securities['fixed_income'].add(str(position_name))
+    elif 'hard' in asset_class_lower and 'currency' in asset_class_lower:
+        _unmatched_securities['hard_currency'].add(str(position_name))
+    elif 'alternative' in asset_class_lower:
+        _unmatched_securities['alternatives'].add(str(position_name))
 
 def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]], percentages: Dict[str, Decimal]) -> None:
     """
