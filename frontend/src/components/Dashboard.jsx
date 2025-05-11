@@ -362,6 +362,13 @@ class Dashboard extends React.Component {
                         </div>
                     )}
                     
+                    {reportData && reportData.warning && (
+                        <div className="bg-yellow-50 text-yellow-700 p-3 rounded-md mb-4">
+                            <i className="fas fa-exclamation-triangle mr-2"></i>
+                            {reportData.warning}
+                        </div>
+                    )}
+                    
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                         <div className="bg-green-50 p-4 rounded-lg shadow-sm border border-green-100">
                             <h3 className="text-sm text-green-800 font-medium mb-2">
