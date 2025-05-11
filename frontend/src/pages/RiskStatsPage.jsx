@@ -298,82 +298,176 @@ const RiskStatsPage = () => {
         </div>
       )}
       
-      <div className="bg-white rounded-lg shadow-md border">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Position</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticker</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asset Class</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Second Level</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Beta</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Volatility</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-4 whitespace-nowrap text-center py-10">
-                    <div className="inline-block w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
-                  </td>
-                </tr>
-              ) : riskStats.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-4 whitespace-nowrap text-center py-10">
-                    No risk statistics found matching your filters
-                  </td>
-                </tr>
-              ) : (
-                riskStats.map(stat => (
-                  <tr key={stat.id}>
-                    <td className="px-6 py-4 whitespace-nowrap">{stat.position}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{stat.ticker_symbol || '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${
-                        stat.asset_class === 'Equity' ? 'bg-blue-100 text-blue-800' : 
-                        stat.asset_class === 'Fixed Income' ? 'bg-red-100 text-red-800' : 
-                        stat.asset_class === 'Alternatives' ? 'bg-orange-100 text-orange-800' : 
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {stat.asset_class}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">{stat.second_level || '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{formatValue(stat.beta, 'decimal')}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{formatValue(stat.volatility, 'decimal')}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{formatValue(stat.duration, 'decimal')}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+      {/* Tab Navigation */}
+      <div className="mb-4">
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex">
+            <button
+              className={`mr-8 py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 0
+                  ? 'border-green-500 text-green-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+              onClick={() => setActiveTab(0)}
+            >
+              Risk Statistics
+            </button>
+            <button
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 1
+                  ? 'border-green-500 text-green-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+              onClick={() => setActiveTab(1)}
+            >
+              Unmatched Securities
+            </button>
+          </nav>
         </div>
       </div>
       
-      {/* Pagination controls */}
-      <div className="flex justify-between mt-4">
-        <p className="text-gray-600">
-          Showing {pagination.offset + 1} - {Math.min(pagination.offset + riskStats.length, pagination.count)} of {pagination.count} records
-        </p>
-        <div className="flex space-x-4">
-          <button
-            onClick={handlePrevPage}
-            disabled={pagination.offset === 0 || loading}
-            className="px-2 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Previous
-          </button>
-          <button
-            onClick={handleNextPage}
-            disabled={!pagination.hasMore || loading}
-            className="px-2 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Next
-          </button>
+      {/* Risk Stats Tab Content */}
+      {activeTab === 0 && (
+        <>
+          <div className="bg-white rounded-lg shadow-md border">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Position</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticker</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asset Class</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Second Level</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Beta</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Volatility</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-4 whitespace-nowrap text-center py-10">
+                        <div className="inline-block w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+                      </td>
+                    </tr>
+                  ) : riskStats.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-4 whitespace-nowrap text-center py-10">
+                        No risk statistics found matching your filters
+                      </td>
+                    </tr>
+                  ) : (
+                    riskStats.map(stat => (
+                      <tr key={stat.id}>
+                        <td className="px-6 py-4 whitespace-nowrap">{stat.position}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">{stat.ticker_symbol || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${
+                            stat.asset_class === 'Equity' ? 'bg-blue-100 text-blue-800' : 
+                            stat.asset_class === 'Fixed Income' ? 'bg-red-100 text-red-800' : 
+                            stat.asset_class === 'Alternatives' ? 'bg-orange-100 text-orange-800' : 
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {stat.asset_class}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">{stat.second_level || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">{formatValue(stat.beta, 'decimal')}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">{formatValue(stat.volatility, 'decimal')}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">{formatValue(stat.duration, 'decimal')}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
+          {/* Pagination controls */}
+          <div className="flex justify-between mt-4">
+            <p className="text-gray-600">
+              Showing {pagination.offset + 1} - {Math.min(pagination.offset + riskStats.length, pagination.count)} of {pagination.count} records
+            </p>
+            <div className="flex space-x-4">
+              <button
+                onClick={handlePrevPage}
+                disabled={pagination.offset === 0 || loading}
+                className="px-2 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <button
+                onClick={handleNextPage}
+                disabled={!pagination.hasMore || loading}
+                className="px-2 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+      
+      {/* Unmatched Securities Tab Content */}
+      {activeTab === 1 && (
+        <div className="bg-white rounded-lg shadow-md border">
+          {loadingUnmatched ? (
+            <div className="p-12 text-center">
+              <div className="inline-block w-8 h-8 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin mb-4"></div>
+              <p>Loading unmatched securities...</p>
+            </div>
+          ) : (
+            <>
+              <div className="p-4 border-b">
+                <h3 className="text-lg font-semibold">Unmatched Securities</h3>
+                <p className="text-sm text-gray-600">Securities in your portfolio that don't have matching risk statistics.</p>
+              </div>
+              
+              <div className="p-4">
+                {Object.keys(unmatchedSecurities).length === 0 ? (
+                  <div className="text-center p-6">
+                    <p className="text-gray-500">No unmatched securities found</p>
+                  </div>
+                ) : (
+                  <div>
+                    {Object.entries(unmatchedSecurities).map(([assetClass, securities]) => (
+                      <div key={assetClass} className="mb-6">
+                        <h4 className={`mb-2 text-md font-semibold ${
+                          assetClass === 'equity' ? 'text-blue-700' : 
+                          assetClass === 'fixed_income' ? 'text-red-700' : 
+                          assetClass === 'alternatives' ? 'text-orange-700' :
+                          assetClass === 'hard_currency' ? 'text-yellow-700' : 
+                          'text-gray-700'
+                        }`}>
+                          {assetClass.charAt(0).toUpperCase() + assetClass.slice(1).replace('_', ' ')} 
+                          <span className="ml-2 text-sm font-normal text-gray-500">({securities.length} securities)</span>
+                        </h4>
+                        
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200 text-sm">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Security Name</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {securities.map((security, index) => (
+                                <tr key={index} className="hover:bg-gray-50">
+                                  <td className="px-4 py-2 whitespace-nowrap">{security}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 };
