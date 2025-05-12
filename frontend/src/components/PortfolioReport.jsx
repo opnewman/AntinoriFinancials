@@ -281,16 +281,39 @@ window.PortfolioReport = ({
                             Duration
                         </td>
                         <td className="border px-4 py-2 text-right bg-red-50">
-                            {risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.duration !== undefined ? 
-                                (typeof risk_metrics.fixed_income.duration === 'object' ? 
-                                formatNumber(risk_metrics.fixed_income.duration.value) : 
-                                formatNumber(risk_metrics.fixed_income.duration)) : 
-                                formatNumber(fixed_income.duration || "0.00")}
-                            {risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.coverage_pct && 
-                                <span className="text-xs text-gray-500 ml-1">
-                                    ({formatNumber(risk_metrics.fixed_income.coverage_pct)}% coverage)
-                                </span>
-                            }
+                            {(() => {
+                                // Debug duration info
+                                if (risk_metrics && risk_metrics.fixed_income) {
+                                    console.log("Fixed income risk metrics:", risk_metrics.fixed_income);
+                                }
+                                
+                                // Extract and display the duration value
+                                let durationValue;
+                                
+                                if (risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.duration !== undefined) {
+                                    if (typeof risk_metrics.fixed_income.duration === 'object' && risk_metrics.fixed_income.duration.value !== undefined) {
+                                        durationValue = parseFloat(risk_metrics.fixed_income.duration.value);
+                                        console.log("Using fixed_income.duration.value:", durationValue);
+                                    } else {
+                                        durationValue = parseFloat(risk_metrics.fixed_income.duration);
+                                        console.log("Using fixed_income.duration direct:", durationValue);
+                                    }
+                                } else if (fixed_income.duration) {
+                                    durationValue = parseFloat(fixed_income.duration);
+                                    console.log("Using fixed_income.duration fallback:", durationValue);
+                                }
+                                
+                                return (
+                                    <>
+                                        {durationValue !== undefined ? formatNumber(durationValue) : "0.00"}
+                                        {risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.coverage_pct && 
+                                            <span className="text-xs text-gray-500 ml-1">
+                                                ({formatNumber(risk_metrics.fixed_income.coverage_pct)}% coverage)
+                                            </span>
+                                        }
+                                    </>
+                                );
+                            })()}
                         </td>
                     </tr>
                     <tr>
@@ -309,10 +332,16 @@ window.PortfolioReport = ({
                             Low Duration
                         </td>
                         <td className="border px-4 py-2 text-right">
-                            {formatValue(
-                                fixed_income.subcategories.municipal_bonds
-                                    .short_duration,
-                            )}
+                            {(() => {
+                                // Check if we have fixed income risk metrics with municipal bonds data
+                                if (risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.municipal_bonds) {
+                                    console.log("Using risk metrics for municipal bonds short duration", risk_metrics.fixed_income.municipal_bonds.short_duration);
+                                    return formatValue(risk_metrics.fixed_income.municipal_bonds.short_duration);
+                                } else {
+                                    // Fallback to standard data
+                                    return formatValue(fixed_income.subcategories.municipal_bonds.short_duration);
+                                }
+                            })()}
                         </td>
                     </tr>
                     <tr>
@@ -494,21 +523,35 @@ window.PortfolioReport = ({
                                 let betaAdjustedValue;
                                 
                                 if (risk_metrics && risk_metrics.hard_currency) {
-                                    if (risk_metrics.hard_currency.beta_adjusted && risk_metrics.hard_currency.beta_adjusted.value !== undefined) {
-                                        // Use the direct beta_adjusted.value
-                                        betaAdjustedValue = parseFloat(risk_metrics.hard_currency.beta_adjusted.value);
-                                    } else if (risk_metrics.hard_currency.beta !== undefined && hard_currency.total_pct) {
+                                    console.log("Hard currency risk metrics:", risk_metrics.hard_currency);
+                                    
+                                    // Check for beta_adjusted direct value
+                                    if (risk_metrics.hard_currency.beta_adjusted !== undefined) {
+                                        if (typeof risk_metrics.hard_currency.beta_adjusted === 'object' && risk_metrics.hard_currency.beta_adjusted.value !== undefined) {
+                                            // Use the direct beta_adjusted.value
+                                            betaAdjustedValue = parseFloat(risk_metrics.hard_currency.beta_adjusted.value);
+                                            console.log("Using beta_adjusted.value:", betaAdjustedValue);
+                                        } else {
+                                            // Use the direct beta_adjusted value
+                                            betaAdjustedValue = parseFloat(risk_metrics.hard_currency.beta_adjusted);
+                                            console.log("Using beta_adjusted direct:", betaAdjustedValue);
+                                        }
+                                    } 
+                                    // Fallback to calculating from beta and total_pct
+                                    else if (risk_metrics.hard_currency.beta !== undefined && hard_currency.total_pct) {
                                         // Calculate beta_adjusted as beta * total_percent / 100
                                         const betaValue = typeof risk_metrics.hard_currency.beta === 'object' 
                                             ? parseFloat(risk_metrics.hard_currency.beta.value) 
                                             : parseFloat(risk_metrics.hard_currency.beta);
                                         betaAdjustedValue = betaValue * parseFloat(hard_currency.total_pct) / 100;
+                                        console.log("Calculated beta_adjusted as fallback:", betaAdjustedValue);
                                     }
                                 }
                                 
                                 // Fallback to hard_currency.beta_adjusted if available
                                 if (betaAdjustedValue === undefined && hard_currency.beta_adjusted) {
                                     betaAdjustedValue = parseFloat(hard_currency.beta_adjusted);
+                                    console.log("Using hard_currency.beta_adjusted:", betaAdjustedValue);
                                 }
                                 
                                 // Format the value
