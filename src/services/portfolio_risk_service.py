@@ -169,6 +169,9 @@ def calculate_portfolio_risk_metrics(
     """
     Calculate risk metrics for a portfolio based on its positions.
     
+    This function handles all database operations within a try-except block to ensure
+    that any errors are properly caught and transactions are cleanly handled.
+    
     Args:
         db (Session): Database session
         level (str): Level for analysis - 'client', 'portfolio', or 'account'
@@ -179,16 +182,7 @@ def calculate_portfolio_risk_metrics(
     Returns:
         Dict[str, Any]: Risk metrics for the portfolio, organized by asset class
     """
-    # Clear the unmatched securities list
-    global UNMATCHED_SECURITIES
-    UNMATCHED_SECURITIES = {
-        "Equity": set(),
-        "Fixed Income": set(),
-        "Alternatives": set(),
-        "Hard Currency": set()
-    }
-    
-    # Initialize result structure
+    # Initialize the risk metrics structure
     risk_metrics = {
         "equity": {
             "beta": {
@@ -226,18 +220,31 @@ def calculate_portfolio_risk_metrics(
         }
     }
     
-    # Get all positions for this portfolio
+    # Use a transaction to ensure database consistency
     try:
-        # Construct the filter based on the level
-        filter_params = {}
-        if level == 'client':
-            filter_params = {'top_level_client': level_key}
-        elif level == 'portfolio':
-            filter_params = {'portfolio': level_key}
-        elif level == 'account':
-            filter_params = {'holding_account_number': level_key}
-        else:
-            raise ValueError(f"Invalid level: {level}")
+        with db.begin() as transaction:
+            # Clear the unmatched securities list
+            global UNMATCHED_SECURITIES
+            UNMATCHED_SECURITIES = {
+                "Equity": set(),
+                "Fixed Income": set(),
+                "Alternatives": set(),
+                "Hard Currency": set()
+            }
+            
+            logger.info(f"Beginning transaction for {level} risk metrics for {level_key}")
+            
+            # Get all positions for this portfolio
+            # Construct the filter based on the level
+            filter_params = {}
+            if level == 'client':
+                filter_params = {'top_level_client': level_key}
+            elif level == 'portfolio':
+                filter_params = {'portfolio': level_key}
+            elif level == 'account':
+                filter_params = {'holding_account_number': level_key}
+            else:
+                raise ValueError(f"Invalid level: {level}")
             
         # Add the date filter
         filter_params['date'] = report_date
@@ -998,9 +1005,10 @@ def process_hard_currency_risk(
                 # Use a with_timeout wrapper to enforce a hard deadline
                 def load_all_betas():
                     # Run an optimized query to get all betas in a single call
+                    # Use proper source table (equity or alternatives) based on asset class
                     query = text("""
                         SELECT 
-                            cusip, ticker_symbol, position, beta, average_beta
+                            cusip, ticker_symbol, position, beta, volatility
                         FROM 
                             risk_statistic_equity
                         WHERE 
@@ -1018,10 +1026,11 @@ def process_hard_currency_risk(
                     
                     # Build lookups for each identifier type
                     for record in beta_records:
-                        cusip, ticker, position_name, beta, avg_beta = record
+                        # We're getting beta and volatility from equity table
+                        cusip, ticker, position_name, beta, volatility = record
                         
-                        # Use whichever beta value is available
-                        beta_value = beta if beta is not None else avg_beta
+                        # Just use beta directly
+                        beta_value = beta
                         
                         # Only create records if we have a beta value
                         if beta_value is not None:
@@ -1251,9 +1260,10 @@ def process_alternatives_risk(
                 # Use a with_timeout wrapper to enforce a hard deadline
                 def load_all_betas():
                     # Run an optimized query to get all betas in a single call
+                    # Note: Alternatives table only has 'beta' column, not 'average_beta'
                     query = text("""
                         SELECT 
-                            cusip, ticker_symbol, position, beta, average_beta
+                            cusip, ticker_symbol, position, beta
                         FROM 
                             risk_statistic_alternatives
                         WHERE 
@@ -1271,10 +1281,11 @@ def process_alternatives_risk(
                     
                     # Build lookups for each identifier type
                     for record in beta_records:
-                        cusip, ticker, position_name, beta, avg_beta = record
+                        # Note: Only 4 columns now (no avg_beta)
+                        cusip, ticker, position_name, beta = record
                         
-                        # Use whichever beta value is available
-                        beta_value = beta if beta is not None else avg_beta
+                        # Just use beta directly, as there's no avg_beta
+                        beta_value = beta
                         
                         # Only create records if we have a beta value
                         if beta_value is not None:
