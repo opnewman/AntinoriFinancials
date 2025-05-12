@@ -27,6 +27,15 @@ from src.models.models import (
 
 logger = logging.getLogger(__name__)
 
+# Import our optimized risk stat matching implementation
+try:
+    from optimized_find_matching_risk_stat_implementation import find_matching_risk_stat as optimized_find_matching_risk_stat
+    USE_OPTIMIZED_MATCHING = True
+    logger.info("Using optimized risk stat matching implementation")
+except ImportError:
+    USE_OPTIMIZED_MATCHING = False
+    logger.warning("Optimized risk stat matching implementation not available, using standard implementation")
+
 # Keep track of securities that don't have matching risk statistics
 # This is used for reporting purposes
 UNMATCHED_SECURITIES = {
@@ -1483,6 +1492,16 @@ def find_matching_risk_stat(
     Returns:
         Optional[Any]: Matching risk statistic or None
     """
+    # Use our optimized implementation if available
+    if USE_OPTIMIZED_MATCHING:
+        try:
+            return optimized_find_matching_risk_stat(
+                db, position_name, cusip, ticker_symbol, asset_class, latest_date, cache
+            )
+        except Exception as e:
+            logger.warning(f"Error using optimized matching implementation: {e}")
+            logger.warning("Falling back to standard implementation")
+            # Fall back to standard implementation below
     # Safety check for inputs - fail fast
     if not position_name and not cusip and not ticker_symbol:
         return None
