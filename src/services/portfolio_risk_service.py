@@ -300,38 +300,73 @@ def calculate_portfolio_risk_metrics(
     # Create a risk statistics cache to reduce database queries
     risk_stats_cache = {}
     
-    # Set a timeout limit for the entire risk metric calculation (10 seconds max)
-    MAX_PROCESSING_TIME = 10  # seconds
+    # Set a timeout limit per asset class processing (20 seconds per asset class)
+    MAX_PROCESSING_TIME = 20  # seconds
     
-    # Use our thread-safe timeout implementation instead of signals
-    def process_all_risk_metrics():
-        # Process positions by asset class
-        logger.info(f"Processing equity risk metrics for {level} {level_key}")
-        process_equity_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
-        
-        logger.info(f"Processing fixed income risk metrics for {level} {level_key}")
-        process_fixed_income_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
-        
-        logger.info(f"Processing hard currency risk metrics for {level} {level_key}")
-        process_hard_currency_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
-        
-        logger.info(f"Processing alternatives risk metrics for {level} {level_key}")
-        process_alternatives_risk(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache)
-    
-    # Execute with timeout
+    # Process each asset class separately with individual timeouts for better resilience
+    # Process equity positions
+    logger.info(f"Processing equity risk metrics for {level} {level_key}")
     try:
         # Use the thread-safe timeout function
         with_timeout(
-            func=process_all_risk_metrics,
+            func=process_equity_risk,
+            args=(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache),
             timeout_duration=MAX_PROCESSING_TIME
         )
+        logger.info("Equity risk processing completed successfully")
     except TimeoutException:
-        logger.warning(f"Risk metrics calculation timed out after {MAX_PROCESSING_TIME} seconds")
-        # Continue with partial results
-        logger.warning("Using partial risk metrics calculation results")
+        logger.warning(f"Equity risk processing timed out after {MAX_PROCESSING_TIME} seconds")
+        logger.warning("Using partial equity risk metrics")
     except Exception as e:
-        logger.error(f"Error calculating risk metrics: {str(e)}")
-        # Keep going with what we have
+        logger.error(f"Error processing equity risk metrics: {str(e)}")
+    
+    # Process fixed income positions
+    logger.info(f"Processing fixed income risk metrics for {level} {level_key}")
+    try:
+        # Use the thread-safe timeout function
+        with_timeout(
+            func=process_fixed_income_risk,
+            args=(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache),
+            timeout_duration=MAX_PROCESSING_TIME
+        )
+        logger.info("Fixed income risk processing completed successfully")
+    except TimeoutException:
+        logger.warning(f"Fixed income risk processing timed out after {MAX_PROCESSING_TIME} seconds")
+        logger.warning("Using partial fixed income risk metrics")
+    except Exception as e:
+        logger.error(f"Error processing fixed income risk metrics: {str(e)}")
+    
+    # Process hard currency positions
+    logger.info(f"Processing hard currency risk metrics for {level} {level_key}")
+    try:
+        # Use the thread-safe timeout function
+        with_timeout(
+            func=process_hard_currency_risk,
+            args=(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache),
+            timeout_duration=MAX_PROCESSING_TIME
+        )
+        logger.info("Hard currency risk processing completed successfully")
+    except TimeoutException:
+        logger.warning(f"Hard currency risk processing timed out after {MAX_PROCESSING_TIME} seconds")
+        logger.warning("Using partial hard currency risk metrics")
+    except Exception as e:
+        logger.error(f"Error processing hard currency risk metrics: {str(e)}")
+    
+    # Process alternatives positions
+    logger.info(f"Processing alternatives risk metrics for {level} {level_key}")
+    try:
+        # Use the thread-safe timeout function
+        with_timeout(
+            func=process_alternatives_risk,
+            args=(db, positions, totals, risk_metrics, latest_risk_stats_date, risk_stats_cache),
+            timeout_duration=MAX_PROCESSING_TIME
+        )
+        logger.info("Alternatives risk processing completed successfully")
+    except TimeoutException:
+        logger.warning(f"Alternatives risk processing timed out after {MAX_PROCESSING_TIME} seconds")
+        logger.warning("Using partial alternatives risk metrics")
+    except Exception as e:
+        logger.error(f"Error processing alternatives risk metrics: {str(e)}")
     
     # Calculate percentages of each asset class
     total_value = sum(totals.values())
@@ -591,11 +626,12 @@ def find_matching_risk_stat(
     cache: Optional[Dict[str, Any]] = None
 ) -> Optional[Any]:
     """
-    Find a matching risk statistic for a position using different identifiers.
+    Optimized asset-class specific matching logic to find risk statistics.
     
-    Ultra-optimized implementation to avoid memory issues, connection errors,
-    and timeout problems. Uses multiple efficient matching strategies with
-    proper connection and cursor management.
+    Different asset classes are matched differently:
+    - Fixed Income: primarily by CUSIP (most reliable for bonds)
+    - Equity: primarily by ticker_symbol, then position name
+    - Hard Currency/Alternatives: mix of CUSIP, ticker, and position name
     
     Args:
         db (Session): Database session
@@ -807,40 +843,100 @@ def find_matching_risk_stat(
             logger.error(f"Database connection error: {str(outer_e)}")
             return None
     
-    # Try lookup methods in order of reliability
+    # Use different search strategies based on asset class
+    table_name = model_class.__tablename__
     
-    # 1. Try by CUSIP (most reliable identifier)
-    if safe_cusip:
-        result = execute_query(True, "cusip", safe_cusip)
-        if result:
-            return result
-    
-    # 2. Try by ticker symbol (next most reliable)
-    if safe_ticker:
-        result = execute_query(True, "ticker_symbol", safe_ticker)
-        if result:
-            return result
-    
-    # 3. Try by exact position name match
-    if safe_position:
-        result = execute_query(True, "position", safe_position)
-        if result:
-            return result
+    if 'fixed_income' in table_name:
+        # Fixed Income: prioritize CUSIP for bonds, then try position name
+        if safe_cusip:
+            result = execute_query(True, "cusip", safe_cusip)
+            if result:
+                return result
+                
+        if safe_position:
+            # Try exact position match
+            result = execute_query(True, "position", safe_position)
+            if result:
+                return result
+                
+            # For bond names, which are often long and complex, try partial matches
+            words = safe_position.split()
+            # Try first three words for bonds (typically includes issuer name)
+            if len(words) >= 3:
+                first_three = f"{words[0]} {words[1]} {words[2]}"
+                result = execute_query(True, "position", f"%{first_three}%")
+                if result:
+                    return result
             
-        # 4. Try by position name with LIKE queries for more flexible matching
-        # First try the first two words if they exist
-        words = safe_position.split()
-        if len(words) >= 2:
-            first_two_words = f"{words[0]} {words[1]}"
-            result = execute_query(True, "position", f"%{first_two_words}%")
+            # Try just first word as last resort
+            if words and len(words[0]) >= 3:
+                result = execute_query(True, "position", f"%{words[0]}%")
+                if result:
+                    return result
+                    
+        if safe_ticker and safe_ticker != '-':
+            result = execute_query(True, "ticker_symbol", safe_ticker)
             if result:
                 return result
-
-        # Then try just the first word if it's long enough
-        if words and len(words[0]) >= 3:
-            result = execute_query(True, "position", f"%{words[0]}%")
+    
+    elif 'equity' in table_name:
+        # Equity: prioritize ticker symbol, which is most reliable for stocks
+        if safe_ticker:
+            result = execute_query(True, "ticker_symbol", safe_ticker)
             if result:
                 return result
+                
+        if safe_cusip:
+            result = execute_query(True, "cusip", safe_cusip)
+            if result:
+                return result
+                
+        if safe_position:
+            # Try exact position name
+            result = execute_query(True, "position", safe_position)
+            if result:
+                return result
+                
+            # For equity names, first word is often the company name
+            words = safe_position.split()
+            if words and len(words[0]) >= 3:
+                result = execute_query(True, "position", f"%{words[0]}%")
+                if result:
+                    return result
+    
+    else:  # Alternatives or Hard Currency
+        # Try CUSIP first for alternatives
+        if safe_cusip:
+            result = execute_query(True, "cusip", safe_cusip)
+            if result:
+                return result
+                
+        # For alternatives, ticker symbols are also reliable
+        if safe_ticker and safe_ticker != '-':
+            result = execute_query(True, "ticker_symbol", safe_ticker)
+            if result:
+                return result
+                
+        # Then try position name with various strategies
+        if safe_position:
+            # Try exact position match
+            result = execute_query(True, "position", safe_position)
+            if result:
+                return result
+                
+            # For alternatives, try first two words (often fund name)
+            words = safe_position.split()
+            if len(words) >= 2:
+                first_two = f"{words[0]} {words[1]}"
+                result = execute_query(True, "position", f"%{first_two}%")
+                if result:
+                    return result
+                    
+            # Try just first word if it's significant
+            if words and len(words[0]) >= 3:
+                result = execute_query(True, "position", f"%{words[0]}%")
+                if result:
+                    return result
     
     # Track unmatched securities for reporting
     if position_name:
