@@ -113,7 +113,10 @@ class Dashboard extends React.Component {
     generateReport = async () => {
         const { reportDate, reportLevel, levelKey, displayFormat } = this.state;
         
+        console.log("📊 Generating report with params:", { reportDate, reportLevel, levelKey, displayFormat });
+        
         if (!levelKey) {
+            console.warn("❌ Report generation aborted - no levelKey selected");
             this.setState({ error: 'Please select a valid option' });
             return;
         }
@@ -128,6 +131,9 @@ class Dashboard extends React.Component {
             performanceChart: null
         });
         
+        // Log the API endpoints being called
+        console.log(`🔄 Calling API endpoints for level=${reportLevel}, key=${levelKey}, date=${reportDate}, format=${displayFormat}`);
+        
         // Create all API request promises but handle them individually
         // Use window.api to access the global API object
         const portfolioReportPromise = window.api.getPortfolioReport(reportDate, reportLevel, levelKey, displayFormat);
@@ -140,15 +146,31 @@ class Dashboard extends React.Component {
             let hasFatalError = false;
             
             try {
+                console.log("⏳ Waiting for portfolio report data...");
                 const report = await portfolioReportPromise;
+                console.log("✅ Portfolio report data received:", report ? "Data received" : "No data");
+                
+                if (report) {
+                    // Check if critical sections exist
+                    console.log("📝 Report data structure check:", {
+                        hasAssetAllocation: !!report.asset_allocation,
+                        hasEquity: !!(report.equity && report.equity.total_pct),
+                        hasFixedIncome: !!(report.fixed_income && report.fixed_income.total_pct),
+                        hasHardCurrency: !!(report.hard_currency && report.hard_currency.total_pct),
+                        hasAlternatives: !!(report.alternatives && report.alternatives.total_pct),
+                        hasRiskMetrics: !!report.risk_metrics
+                    });
+                }
+                
                 if (this._isMounted) {
                     this.setState({ reportData: report });
                 }
             } catch (err) {
-                console.error('Portfolio report error:', err);
+                console.error('❌ Portfolio report error:', err);
                 if (this._isMounted) {
                     this.setState({ error: err.message || 'Failed to load portfolio report' });
                 }
+                hasFatalError = true;
             }
             
             // Process other chart data only if component is still mounted

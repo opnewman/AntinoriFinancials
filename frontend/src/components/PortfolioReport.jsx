@@ -457,16 +457,31 @@ window.PortfolioReport = ({
                             HC Beta
                         </td>
                         <td className="border px-4 py-2 text-right bg-yellow-50">
-                            {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta !== undefined ? 
-                                (typeof risk_metrics.hard_currency.beta === 'object' ? 
-                                formatNumber(risk_metrics.hard_currency.beta.value) : 
-                                formatNumber(risk_metrics.hard_currency.beta)) : 
-                                formatNumber(hard_currency.beta || "0.00")}
-                            {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.coverage_pct && 
-                                <span className="text-xs text-gray-500 ml-1">
-                                    ({formatNumber(risk_metrics.hard_currency.coverage_pct)}% coverage)
-                                </span>
-                            }
+                            {(() => {
+                                // Get the beta value from risk metrics or fallback to hard_currency data
+                                let betaValue;
+                                
+                                if (risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta !== undefined) {
+                                    if (typeof risk_metrics.hard_currency.beta === 'object') {
+                                        betaValue = parseFloat(risk_metrics.hard_currency.beta.value);
+                                    } else {
+                                        betaValue = parseFloat(risk_metrics.hard_currency.beta);
+                                    }
+                                } else if (hard_currency.beta) {
+                                    betaValue = parseFloat(hard_currency.beta);
+                                }
+                                
+                                return (
+                                    <>
+                                        {betaValue !== undefined ? formatNumber(betaValue) : "0.00"}
+                                        {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.coverage_pct && 
+                                            <span className="text-xs text-gray-500 ml-1">
+                                                ({formatNumber(risk_metrics.hard_currency.coverage_pct)}% coverage)
+                                            </span>
+                                        }
+                                    </>
+                                );
+                            })()}
                         </td>
                     </tr>
                     <tr>
@@ -474,11 +489,35 @@ window.PortfolioReport = ({
                             Beta Adjusted HC
                         </td>
                         <td className="border px-4 py-2 text-right bg-yellow-50">
-                            {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta_adjusted && risk_metrics.hard_currency.beta_adjusted.value !== undefined ? 
-                                `${(parseFloat(risk_metrics.hard_currency.beta_adjusted.value) * 100).toFixed(2)}%` : 
-                                (risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta !== undefined && hard_currency.total_pct ?
-                                `${(parseFloat(risk_metrics.hard_currency.beta) * parseFloat(hard_currency.total_pct) / 100 * 100).toFixed(2)}%` :
-                                (hard_currency.beta_adjusted ? `${(parseFloat(hard_currency.beta_adjusted) * 100).toFixed(2)}%` : "0.00%"))}
+                            {(() => {
+                                // Get the beta adjusted value from risk metrics or fallback to hard_currency data
+                                let betaAdjustedValue;
+                                
+                                if (risk_metrics && risk_metrics.hard_currency) {
+                                    if (risk_metrics.hard_currency.beta_adjusted && risk_metrics.hard_currency.beta_adjusted.value !== undefined) {
+                                        // Use the direct beta_adjusted.value
+                                        betaAdjustedValue = parseFloat(risk_metrics.hard_currency.beta_adjusted.value);
+                                    } else if (risk_metrics.hard_currency.beta !== undefined && hard_currency.total_pct) {
+                                        // Calculate beta_adjusted as beta * total_percent / 100
+                                        const betaValue = typeof risk_metrics.hard_currency.beta === 'object' 
+                                            ? parseFloat(risk_metrics.hard_currency.beta.value) 
+                                            : parseFloat(risk_metrics.hard_currency.beta);
+                                        betaAdjustedValue = betaValue * parseFloat(hard_currency.total_pct) / 100;
+                                    }
+                                }
+                                
+                                // Fallback to hard_currency.beta_adjusted if available
+                                if (betaAdjustedValue === undefined && hard_currency.beta_adjusted) {
+                                    betaAdjustedValue = parseFloat(hard_currency.beta_adjusted);
+                                }
+                                
+                                // Format the value
+                                if (betaAdjustedValue !== undefined) {
+                                    return formatPercent(betaAdjustedValue);
+                                } else {
+                                    return "0.00%";
+                                }
+                            })()}
                         </td>
                     </tr>
                     <tr>
