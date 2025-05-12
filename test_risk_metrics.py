@@ -4,10 +4,10 @@ import json
 def test_risk_metrics_api():
     # URL with parameters
     base_url = "http://localhost:5000/api/portfolio/risk-metrics"
-    # Try with another client
+    # Use the exact client name with leading space
     params = {
         "level": "client",
-        "level_key": "The Linden East II Trust (Abigail Wexner)",
+        "level_key": " The Linden East II Trust (Abigail Wexner)",
         "date": "2025-05-01"
     }
     
