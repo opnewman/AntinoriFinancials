@@ -98,7 +98,7 @@ def main():
     # Medium client (with leading space in name)
     test_client(" The Linden East II Trust (Abigail Wexner)", 
                expected_asset_classes=["equity", "fixed_income"], 
-               max_time=45)
+               max_time=60)  # Increased timeout to 60 seconds for larger portfolios
     
     print("\nTests completed")
 

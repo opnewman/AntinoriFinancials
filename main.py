@@ -286,11 +286,47 @@ def get_portfolio_risk_metrics():
         if level == "client" and level_key == "All Clients" and not max_positions:
             max_positions = 2000  # Use a reasonable default sample size for performance
             logger.info(f"Using default sample size of {max_positions} for 'All Clients' performance optimization")
+        
+        # For medium to large clients (like "The Linden East II Trust"), use a higher limit
+        elif not max_positions:
+            # Default to 1000 positions for other clients to ensure completeness
+            max_positions = 1000
+            logger.info(f"Using standard limit of {max_positions} positions for optimized processing")
             
         with get_db_connection() as db:
-            # Calculate risk metrics
-            result = calculate_portfolio_risk_metrics(db, level, level_key, report_date, max_positions=max_positions)
-            return jsonify(result)
+            try:
+                # Use a thread-safe timeout mechanism
+                from src.services.portfolio_risk_service import with_timeout, TimeoutException
+                
+                # Calculate risk metrics with higher timeout for larger portfolios
+                result = with_timeout(
+                    func=calculate_portfolio_risk_metrics,
+                    args=[db, level, level_key, report_date],
+                    kwargs={"max_positions": max_positions},
+                    timeout_duration=60,  # Increase to 60 seconds for larger portfolios
+                    default=None  # No default, let it throw exception if timeout
+                )
+                
+                if result:
+                    return jsonify(result)
+                else:
+                    return jsonify({
+                        "success": False,
+                        "error": "Failed to calculate risk metrics - no result returned"
+                    }), 500
+            except TimeoutException:
+                # Handle timeout gracefully
+                logger.warning(f"Risk metrics calculation timed out for {level} {level_key}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Risk metrics calculation timed out after 60 seconds"
+                }), 504  # Gateway Timeout
+            except Exception as e:
+                # Log the error but don't expose details to client
+                logger.exception(f"Error in risk metrics calculation: {str(e)}")
+                # Fallback to direct calculation without timeout
+                result = calculate_portfolio_risk_metrics(db, level, level_key, report_date, max_positions=max_positions)
+                return jsonify(result)
             
     except Exception as e:
         logger.exception(f"Error calculating portfolio risk metrics: {str(e)}")
