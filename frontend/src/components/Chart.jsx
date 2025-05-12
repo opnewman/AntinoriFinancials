@@ -177,3 +177,13 @@ class LineChart extends React.Component {
         return <ChartComponent type="line" data={data} options={options} height={height} />;
     }
 }
+
+// Make chart components available globally
+window.Charts = {
+    Chart,
+    ChartComponent,
+    PieChart,
+    DoughnutChart,
+    BarChart,
+    LineChart
+};
