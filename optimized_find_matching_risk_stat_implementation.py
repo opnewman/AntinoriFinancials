@@ -211,17 +211,87 @@ def find_matching_risk_stat(
                     
                     # Strategy 3: Try matching bond maturity patterns like "5.5% 2025"
                     if not query:
-                        # Look for patterns like "X.X% 20XX" which are common in bond names
+                        # Define all the regex patterns we need
+                        RATE_YEAR_REGEX = r'(\d+\.?\d*)\%.*?20(\d{2})'  # Basic pattern: X.X% ... 20XX
+                        RATE_ONLY_REGEX = r'(\d+\.?\d*)\%'  # Just find rate: X.X%
+                        YEAR_ONLY_REGEX = r'20(\d{2})'  # Just find year: 20XX
+                        SPACED_RATE_REGEX = r'(\d+\.?\d*)\s+\%'  # Rate with space before %
+                        ABBREVIATED_YEAR_REGEX = r'(\d{2})\/(\d{2})\/(\d{2})'  # MM/DD/YY format
+                        DUE_DATE_REGEX = r'Due\s+.*?(\d{4})'  # "Due ... YYYY" format
+                        SPACE_SEPARATED_RATE_REGEX = r'(\d+\.?\d*)\s'  # For cases like "2.4 08/08/26" 
+                        MMDDYY_WITHOUT_SLASH_REGEX = r'(\d{2})(\d{2})(\d{2})'  # For formats like 080826
+                        
                         try:
-                            maturity_pattern = re.search(r'(\d+\.?\d*)\%.*?20(\d{2})', safe_position)
+                            # Try to extract both rate and year with different patterns
+                            rate = None
+                            year = None
+                            
+                            # Try main pattern first (most common)
+                            maturity_pattern = re.search(RATE_YEAR_REGEX, safe_position)
                             if maturity_pattern:
-                                rate = maturity_pattern.group(1)
-                                year = maturity_pattern.group(2)
+                                rate, year = maturity_pattern.groups()
+                            else:
+                                # Try to extract rate and year separately
+                                rate_match = re.search(RATE_ONLY_REGEX, safe_position)
+                                year_match = re.search(YEAR_ONLY_REGEX, safe_position)
+                                
+                                rate = rate_match.group(1) if rate_match else None
+                                year = year_match.group(1) if year_match else None
+                                
+                                # If rate not found, try spaced rate pattern
+                                if rate is None:
+                                    spaced_match = re.search(SPACED_RATE_REGEX, safe_position)
+                                    if spaced_match:
+                                        rate = spaced_match.group(1)
+                                    
+                                    # Try space separated rate (like "2.4 08/08/26")
+                                    if rate is None and ' ' in safe_position:
+                                        words = safe_position.split()
+                                        for word in words:
+                                            if re.match(r'^\d+\.?\d*$', word):  # Just digits and possibly a decimal point
+                                                rate = word
+                                                break
+                                
+                                # If year not found, try other year formats
+                                if year is None:
+                                    # Try abbreviated year (MM/DD/YY) format
+                                    abbr_match = re.search(ABBREVIATED_YEAR_REGEX, safe_position)
+                                    if abbr_match:
+                                        month, day, abbr_year = abbr_match.groups()
+                                        year = abbr_year
+                                    
+                                    # Try "Due ... YYYY" format
+                                    if year is None:
+                                        due_match = re.search(DUE_DATE_REGEX, safe_position)
+                                        if due_match:
+                                            full_year = due_match.group(1)
+                                            year = full_year[-2:]  # Extract last 2 digits
+                                        
+                                    # Try to find dates without slashes (like "080826")
+                                    if year is None:
+                                        no_slash_match = re.search(MMDDYY_WITHOUT_SLASH_REGEX, safe_position)
+                                        if no_slash_match:
+                                            month, day, no_slash_year = no_slash_match.groups()
+                                            # Make sure it looks like a reasonable date
+                                            if 1 <= int(month) <= 12 and 1 <= int(day) <= 31:
+                                                year = no_slash_year
+                            
+                            # If we found both rate and year, use them to search for matches
+                            if rate and year:
                                 pattern = f"{rate}%{' '}20{year}"
+                                logger.debug(f"Using bond pattern: {pattern} for position: {safe_position}")
                                 query = db.query(RiskStatisticFixedIncome).filter(
                                     RiskStatisticFixedIncome.position.ilike(f"%{pattern}%"),
                                     RiskStatisticFixedIncome.upload_date == latest_date
                                 ).first()
+                                
+                                # If we didn't find a match with the pattern, try just the rate
+                                if not query and rate:
+                                    query = db.query(RiskStatisticFixedIncome).filter(
+                                        RiskStatisticFixedIncome.position.ilike(f"%{rate}%"),
+                                        RiskStatisticFixedIncome.upload_date == latest_date
+                                    ).first()
+                        
                         except Exception as e:
                             logger.warning(f"Error matching bond pattern: {e}")
                             
