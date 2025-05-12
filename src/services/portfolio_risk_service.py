@@ -199,6 +199,9 @@ def calculate_portfolio_risk_metrics(
                 "value": None,
                 "coverage_pct": Decimal('0.0')
             },
+            "beta_adjusted": {
+                "value": None
+            },
             "volatility": {
                 "weighted_sum": Decimal('0.0'),
                 "value": None,
@@ -211,6 +214,24 @@ def calculate_portfolio_risk_metrics(
                 "value": None,
                 "coverage_pct": Decimal('0.0'),
                 "category": None
+            },
+            "municipal_bonds": {
+                "total": Decimal('0.0'),
+                "short_duration": Decimal('0.0'),  # < 2 years
+                "market_duration": Decimal('0.0'), # 2-7 years
+                "long_duration": Decimal('0.0')    # > 7 years
+            },
+            "investment_grade": {
+                "total": Decimal('0.0'),
+                "short_duration": Decimal('0.0'),
+                "market_duration": Decimal('0.0'),
+                "long_duration": Decimal('0.0')
+            },
+            "government_bonds": {
+                "total": Decimal('0.0'),
+                "short_duration": Decimal('0.0'),
+                "market_duration": Decimal('0.0'),
+                "long_duration": Decimal('0.0')
             }
         },
         "hard_currency": {
@@ -218,6 +239,9 @@ def calculate_portfolio_risk_metrics(
                 "weighted_sum": Decimal('0.0'),
                 "value": None,
                 "coverage_pct": Decimal('0.0')
+            },
+            "beta_adjusted": {
+                "value": None
             }
         },
         "alternatives": {
