@@ -179,41 +179,93 @@ class Dashboard extends React.Component {
                 try {
                     console.log("📊 Fetching allocation chart data...");
                     const allocations = await allocationChartPromise;
-                    console.log("📊 Allocation chart data received:", allocations);
+                    console.log("📊 Allocation chart data received:", JSON.stringify(allocations));
                     
-                    if (!allocations || !allocations.datasets || !allocations.labels) {
-                        console.error("❌ Invalid allocation data structure:", allocations);
-                        return;
+                    // Create a standardized allocation dataset structure
+                    let validAllocationData = {
+                        labels: [],
+                        datasets: [{
+                            data: [],
+                            backgroundColor: [
+                                '#3498db', '#e74c3c', '#f1c40f', '#2ecc71', '#9b59b6', 
+                                '#1abc9c', '#e67e22', '#34495e', '#7f8c8d', '#d35400'
+                            ],
+                            borderWidth: 1,
+                            borderColor: '#fff'
+                        }]
+                    };
+                    
+                    // Process the allocation data with extensive validation
+                    if (!allocations) {
+                        console.error("❌ Allocation data is null or undefined");
+                    } else if (!allocations.datasets) {
+                        console.error("❌ Allocation data missing datasets property");
+                    } else if (!Array.isArray(allocations.datasets) || allocations.datasets.length === 0) {
+                        console.error("❌ Allocation datasets is empty or not an array");
+                    } else if (!allocations.labels || !Array.isArray(allocations.labels)) {
+                        console.error("❌ Allocation labels is missing or not an array");
+                    } else if (!allocations.datasets[0].data || !Array.isArray(allocations.datasets[0].data)) {
+                        console.error("❌ Allocation dataset data is missing or not an array");
+                    } else {
+                        // At this point we have valid structure, extract the values
+                        validAllocationData.labels = [...allocations.labels];
+                        
+                        // Filter out null/undefined values and ensure numbers
+                        validAllocationData.datasets[0].data = allocations.datasets[0].data
+                            .map(val => (val === null || val === undefined) ? 0 : Number(val));
+                        
+                        // Copy backgroundColor if it exists in the source
+                        if (allocations.datasets[0].backgroundColor && 
+                            Array.isArray(allocations.datasets[0].backgroundColor)) {
+                            validAllocationData.datasets[0].backgroundColor = 
+                                [...allocations.datasets[0].backgroundColor];
+                        }
+                        
+                        // Ensure we have enough colors
+                        while (validAllocationData.datasets[0].backgroundColor.length < 
+                               validAllocationData.datasets[0].data.length) {
+                            // Duplicate colors if needed
+                            const existingColors = [...validAllocationData.datasets[0].backgroundColor];
+                            for (let i = 0; i < existingColors.length; i++) {
+                                if (validAllocationData.datasets[0].backgroundColor.length < 
+                                    validAllocationData.datasets[0].data.length) {
+                                    validAllocationData.datasets[0].backgroundColor.push(existingColors[i]);
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Make sure data length and labels length match
+                        if (validAllocationData.labels.length !== validAllocationData.datasets[0].data.length) {
+                            console.warn("⚠️ Allocation data length mismatch: labels:", 
+                                validAllocationData.labels.length, 
+                                "data:", validAllocationData.datasets[0].data.length);
+                            
+                            // Truncate to the shorter length
+                            const minLength = Math.min(
+                                validAllocationData.labels.length, 
+                                validAllocationData.datasets[0].data.length
+                            );
+                            
+                            validAllocationData.labels = validAllocationData.labels.slice(0, minLength);
+                            validAllocationData.datasets[0].data = 
+                                validAllocationData.datasets[0].data.slice(0, minLength);
+                            validAllocationData.datasets[0].backgroundColor = 
+                                validAllocationData.datasets[0].backgroundColor.slice(0, minLength);
+                        }
+                        
+                        console.log("📊 Processed allocation chart data:", {
+                            labels: validAllocationData.labels,
+                            dataPoints: validAllocationData.datasets[0].data,
+                            colors: validAllocationData.datasets[0].backgroundColor
+                        });
                     }
                     
-                    if (allocations.datasets.length === 0) {
-                        console.error("❌ No datasets in allocation data");
-                        return;
-                    }
-                    
-                    if (!allocations.datasets[0].data || allocations.datasets[0].data.length === 0) {
-                        console.error("❌ No data points in allocation dataset");
-                        return;
-                    }
-                    
-                    // Confirm we have data that matches our labels
-                    console.log("📊 Allocation chart data points:", 
-                        {labels: allocations.labels.length, dataPoints: allocations.datasets[0].data.length});
-                    
+                    // Update the state with our validated data structure
                     if (this._isMounted) {
                         this.setState({
-                            allocationsChart: {
-                                labels: allocations.labels,
-                                datasets: [{
-                                    data: allocations.datasets[0].data,
-                                    backgroundColor: allocations.datasets[0].backgroundColor || [
-                                        '#3498db', '#e74c3c', '#f1c40f', '#2ecc71', '#9b59b6', 
-                                        '#1abc9c', '#e67e22', '#34495e', '#7f8c8d', '#d35400'
-                                    ],
-                                    borderWidth: 1,
-                                    borderColor: '#fff'
-                                }]
-                            }
+                            allocationsChart: validAllocationData
                         }, () => {
                             console.log("📊 Allocation chart state updated", this.state.allocationsChart);
                         });
@@ -226,40 +278,92 @@ class Dashboard extends React.Component {
                 try {
                     console.log("💧 Fetching liquidity chart data...");
                     const liquidity = await liquidityChartPromise;
-                    console.log("💧 Liquidity chart data received:", liquidity);
+                    console.log("💧 Liquidity chart data received:", JSON.stringify(liquidity));
                     
-                    if (!liquidity || !liquidity.datasets || !liquidity.labels) {
-                        console.error("❌ Invalid liquidity data structure:", liquidity);
-                        return;
+                    // Create a standardized liquidity dataset structure
+                    let validLiquidityData = {
+                        labels: [],
+                        datasets: [{
+                            data: [],
+                            backgroundColor: [
+                                '#2ecc71', '#e74c3c', '#3498db', '#f1c40f', '#9b59b6'
+                            ],
+                            borderWidth: 1,
+                            borderColor: '#fff'
+                        }]
+                    };
+                    
+                    // Process the liquidity data with extensive validation
+                    if (!liquidity) {
+                        console.error("❌ Liquidity data is null or undefined");
+                    } else if (!liquidity.datasets) {
+                        console.error("❌ Liquidity data missing datasets property");
+                    } else if (!Array.isArray(liquidity.datasets) || liquidity.datasets.length === 0) {
+                        console.error("❌ Liquidity datasets is empty or not an array");
+                    } else if (!liquidity.labels || !Array.isArray(liquidity.labels)) {
+                        console.error("❌ Liquidity labels is missing or not an array");
+                    } else if (!liquidity.datasets[0].data || !Array.isArray(liquidity.datasets[0].data)) {
+                        console.error("❌ Liquidity dataset data is missing or not an array");
+                    } else {
+                        // At this point we have valid structure, extract the values
+                        validLiquidityData.labels = [...liquidity.labels];
+                        
+                        // Filter out null/undefined values and ensure numbers
+                        validLiquidityData.datasets[0].data = liquidity.datasets[0].data
+                            .map(val => (val === null || val === undefined) ? 0 : Number(val));
+                        
+                        // Copy backgroundColor if it exists in the source
+                        if (liquidity.datasets[0].backgroundColor && 
+                            Array.isArray(liquidity.datasets[0].backgroundColor)) {
+                            validLiquidityData.datasets[0].backgroundColor = 
+                                [...liquidity.datasets[0].backgroundColor];
+                        }
+                        
+                        // Ensure we have enough colors
+                        while (validLiquidityData.datasets[0].backgroundColor.length < 
+                               validLiquidityData.datasets[0].data.length) {
+                            // Duplicate colors if needed
+                            const existingColors = [...validLiquidityData.datasets[0].backgroundColor];
+                            for (let i = 0; i < existingColors.length; i++) {
+                                if (validLiquidityData.datasets[0].backgroundColor.length < 
+                                    validLiquidityData.datasets[0].data.length) {
+                                    validLiquidityData.datasets[0].backgroundColor.push(existingColors[i]);
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Make sure data length and labels length match
+                        if (validLiquidityData.labels.length !== validLiquidityData.datasets[0].data.length) {
+                            console.warn("⚠️ Liquidity data length mismatch: labels:", 
+                                validLiquidityData.labels.length, 
+                                "data:", validLiquidityData.datasets[0].data.length);
+                            
+                            // Truncate to the shorter length
+                            const minLength = Math.min(
+                                validLiquidityData.labels.length, 
+                                validLiquidityData.datasets[0].data.length
+                            );
+                            
+                            validLiquidityData.labels = validLiquidityData.labels.slice(0, minLength);
+                            validLiquidityData.datasets[0].data = 
+                                validLiquidityData.datasets[0].data.slice(0, minLength);
+                            validLiquidityData.datasets[0].backgroundColor = 
+                                validLiquidityData.datasets[0].backgroundColor.slice(0, minLength);
+                        }
+                        
+                        console.log("💧 Processed liquidity chart data:", {
+                            labels: validLiquidityData.labels,
+                            dataPoints: validLiquidityData.datasets[0].data,
+                            colors: validLiquidityData.datasets[0].backgroundColor
+                        });
                     }
                     
-                    if (liquidity.datasets.length === 0) {
-                        console.error("❌ No datasets in liquidity data");
-                        return;
-                    }
-                    
-                    if (!liquidity.datasets[0].data || liquidity.datasets[0].data.length === 0) {
-                        console.error("❌ No data points in liquidity dataset");
-                        return;
-                    }
-                    
-                    // Confirm we have data that matches our labels
-                    console.log("💧 Liquidity chart data points:", 
-                        {labels: liquidity.labels.length, dataPoints: liquidity.datasets[0].data.length});
-                    
+                    // Update the state with our validated data structure
                     if (this._isMounted) {
                         this.setState({
-                            liquidityChart: {
-                                labels: liquidity.labels,
-                                datasets: [{
-                                    data: liquidity.datasets[0].data,
-                                    backgroundColor: liquidity.datasets[0].backgroundColor || [
-                                        '#2ecc71', '#e74c3c', '#3498db', '#f1c40f', '#9b59b6'
-                                    ],
-                                    borderWidth: 1,
-                                    borderColor: '#fff'
-                                }]
-                            }
+                            liquidityChart: validLiquidityData
                         }, () => {
                             console.log("💧 Liquidity chart state updated", this.state.liquidityChart);
                         });

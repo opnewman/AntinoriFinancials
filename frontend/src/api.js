@@ -212,27 +212,21 @@ window.api = {
      */
     getAllocationChartData: async (date, level, levelKey) => {
         try {
+            console.log(`🔍 Fetching allocation chart data: date=${date}, level=${level}, key=${levelKey}`);
             const response = await axios.get(
                 `${API_BASE_URL}/api/charts/allocation`, {
                     params: { date, level, level_key: levelKey }
                 }
             );
             
-            if (!response.data || !response.data.labels || !response.data.datasets) {
-                console.warn('Allocation chart data is incomplete');
-                return {
-                    labels: ['No Data'],
-                    datasets: [{ 
-                        data: [100], 
-                        backgroundColor: ['#e0e0e0'],
-                        label: 'No allocation data available'
-                    }]
-                };
-            }
+            console.log('📊 Raw allocation chart data received:', JSON.stringify(response.data));
             
-            return response.data;
+            // Validate and normalize response data
+            const validatedData = validateChartData(response.data, 'allocation');
+            
+            return validatedData;
         } catch (error) {
-            console.error('Allocation chart error:', error);
+            console.error('❌ Allocation chart error:', error);
             // Return a default structure so UI doesn't break
             return {
                 labels: ['Error'],
@@ -253,27 +247,21 @@ window.api = {
      */
     getLiquidityChartData: async (date, level, levelKey) => {
         try {
+            console.log(`🔍 Fetching liquidity chart data: date=${date}, level=${level}, key=${levelKey}`);
             const response = await axios.get(
                 `${API_BASE_URL}/api/charts/liquidity`, {
                     params: { date, level, level_key: levelKey }
                 }
             );
             
-            if (!response.data || !response.data.labels || !response.data.datasets) {
-                console.warn('Liquidity chart data is incomplete');
-                return {
-                    labels: ['No Data'],
-                    datasets: [{ 
-                        data: [100], 
-                        backgroundColor: ['#e0e0e0'],
-                        label: 'No liquidity data available'
-                    }]
-                };
-            }
+            console.log('💧 Raw liquidity chart data received:', JSON.stringify(response.data));
             
-            return response.data;
+            // Validate and normalize response data
+            const validatedData = validateChartData(response.data, 'liquidity');
+            
+            return validatedData;
         } catch (error) {
-            console.error('Liquidity chart error:', error);
+            console.error('❌ Liquidity chart error:', error);
             // Return a default structure so UI doesn't break
             return {
                 labels: ['Error'],

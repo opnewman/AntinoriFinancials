@@ -84,18 +84,31 @@ class ChartComponentClass extends React.Component {
             return;
         }
         
+        // Handle missing data with more detailed error messages
         if (!data) {
             console.error('❌ Chart data is null or undefined, cannot create chart');
             return;
         }
         
-        if (!data.datasets || data.datasets.length === 0) {
-            console.error('❌ Chart data has no datasets, cannot create chart');
+        // Ensure datasets exist
+        if (!data.datasets) {
+            console.error('❌ Chart data is missing datasets property');
             return;
         }
         
-        if (!data.labels || data.labels.length === 0) {
-            console.error('❌ Chart data has no labels, cannot create chart');
+        if (data.datasets.length === 0) {
+            console.error('❌ Chart data has empty datasets array');
+            return;
+        }
+        
+        // Ensure labels exist
+        if (!data.labels) {
+            console.error('❌ Chart data is missing labels property');
+            return;
+        }
+        
+        if (data.labels.length === 0) {
+            console.error('❌ Chart data has empty labels array');
             return;
         }
         
@@ -117,16 +130,52 @@ class ChartComponentClass extends React.Component {
                 return;
             }
             
-            // Validate data structure again before creating
-            if (!data.datasets[0].data || data.datasets[0].data.length === 0) {
-                console.error('❌ First dataset has no data points');
+            // Validate first dataset has data
+            const firstDataset = data.datasets[0];
+            if (!firstDataset.data) {
+                console.error('❌ First dataset has no data property');
                 return;
+            }
+            
+            if (firstDataset.data.length === 0) {
+                console.error('❌ First dataset has empty data array');
+                return;
+            }
+            
+            // Normalize the data for pie/doughnut charts
+            // This ensures null/undefined values don't break the chart
+            if (type === 'pie' || type === 'doughnut') {
+                firstDataset.data = firstDataset.data.map(val => 
+                    (val === null || val === undefined) ? 0 : val
+                );
+                
+                // Ensure backgroundColor is an array with matching length
+                if (!firstDataset.backgroundColor || !Array.isArray(firstDataset.backgroundColor)) {
+                    console.log("⚠️ Adding default colors to dataset");
+                    firstDataset.backgroundColor = [
+                        '#3498db', '#e74c3c', '#f1c40f', '#2ecc71', '#9b59b6', 
+                        '#1abc9c', '#e67e22', '#34495e', '#7f8c8d', '#d35400'
+                    ];
+                }
+                
+                // If we have more data points than colors, extend the color array
+                if (firstDataset.data.length > firstDataset.backgroundColor.length) {
+                    const defaultColors = [
+                        '#3498db', '#e74c3c', '#f1c40f', '#2ecc71', '#9b59b6', 
+                        '#1abc9c', '#e67e22', '#34495e', '#7f8c8d', '#d35400'
+                    ];
+                    
+                    while (firstDataset.backgroundColor.length < firstDataset.data.length) {
+                        const nextColor = defaultColors[firstDataset.backgroundColor.length % defaultColors.length];
+                        firstDataset.backgroundColor.push(nextColor);
+                    }
+                }
             }
             
             console.log(`⚙️ Creating ${type || 'bar'} chart with:`, { 
                 labels: data.labels, 
-                dataPoints: data.datasets[0].data,
-                backgroundColor: data.datasets[0].backgroundColor
+                dataPoints: firstDataset.data,
+                backgroundColor: firstDataset.backgroundColor
             });
             
             // Create chart with error handling
