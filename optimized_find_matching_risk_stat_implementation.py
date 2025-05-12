@@ -143,10 +143,18 @@ def find_matching_risk_stat(
             
             # Try ticker symbol next if no match yet
             if not matched_value and safe_ticker and safe_ticker != '-':
+                # First try exact match
                 query = db.query(RiskStatisticFixedIncome).filter(
                     func.lower(RiskStatisticFixedIncome.ticker_symbol) == safe_ticker.lower(),
                     RiskStatisticFixedIncome.upload_date == latest_date
                 ).first()
+                
+                # If no match, try fuzzy match with partial ticker
+                if not query and len(safe_ticker) > 3:
+                    query = db.query(RiskStatisticFixedIncome).filter(
+                        RiskStatisticFixedIncome.ticker_symbol.ilike(f"%{safe_ticker}%"),
+                        RiskStatisticFixedIncome.upload_date == latest_date
+                    ).first()
                 
                 if query:
                     matched_value = {"id": query.id, "duration": query.duration}
@@ -167,15 +175,52 @@ def find_matching_risk_stat(
                     if cache is not None and "position" in cache.get(asset_class_key, {}):
                         cache[asset_class_key]["position"][safe_position] = matched_value
                 
-                # For bond names, try partial match with first few words if still no match
+                # For bond names, try various partial matching strategies
                 if not matched_value:
                     words = safe_position.split()
+                    
+                    # Strategy 1: Match with first three words
                     if len(words) >= 3:
                         first_three = f"{words[0]} {words[1]} {words[2]}"
                         query = db.query(RiskStatisticFixedIncome).filter(
                             RiskStatisticFixedIncome.position.ilike(f"%{first_three}%"),
                             RiskStatisticFixedIncome.upload_date == latest_date
                         ).first()
+                        
+                        if query:
+                            matched_value = {"id": query.id, "duration": query.duration}
+                            # Cache the result
+                            if cache is not None and "position" in cache.get(asset_class_key, {}):
+                                cache[asset_class_key]["position"][safe_position] = matched_value
+                    
+                    # Strategy 2: Match with first two words
+                    if not matched_value and len(words) >= 2:
+                        first_two = f"{words[0]} {words[1]}"
+                        if len(first_two) >= 5:  # Only use if it's substantial enough
+                            query = db.query(RiskStatisticFixedIncome).filter(
+                                RiskStatisticFixedIncome.position.ilike(f"%{first_two}%"),
+                                RiskStatisticFixedIncome.upload_date == latest_date
+                            ).first()
+                            
+                            if query:
+                                matched_value = {"id": query.id, "duration": query.duration}
+                                # Cache the result
+                                if cache is not None and "position" in cache.get(asset_class_key, {}):
+                                    cache[asset_class_key]["position"][safe_position] = matched_value
+                    
+                    # Strategy 3: Try matching bond maturity patterns like "5.5% 2025"
+                    if not query:
+                        # Look for patterns like "X.X% 20XX" which are common in bond names
+                        import re
+                        maturity_pattern = re.search(r'(\d+\.?\d*)\%.*?20(\d{2})', safe_position)
+                        if maturity_pattern:
+                            rate = maturity_pattern.group(1)
+                            year = maturity_pattern.group(2)
+                            pattern = f"{rate}%{' '}20{year}"
+                            query = db.query(RiskStatisticFixedIncome).filter(
+                                RiskStatisticFixedIncome.position.ilike(f"%{pattern}%"),
+                                RiskStatisticFixedIncome.upload_date == latest_date
+                            ).first()
                         
                         if query:
                             matched_value = {"id": query.id, "duration": query.duration}

@@ -41,13 +41,13 @@ def test_portfolio_risk():
             
         logger.info(f"Testing with client: {client_query}")
         
-        # Calculate risk metrics with a subset of positions for testing
+        # Calculate risk metrics with a balanced subset of positions for testing
         risk_metrics = calculate_portfolio_risk_metrics(
             db=db,
             level="client",
             level_key=client_query,
             report_date=most_recent_date_query,
-            max_positions=500  # Use a larger sample of positions for better coverage
+            max_positions=750  # Balance between coverage and performance
         )
         
         # Print results summary
