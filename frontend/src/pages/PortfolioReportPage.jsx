@@ -811,6 +811,7 @@ window.PortfolioReportPage = () => {
                             onChange={handleLevelChange}
                         >
                             <option value="client">Client</option>
+                            <option value="group">Group</option>
                             <option value="portfolio">Portfolio</option>
                             <option value="account">Account</option>
                         </select>
@@ -819,6 +820,7 @@ window.PortfolioReportPage = () => {
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                             {selectedLevel === 'client' ? 'Client' : 
+                             selectedLevel === 'group' ? 'Group' :
                              selectedLevel === 'portfolio' ? 'Portfolio' : 'Account'}
                         </label>
                         <select
