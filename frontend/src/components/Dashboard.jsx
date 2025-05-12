@@ -177,42 +177,95 @@ class Dashboard extends React.Component {
             if (this._isMounted && !hasFatalError) {
                 // Get allocation chart data
                 try {
+                    console.log("📊 Fetching allocation chart data...");
                     const allocations = await allocationChartPromise;
+                    console.log("📊 Allocation chart data received:", allocations);
+                    
+                    if (!allocations || !allocations.datasets || !allocations.labels) {
+                        console.error("❌ Invalid allocation data structure:", allocations);
+                        return;
+                    }
+                    
+                    if (allocations.datasets.length === 0) {
+                        console.error("❌ No datasets in allocation data");
+                        return;
+                    }
+                    
+                    if (!allocations.datasets[0].data || allocations.datasets[0].data.length === 0) {
+                        console.error("❌ No data points in allocation dataset");
+                        return;
+                    }
+                    
+                    // Confirm we have data that matches our labels
+                    console.log("📊 Allocation chart data points:", 
+                        {labels: allocations.labels.length, dataPoints: allocations.datasets[0].data.length});
+                    
                     if (this._isMounted) {
                         this.setState({
                             allocationsChart: {
                                 labels: allocations.labels,
                                 datasets: [{
                                     data: allocations.datasets[0].data,
-                                    backgroundColor: allocations.datasets[0].backgroundColor,
+                                    backgroundColor: allocations.datasets[0].backgroundColor || [
+                                        '#3498db', '#e74c3c', '#f1c40f', '#2ecc71', '#9b59b6', 
+                                        '#1abc9c', '#e67e22', '#34495e', '#7f8c8d', '#d35400'
+                                    ],
                                     borderWidth: 1,
                                     borderColor: '#fff'
                                 }]
                             }
+                        }, () => {
+                            console.log("📊 Allocation chart state updated", this.state.allocationsChart);
                         });
                     }
                 } catch (err) {
-                    console.error('Allocation chart error:', err);
+                    console.error('❌ Allocation chart error:', err);
                 }
                 
                 // Get liquidity chart data
                 try {
+                    console.log("💧 Fetching liquidity chart data...");
                     const liquidity = await liquidityChartPromise;
+                    console.log("💧 Liquidity chart data received:", liquidity);
+                    
+                    if (!liquidity || !liquidity.datasets || !liquidity.labels) {
+                        console.error("❌ Invalid liquidity data structure:", liquidity);
+                        return;
+                    }
+                    
+                    if (liquidity.datasets.length === 0) {
+                        console.error("❌ No datasets in liquidity data");
+                        return;
+                    }
+                    
+                    if (!liquidity.datasets[0].data || liquidity.datasets[0].data.length === 0) {
+                        console.error("❌ No data points in liquidity dataset");
+                        return;
+                    }
+                    
+                    // Confirm we have data that matches our labels
+                    console.log("💧 Liquidity chart data points:", 
+                        {labels: liquidity.labels.length, dataPoints: liquidity.datasets[0].data.length});
+                    
                     if (this._isMounted) {
                         this.setState({
                             liquidityChart: {
                                 labels: liquidity.labels,
                                 datasets: [{
                                     data: liquidity.datasets[0].data,
-                                    backgroundColor: liquidity.datasets[0].backgroundColor,
+                                    backgroundColor: liquidity.datasets[0].backgroundColor || [
+                                        '#2ecc71', '#e74c3c', '#3498db', '#f1c40f', '#9b59b6'
+                                    ],
                                     borderWidth: 1,
                                     borderColor: '#fff'
                                 }]
                             }
+                        }, () => {
+                            console.log("💧 Liquidity chart state updated", this.state.liquidityChart);
                         });
                     }
                 } catch (err) {
-                    console.error('Liquidity chart error:', err);
+                    console.error('❌ Liquidity chart error:', err);
                 }
                 
                 // Get performance chart data
