@@ -77,8 +77,25 @@ class ChartComponentClass extends React.Component {
     createChart() {
         const { data, type } = this.props;
         
-        if (!this.chartRef.current || !data) {
-            console.warn('Missing chart reference or data, skipping chart creation');
+        console.log(`🔍 Attempting to create ${type || 'bar'} chart with data:`, data);
+        
+        if (!this.chartRef.current) {
+            console.error('❌ Chart reference is missing, cannot create chart');
+            return;
+        }
+        
+        if (!data) {
+            console.error('❌ Chart data is null or undefined, cannot create chart');
+            return;
+        }
+        
+        if (!data.datasets || data.datasets.length === 0) {
+            console.error('❌ Chart data has no datasets, cannot create chart');
+            return;
+        }
+        
+        if (!data.labels || data.labels.length === 0) {
+            console.error('❌ Chart data has no labels, cannot create chart');
             return;
         }
         
@@ -89,16 +106,28 @@ class ChartComponentClass extends React.Component {
             // Get the context
             const ctx = this.chartRef.current.getContext('2d');
             if (!ctx) {
-                console.error('Could not get 2d context from canvas');
+                console.error('❌ Could not get 2d context from canvas');
                 return;
             }
             
             // Ensure Chart.js is loaded globally
             const ChartJS = window.Chart;
             if (!ChartJS) {
-                console.error('Chart.js not found globally');
+                console.error('❌ Chart.js not found globally');
                 return;
             }
+            
+            // Validate data structure again before creating
+            if (!data.datasets[0].data || data.datasets[0].data.length === 0) {
+                console.error('❌ First dataset has no data points');
+                return;
+            }
+            
+            console.log(`⚙️ Creating ${type || 'bar'} chart with:`, { 
+                labels: data.labels, 
+                dataPoints: data.datasets[0].data,
+                backgroundColor: data.datasets[0].backgroundColor
+            });
             
             // Create chart with error handling
             this.chartInstance = new ChartJS(ctx, {
@@ -107,9 +136,9 @@ class ChartComponentClass extends React.Component {
                 options: this.getChartOptions()
             });
             
-            console.log(`Created ${type || 'bar'} chart successfully`);
+            console.log(`✅ Created ${type || 'bar'} chart successfully`);
         } catch (error) {
-            console.error('Error creating chart:', error);
+            console.error('❌ Error creating chart:', error);
             // Ensure the chart instance is nullified if creation fails
             this.chartInstance = null;
         }
