@@ -220,31 +220,30 @@ def calculate_portfolio_risk_metrics(
         }
     }
     
-    # Use a transaction to ensure database consistency
+    # Use error handling to manage database operations
     try:
-        with db.begin() as transaction:
-            # Clear the unmatched securities list
-            global UNMATCHED_SECURITIES
-            UNMATCHED_SECURITIES = {
-                "Equity": set(),
-                "Fixed Income": set(),
-                "Alternatives": set(),
-                "Hard Currency": set()
-            }
-            
-            logger.info(f"Beginning transaction for {level} risk metrics for {level_key}")
-            
-            # Get all positions for this portfolio
-            # Construct the filter based on the level
-            filter_params = {}
-            if level == 'client':
-                filter_params = {'top_level_client': level_key}
-            elif level == 'portfolio':
-                filter_params = {'portfolio': level_key}
-            elif level == 'account':
-                filter_params = {'holding_account_number': level_key}
-            else:
-                raise ValueError(f"Invalid level: {level}")
+        # Clear the unmatched securities list
+        global UNMATCHED_SECURITIES
+        UNMATCHED_SECURITIES = {
+            "Equity": set(),
+            "Fixed Income": set(),
+            "Alternatives": set(),
+            "Hard Currency": set()
+        }
+        
+        logger.info(f"Processing risk metrics for {level} {level_key}")
+        
+        # Get all positions for this portfolio
+        # Construct the filter based on the level
+        filter_params = {}
+        if level == 'client':
+            filter_params = {'top_level_client': level_key}
+        elif level == 'portfolio':
+            filter_params = {'portfolio': level_key}
+        elif level == 'account':
+            filter_params = {'holding_account_number': level_key}
+        else:
+            raise ValueError(f"Invalid level: {level}")
             
         # Add the date filter
         filter_params['date'] = report_date
