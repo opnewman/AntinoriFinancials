@@ -288,66 +288,62 @@ class Dashboard extends React.Component {
         const riskMetricsArray = [];
         
         // Extract equity beta
-        if (reportData.risk_metrics.equity && reportData.risk_metrics.equity.beta && reportData.risk_metrics.equity.beta.value !== null) {
+        if (reportData.risk_metrics.equity && reportData.risk_metrics.equity.beta !== undefined) {
+            let betaValue = typeof reportData.risk_metrics.equity.beta === 'object' 
+                ? reportData.risk_metrics.equity.beta.value 
+                : reportData.risk_metrics.equity.beta;
+            
             riskMetricsArray.push({
                 name: "Equity Beta",
-                value: parseFloat(reportData.risk_metrics.equity.beta.value)
+                value: parseFloat(betaValue) || 0
             });
         }
         
         // Extract equity volatility
-        if (reportData.risk_metrics.equity && reportData.risk_metrics.equity.volatility && reportData.risk_metrics.equity.volatility.value !== null) {
+        if (reportData.risk_metrics.equity && reportData.risk_metrics.equity.volatility !== undefined) {
+            let volatilityValue = typeof reportData.risk_metrics.equity.volatility === 'object' 
+                ? reportData.risk_metrics.equity.volatility.value 
+                : reportData.risk_metrics.equity.volatility;
+                
             riskMetricsArray.push({
                 name: "Equity Volatility",
-                value: parseFloat(reportData.risk_metrics.equity.volatility.value)
-            });
-        }
-        
-        // Extract equity beta adjusted
-        if (reportData.risk_metrics.equity && reportData.risk_metrics.equity.beta_adjusted && reportData.risk_metrics.equity.beta_adjusted.value !== null) {
-            riskMetricsArray.push({
-                name: "Equity Beta Adjusted",
-                value: parseFloat(reportData.risk_metrics.equity.beta_adjusted.value)
+                value: parseFloat(volatilityValue) || 0
             });
         }
         
         // Extract fixed income duration
-        if (reportData.risk_metrics.fixed_income && reportData.risk_metrics.fixed_income.duration && reportData.risk_metrics.fixed_income.duration.value !== null) {
+        if (reportData.risk_metrics.fixed_income && reportData.risk_metrics.fixed_income.duration !== undefined) {
+            let durationValue = typeof reportData.risk_metrics.fixed_income.duration === 'object' 
+                ? reportData.risk_metrics.fixed_income.duration.value 
+                : reportData.risk_metrics.fixed_income.duration;
+                
             riskMetricsArray.push({
                 name: "Fixed Income Duration",
-                value: parseFloat(reportData.risk_metrics.fixed_income.duration.value)
+                value: parseFloat(durationValue) || 0
             });
         }
         
         // Extract hard currency beta
-        if (reportData.risk_metrics.hard_currency && reportData.risk_metrics.hard_currency.beta && reportData.risk_metrics.hard_currency.beta.value !== null) {
+        if (reportData.risk_metrics.hard_currency && reportData.risk_metrics.hard_currency.beta !== undefined) {
+            let hcBetaValue = typeof reportData.risk_metrics.hard_currency.beta === 'object' 
+                ? reportData.risk_metrics.hard_currency.beta.value 
+                : reportData.risk_metrics.hard_currency.beta;
+                
             riskMetricsArray.push({
                 name: "Hard Currency Beta",
-                value: parseFloat(reportData.risk_metrics.hard_currency.beta.value)
-            });
-        }
-        
-        // Extract hard currency beta adjusted
-        if (reportData.risk_metrics.hard_currency && reportData.risk_metrics.hard_currency.beta_adjusted && reportData.risk_metrics.hard_currency.beta_adjusted.value !== null) {
-            riskMetricsArray.push({
-                name: "Hard Currency Beta Adjusted",
-                value: parseFloat(reportData.risk_metrics.hard_currency.beta_adjusted.value)
+                value: parseFloat(hcBetaValue) || 0
             });
         }
         
         // Extract portfolio beta
-        if (reportData.risk_metrics.portfolio && reportData.risk_metrics.portfolio.beta && reportData.risk_metrics.portfolio.beta.value !== null) {
+        if (reportData.risk_metrics.portfolio && reportData.risk_metrics.portfolio.beta !== undefined) {
+            let portfolioBetaValue = typeof reportData.risk_metrics.portfolio.beta === 'object' 
+                ? reportData.risk_metrics.portfolio.beta.value 
+                : reportData.risk_metrics.portfolio.beta;
+                
             riskMetricsArray.push({
                 name: "Portfolio Beta",
-                value: parseFloat(reportData.risk_metrics.portfolio.beta.value)
-            });
-        }
-        
-        // Extract portfolio beta adjusted
-        if (reportData.risk_metrics.portfolio && reportData.risk_metrics.portfolio.beta_adjusted && reportData.risk_metrics.portfolio.beta_adjusted.value !== null) {
-            riskMetricsArray.push({
-                name: "Portfolio Beta Adjusted",
-                value: parseFloat(reportData.risk_metrics.portfolio.beta_adjusted.value)
+                value: parseFloat(portfolioBetaValue) || 0
             });
         }
         

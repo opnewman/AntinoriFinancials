@@ -160,10 +160,10 @@ window.PortfolioReport = ({
                         </td>
                         <td className="border px-4 py-2 text-right bg-blue-50">
                             {risk_metrics && risk_metrics.equity && risk_metrics.equity.beta_adjusted && risk_metrics.equity.beta_adjusted.value !== undefined ? 
-                                formatNumber(risk_metrics.equity.beta_adjusted.value) : 
+                                `${(parseFloat(risk_metrics.equity.beta_adjusted.value) * 100).toFixed(2)}%` : 
                                 (risk_metrics && risk_metrics.equity && risk_metrics.equity.beta !== undefined && equities.total_pct ?
-                                formatNumber(risk_metrics.equity.beta * equities.total_pct / 100) :
-                                formatNumber(equities.beta_adjusted || ""))}
+                                `${(parseFloat(risk_metrics.equity.beta) * parseFloat(equities.total_pct) / 100 * 100).toFixed(2)}%` :
+                                (equities.beta_adjusted ? `${(parseFloat(equities.beta_adjusted) * 100).toFixed(2)}%` : "0.00%"))}
                         </td>
                     </tr>
                     <tr>
@@ -282,8 +282,10 @@ window.PortfolioReport = ({
                         </td>
                         <td className="border px-4 py-2 text-right bg-red-50">
                             {risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.duration !== undefined ? 
-                                formatNumber(risk_metrics.fixed_income.duration) : 
-                                formatNumber(fixed_income.duration || "")}
+                                (typeof risk_metrics.fixed_income.duration === 'object' ? 
+                                formatNumber(risk_metrics.fixed_income.duration.value) : 
+                                formatNumber(risk_metrics.fixed_income.duration)) : 
+                                formatNumber(fixed_income.duration || "0.00")}
                             {risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.coverage_pct && 
                                 <span className="text-xs text-gray-500 ml-1">
                                     ({formatNumber(risk_metrics.fixed_income.coverage_pct)}% coverage)
