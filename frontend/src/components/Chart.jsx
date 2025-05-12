@@ -187,3 +187,10 @@ window.Charts = {
     BarChart,
     LineChart
 };
+
+// For backward compatibility, also expose directly
+window.ChartComponent = ChartComponent;
+window.PieChart = PieChart;
+window.DoughnutChart = DoughnutChart;
+window.BarChart = BarChart;
+window.LineChart = LineChart;

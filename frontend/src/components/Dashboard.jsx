@@ -101,7 +101,11 @@ class Dashboard extends React.Component {
     // Handle report level change
     handleLevelChange = (e) => {
         const newLevel = e.target.value;
-        this.setState({ reportLevel: newLevel });
+        this.setState({ 
+            reportLevel: newLevel,
+            levelKey: '', // Reset the level key when changing report level
+            levelOptions: [] // Clear options until new ones are loaded
+        });
         this.updateLevelOptions(newLevel);
     };
     

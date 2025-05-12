@@ -1958,6 +1958,20 @@ def get_entity_options():
                 entities = [row[0] for row in results if row[0]]
                 
                 logger.info(f"Found {len(entities)} account options")
+            
+            elif entity_type == 'group':
+                # For group level, we'll use the portfolio field for now
+                # In a real implementation, you would have a separate groups table
+                query = text("""
+                SELECT DISTINCT portfolio
+                FROM financial_positions
+                WHERE date = :date
+                ORDER BY portfolio
+                """)
+                results = db.execute(query, {"date": latest_date}).fetchall()
+                entities = [row[0] for row in results if row[0]]
+                
+                logger.info(f"Found {len(entities)} group options")
                 
             else:
                 # Default fallback
