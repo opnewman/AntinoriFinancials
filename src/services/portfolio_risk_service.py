@@ -394,21 +394,45 @@ def process_equity_risk(
     latest_risk_stats_date: date,
     cache: Optional[Dict[str, Any]] = None
 ) -> None:
-    """Process equity positions to calculate weighted beta and volatility."""
-    matched_value = Decimal('0.0')
+    """
+    Process equity positions to calculate weighted beta and volatility.
     
-    for position in positions:
-        asset_class = position.asset_class
-        if not asset_class or "equity" not in asset_class.lower():
-            continue
-            
+    This optimized implementation:
+    1. Pre-filters positions to equity only
+    2. Adds better error handling for beta and volatility calculations
+    3. Improves logging for debugging 
+    """
+    if not cache:
+        cache = {}
+        
+    # Pre-filter positions to equity only for better performance
+    equity_positions = [
+        p for p in positions 
+        if p.asset_class and "equity" in p.asset_class.lower()
+    ]
+    
+    # Early return if no equity positions
+    if not equity_positions:
+        logger.info("No equity positions found for beta/volatility calculations")
+        return
+        
+    logger.info(f"Processing {len(equity_positions)} equity positions for beta and volatility")
+    
+    # Initialize counters
+    matched_value = Decimal('0.0')
+    beta_matched = 0
+    volatility_matched = 0
+    
+    # Process each equity position
+    for position in equity_positions:
+        # Convert position value with proper error handling
         position_value = convert_position_value_to_decimal(position.adjusted_value, position.position)
         
         # Skip positions with zero value
         if position_value <= Decimal('0.0'):
             continue
             
-        # Find matching risk statistic
+        # Find matching risk statistic with optimized matching for equity
         risk_stat = find_matching_risk_stat(
             db, 
             position.position, 
@@ -420,39 +444,55 @@ def process_equity_risk(
         )
         
         if risk_stat is not None:
-            # We found a match - update weighted sums
+            # Process beta calculation
             beta_value = risk_stat.get("beta") if isinstance(risk_stat, dict) else None
             if beta_value is not None:
-                # Ensure we're working with Decimal for all calculations
-                beta = Decimal(str(beta_value))
-                
-                # Safe division
-                if totals["equity"] > Decimal('0.0'):
-                    weighted_beta = (beta * position_value) / totals["equity"]
-                else:
-                    weighted_beta = Decimal('0.0')
+                try:
+                    # Ensure we're working with Decimal for all calculations
+                    beta = Decimal(str(beta_value))
                     
-                risk_metrics["equity"]["beta"]["weighted_sum"] += weighted_beta
-                matched_value += position_value
-                
+                    # Calculate weighted beta (safely handle division by zero)
+                    if totals["equity"] > Decimal('0.0'):
+                        weighted_beta = (beta * position_value) / totals["equity"]
+                    else:
+                        weighted_beta = Decimal('0.0')
+                        
+                    # Update weighted sum
+                    risk_metrics["equity"]["beta"]["weighted_sum"] += weighted_beta
+                    matched_value += position_value
+                    beta_matched += 1
+                except (ValueError, TypeError) as e:
+                    # Handle any conversion errors safely
+                    logger.warning(f"Error processing beta for {position.position}: {e}")
+                    
+            # Process volatility calculation  
             volatility_value = risk_stat.get("volatility") if isinstance(risk_stat, dict) else None
             if volatility_value is not None:
-                # Ensure we're working with Decimal for all calculations
-                volatility = Decimal(str(volatility_value))
-                
-                # Safe division
-                if totals["equity"] > Decimal('0.0'):
-                    weighted_volatility = (volatility * position_value) / totals["equity"]
-                else:
-                    weighted_volatility = Decimal('0.0')
+                try:
+                    # Ensure we're working with Decimal for all calculations
+                    volatility = Decimal(str(volatility_value))
                     
-                risk_metrics["equity"]["volatility"]["weighted_sum"] += weighted_volatility
+                    # Calculate weighted volatility (safely handle division by zero)
+                    if totals["equity"] > Decimal('0.0'):
+                        weighted_volatility = (volatility * position_value) / totals["equity"]
+                    else:
+                        weighted_volatility = Decimal('0.0')
+                        
+                    # Update weighted sum
+                    risk_metrics["equity"]["volatility"]["weighted_sum"] += weighted_volatility
+                    volatility_matched += 1
+                except (ValueError, TypeError) as e:
+                    # Handle any conversion errors safely
+                    logger.warning(f"Error processing volatility for {position.position}: {e}")
     
     # Calculate coverage percentages
+    coverage = Decimal('0.0')
     if totals["equity"] > Decimal('0.0'):
         coverage = (matched_value / totals["equity"]) * 100
         risk_metrics["equity"]["beta"]["coverage_pct"] = coverage
         risk_metrics["equity"]["volatility"]["coverage_pct"] = coverage
+        
+    logger.info(f"Equity processing complete with {coverage:.2f}% coverage. Beta matches: {beta_matched}, Volatility matches: {volatility_matched}")
 
 def process_fixed_income_risk(
     db: Session,
@@ -462,21 +502,43 @@ def process_fixed_income_risk(
     latest_risk_stats_date: date,
     cache: Optional[Dict[str, Any]] = None
 ) -> None:
-    """Process fixed income positions to calculate weighted duration."""
+    """
+    Process fixed income positions to calculate weighted duration.
+    
+    This optimized implementation:
+    1. Pre-filters positions to only fixed income to reduce iterations
+    2. Implements better error handling for duration calculations
+    3. Adds extra logging for debugging
+    """
+    if not cache:
+        cache = {}
+        
+    # Pre-filter positions to fixed income only to reduce iterations
+    fixed_income_positions = [
+        p for p in positions 
+        if p.asset_class and "fixed" in p.asset_class.lower()
+    ]
+    
+    # Early return if no fixed income positions
+    if not fixed_income_positions:
+        logger.info("No fixed income positions found for duration calculations")
+        return
+        
+    logger.info(f"Processing {len(fixed_income_positions)} fixed income positions for duration")
+    
+    # Initialize counters
     matched_value = Decimal('0.0')
     
-    for position in positions:
-        asset_class = position.asset_class
-        if not asset_class or "fixed" not in asset_class.lower():
-            continue
-            
+    # Process each fixed income position
+    for position in fixed_income_positions:
+        # Convert position value with proper error handling
         position_value = convert_position_value_to_decimal(position.adjusted_value, position.position)
         
         # Skip positions with zero value
         if position_value <= Decimal('0.0'):
             continue
             
-        # Find matching risk statistic
+        # Find matching risk statistic with optimized matching for fixed income
         risk_stat = find_matching_risk_stat(
             db, 
             position.position, 
@@ -488,25 +550,35 @@ def process_fixed_income_risk(
         )
         
         if risk_stat is not None:
-            # We found a match - update weighted sums
+            # Extract duration with type safety
             duration_value = risk_stat.get("duration") if isinstance(risk_stat, dict) else None
+            
             if duration_value is not None:
-                # Ensure we're working with Decimal for all calculations
-                duration = Decimal(str(duration_value))
-                
-                # Safe division
-                if totals["fixed_income"] > Decimal('0.0'):
-                    weighted_duration = (duration * position_value) / totals["fixed_income"]
-                else:
-                    weighted_duration = Decimal('0.0')
+                try:
+                    # Ensure we're working with Decimal for all calculations
+                    duration = Decimal(str(duration_value))
                     
-                risk_metrics["fixed_income"]["duration"]["weighted_sum"] += weighted_duration
-                matched_value += position_value
+                    # Calculate weighted duration (safely handle division by zero)
+                    if totals["fixed_income"] > Decimal('0.0'):
+                        weighted_duration = (duration * position_value) / totals["fixed_income"]
+                    else:
+                        weighted_duration = Decimal('0.0')
+                        
+                    # Update weighted sum and matched value
+                    risk_metrics["fixed_income"]["duration"]["weighted_sum"] += weighted_duration
+                    matched_value += position_value
+                    
+                except (ValueError, TypeError) as e:
+                    # Handle any conversion errors safely
+                    logger.warning(f"Error processing duration for {position.position}: {e}")
     
-    # Calculate coverage percentages
+    # Calculate coverage percentage
+    coverage = Decimal('0.0')
     if totals["fixed_income"] > Decimal('0.0'):
         coverage = (matched_value / totals["fixed_income"]) * 100
         risk_metrics["fixed_income"]["duration"]["coverage_pct"] = coverage
+        
+    logger.info(f"Fixed income duration processing complete with {coverage:.2f}% coverage")
 
 def process_hard_currency_risk(
     db: Session,
