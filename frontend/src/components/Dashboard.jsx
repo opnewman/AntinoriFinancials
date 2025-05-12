@@ -246,24 +246,43 @@ class Dashboard extends React.Component {
     
     formatPerformance = () => {
         const { reportData } = this.state;
-        if (!reportData || !reportData.performance) return [];
+        if (!reportData || !reportData.performance) {
+            console.log("No performance data available");
+            return [
+                { name: "YTD", value: 0, percentage: 0 },
+                { name: "QTD", value: 0, percentage: 0 },
+                { name: "MTD", value: 0, percentage: 0 }
+            ];
+        }
         
         try {
+            console.log("Performance data type:", typeof reportData.performance, reportData.performance);
+            
             // Handle case where performance is an object rather than an array
             if (!Array.isArray(reportData.performance)) {
-                // Convert the object to an array of objects
-                return Object.entries(reportData.performance).map(([period, value]) => ({
-                    name: period,
-                    value: value,
-                    percentage: value // Use the same value for percentage since that's what we have
-                }));
+                if (typeof reportData.performance === 'object') {
+                    // Convert the object to an array of objects
+                    return Object.entries(reportData.performance).map(([period, value]) => ({
+                        name: period,
+                        value: typeof value === 'number' ? value : parseFloat(value) || 0,
+                        percentage: typeof value === 'number' ? value : parseFloat(value) || 0
+                    }));
+                } else {
+                    // It's neither an array nor an object - use default
+                    console.warn("Performance data is not an array or object:", reportData.performance);
+                    return [
+                        { name: "YTD", value: 0, percentage: 0 },
+                        { name: "QTD", value: 0, percentage: 0 },
+                        { name: "MTD", value: 0, percentage: 0 }
+                    ];
+                }
             }
             
             // If it's already an array, use the original format
             return reportData.performance.map(perf => ({
-                name: perf.period,
-                value: perf.value,
-                percentage: perf.percentage
+                name: perf.period || "Period",
+                value: typeof perf.value === 'number' ? perf.value : parseFloat(perf.value) || 0,
+                percentage: typeof perf.percentage === 'number' ? perf.percentage : parseFloat(perf.percentage) || 0
             }));
         } catch (error) {
             console.error("Error in formatPerformance:", error);
