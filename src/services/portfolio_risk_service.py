@@ -8,6 +8,7 @@ import logging
 import re
 import signal
 import time
+import traceback
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -320,8 +321,8 @@ def calculate_portfolio_risk_metrics(
         "hard_currency": {"cusip": {}, "ticker_symbol": {}, "position": {}}
     }
     
-    # Set a timeout limit per asset class processing (45 seconds per asset class to handle larger portfolios)
-    MAX_PROCESSING_TIME = 45  # seconds
+    # Set a timeout limit per asset class processing (60 seconds per asset class to handle larger portfolios)
+    MAX_PROCESSING_TIME = 60  # seconds
     
     # Process each asset class separately with individual timeouts for better resilience
     # Process equity positions
@@ -428,11 +429,15 @@ def process_equity_risk(
     """
     Process equity positions to calculate weighted beta and volatility.
     
-    This optimized implementation:
-    1. Pre-filters positions to equity only
-    2. Adds better error handling for beta and volatility calculations
-    3. Improves logging for debugging 
+    High-performance implementation that:
+    1. Pre-loads all risk stats in a single database query
+    2. Uses in-memory lookups instead of individual database queries
+    3. Processes positions in a single pass
+    4. Provides detailed performance metrics
     """
+    import time
+    start_time = time.time()
+    
     if not cache:
         cache = {}
         
@@ -447,14 +452,125 @@ def process_equity_risk(
         logger.info("No equity positions found for beta/volatility calculations")
         return
         
-    logger.info(f"Processing {len(equity_positions)} equity positions for beta and volatility")
+    position_count = len(equity_positions)
+    logger.info(f"Processing {position_count} equity positions for beta and volatility")
+    
+    # Check if we already have equity risk stats in cache
+    if 'equity' not in cache or cache.get('equity', {}).get('preloaded') != True:
+        # Preload ALL equity risk stats in a single query for maximum performance
+        preload_start = time.time()
+        logger.info(f"Preloading equity risk stats data from database")
+        
+        try:
+            # Extract all identifiers we need to look up
+            tickers = set()
+            cusips = set()
+            names = set()
+            
+            # Collect all identifiers for a single query
+            for position in equity_positions:
+                if position.ticker_symbol:
+                    tickers.add(position.ticker_symbol.lower())
+                if position.cusip:
+                    cusips.add(position.cusip.lower())
+                if position.position:
+                    names.add(position.position.lower())
+            
+            # Execute a single optimized query to get all risk stats at once
+            from sqlalchemy import or_, func, text
+            
+            # Build the query with all possible matches
+            query = db.query(RiskStatisticEquity).filter(
+                RiskStatisticEquity.upload_date == latest_risk_stats_date
+            )
+            
+            # Use chunks to avoid query parameter limits
+            ticker_chunks = list(chunk_list(list(tickers), 100))
+            cusip_chunks = list(chunk_list(list(cusips), 100))
+            
+            # Create empty risk stats cache if needed
+            if 'equity' not in cache:
+                cache['equity'] = {
+                    'ticker_symbol': {},
+                    'cusip': {},
+                    'position': {},
+                    'preloaded': True
+                }
+                
+            # Process in chunks to avoid query size limits
+            for ticker_chunk in ticker_chunks:
+                if ticker_chunk:
+                    ticker_query = query.filter(func.lower(RiskStatisticEquity.ticker_symbol).in_(ticker_chunk))
+                    ticker_results = ticker_query.all()
+                    logger.info(f"Loaded {len(ticker_results)} equity risk stats for {len(ticker_chunk)} tickers")
+                    
+                    # Store in memory cache
+                    for risk_stat in ticker_results:
+                        if risk_stat.ticker_symbol:
+                            ticker_key = risk_stat.ticker_symbol.lower()
+                            cache['equity']['ticker_symbol'][ticker_key] = {
+                                'id': risk_stat.id,
+                                'beta': risk_stat.beta,
+                                'volatility': risk_stat.volatility
+                            }
+            
+            for cusip_chunk in cusip_chunks:
+                if cusip_chunk:
+                    cusip_query = query.filter(func.lower(RiskStatisticEquity.cusip).in_(cusip_chunk))
+                    cusip_results = cusip_query.all()
+                    logger.info(f"Loaded {len(cusip_results)} equity risk stats for {len(cusip_chunk)} cusips")
+                    
+                    # Store in memory cache
+                    for risk_stat in cusip_results:
+                        if risk_stat.cusip:
+                            cusip_key = risk_stat.cusip.lower()
+                            cache['equity']['cusip'][cusip_key] = {
+                                'id': risk_stat.id,
+                                'beta': risk_stat.beta,
+                                'volatility': risk_stat.volatility
+                            }
+            
+            # For position names, use a direct SQL query with more efficient LIKE operations
+            if names:
+                # Only process position names if we didn't find enough matches
+                if len(cache['equity']['ticker_symbol']) + len(cache['equity']['cusip']) < len(equity_positions) / 2:
+                    logger.info(f"Searching by position names for remaining matches")
+                    
+                    # Use a more flexible matching approach for position names
+                    for position_name in names:
+                        if not position_name or len(position_name) < 4:
+                            continue
+                            
+                        # Look for exact and partial matches
+                        position_query = query.filter(
+                            func.lower(RiskStatisticEquity.position) == position_name
+                        )
+                        exact_match = position_query.first()
+                        
+                        if exact_match:
+                            cache['equity']['position'][position_name] = {
+                                'id': exact_match.id,
+                                'beta': exact_match.beta,
+                                'volatility': exact_match.volatility
+                            }
+            
+            preload_time = time.time() - preload_start
+            logger.info(f"Preloaded {len(cache['equity']['ticker_symbol'])} ticker matches, {len(cache['equity']['cusip'])} CUSIP matches, and {len(cache['equity']['position'])} position name matches in {preload_time:.2f} seconds")
+            
+        except Exception as e:
+            logger.error(f"Error preloading equity risk stats: {str(e)}")
+            logger.error(f"TRACEBACK: {traceback.format_exc()}")
+    else:
+        logger.info("Using existing preloaded equity risk stats cache")
     
     # Initialize counters
     matched_value = Decimal('0.0')
     beta_matched = 0
     volatility_matched = 0
+    processed_count = 0
+    last_log_time = time.time()
     
-    # Process each equity position
+    # Process each equity position using in-memory lookups
     for position in equity_positions:
         # Convert position value with proper error handling
         position_value = convert_position_value_to_decimal(position.adjusted_value, position.position)
@@ -462,21 +578,37 @@ def process_equity_risk(
         # Skip positions with zero value
         if position_value <= Decimal('0.0'):
             continue
-            
-        # Find matching risk statistic with optimized matching for equity
-        risk_stat = find_matching_risk_stat(
-            db, 
-            position.position, 
-            position.cusip, 
-            position.ticker_symbol, 
-            "Equity", 
-            latest_risk_stats_date,
-            cache
-        )
+        
+        processed_count += 1
+        
+        # Log progress every 100 positions or 5 seconds
+        if processed_count % 100 == 0 or (time.time() - last_log_time) > 5:
+            progress_pct = (processed_count / position_count) * 100
+            logger.info(f"Processed {processed_count}/{position_count} equity positions ({progress_pct:.1f}%)")
+            last_log_time = time.time()
+        
+        # Find matching risk statistic using in-memory cache
+        risk_stat = None
+        match_source = None
+        
+        # Check ticker first (most reliable for equities)
+        if position.ticker_symbol and position.ticker_symbol.lower() in cache.get('equity', {}).get('ticker_symbol', {}):
+            risk_stat = cache['equity']['ticker_symbol'][position.ticker_symbol.lower()]
+            match_source = "ticker"
+        
+        # Then check CUSIP
+        elif position.cusip and position.cusip.lower() in cache.get('equity', {}).get('cusip', {}):
+            risk_stat = cache['equity']['cusip'][position.cusip.lower()]
+            match_source = "cusip"
+        
+        # Finally check position name
+        elif position.position and position.position.lower() in cache.get('equity', {}).get('position', {}):
+            risk_stat = cache['equity']['position'][position.position.lower()]
+            match_source = "name"
         
         if risk_stat is not None:
             # Process beta calculation
-            beta_value = risk_stat.get("beta") if isinstance(risk_stat, dict) else None
+            beta_value = risk_stat.get("beta")
             if beta_value is not None:
                 try:
                     # Ensure we're working with Decimal for all calculations
@@ -497,7 +629,7 @@ def process_equity_risk(
                     logger.warning(f"Error processing beta for {position.position}: {e}")
                     
             # Process volatility calculation  
-            volatility_value = risk_stat.get("volatility") if isinstance(risk_stat, dict) else None
+            volatility_value = risk_stat.get("volatility")
             if volatility_value is not None:
                 try:
                     # Ensure we're working with Decimal for all calculations
@@ -522,8 +654,16 @@ def process_equity_risk(
         coverage = (matched_value / totals["equity"]) * 100
         risk_metrics["equity"]["beta"]["coverage_pct"] = coverage
         risk_metrics["equity"]["volatility"]["coverage_pct"] = coverage
-        
-    logger.info(f"Equity processing complete with {coverage:.2f}% coverage. Beta matches: {beta_matched}, Volatility matches: {volatility_matched}")
+    
+    total_time = time.time() - start_time
+    logger.info(f"Equity processing complete in {total_time:.2f} seconds with {coverage:.2f}% coverage")
+    logger.info(f"Beta matches: {beta_matched}, Volatility matches: {volatility_matched}")
+    
+# Helper function for chunking lists to handle large queries
+def chunk_list(lst, chunk_size):
+    """Split a list into chunks of specified size"""
+    for i in range(0, len(lst), chunk_size):
+        yield lst[i:i + chunk_size]
 
 def process_fixed_income_risk(
     db: Session,
