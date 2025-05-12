@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from src.database import get_db
 from src.services.portfolio_risk_service import calculate_portfolio_risk_metrics
+from optimized_find_matching_risk_stat_implementation import find_matching_risk_stat
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -35,24 +36,18 @@ def test_portfolio_risk():
             
         logger.info(f"Using most recent financial position date: {most_recent_date_query}")
         
-        # Get first available client in database
-        client_query = db.query(FinancialPosition.top_level_client).filter(
-            FinancialPosition.date == most_recent_date_query
-        ).distinct().limit(1).scalar()
-        
-        if not client_query:
-            logger.warning("No clients found for date")
-            return
+        # Use client with most positions for better testing
+        client_query = "D'Angelo Family"
             
         logger.info(f"Testing with client: {client_query}")
         
-        # Calculate risk metrics with a small subset of positions for testing
+        # Calculate risk metrics with a subset of positions for testing
         risk_metrics = calculate_portfolio_risk_metrics(
             db=db,
             level="client",
             level_key=client_query,
             report_date=most_recent_date_query,
-            max_positions=100  # Limit to 100 positions for faster testing
+            max_positions=500  # Use a larger sample of positions for better coverage
         )
         
         # Print results summary
