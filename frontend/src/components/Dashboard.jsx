@@ -1,3 +1,6 @@
+// Import chart components
+const { PieChart, DoughnutChart, LineChart } = window.Charts || {};
+
 class Dashboard extends React.Component {
     constructor(props) {
         super(props);

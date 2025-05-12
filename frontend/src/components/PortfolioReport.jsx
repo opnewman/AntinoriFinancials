@@ -458,8 +458,10 @@ window.PortfolioReport = ({
                         </td>
                         <td className="border px-4 py-2 text-right bg-yellow-50">
                             {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta !== undefined ? 
-                                formatNumber(risk_metrics.hard_currency.beta) : 
-                                formatNumber(hard_currency.beta || "")}
+                                (typeof risk_metrics.hard_currency.beta === 'object' ? 
+                                formatNumber(risk_metrics.hard_currency.beta.value) : 
+                                formatNumber(risk_metrics.hard_currency.beta)) : 
+                                formatNumber(hard_currency.beta || "0.00")}
                             {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.coverage_pct && 
                                 <span className="text-xs text-gray-500 ml-1">
                                     ({formatNumber(risk_metrics.hard_currency.coverage_pct)}% coverage)
@@ -473,10 +475,10 @@ window.PortfolioReport = ({
                         </td>
                         <td className="border px-4 py-2 text-right bg-yellow-50">
                             {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta_adjusted && risk_metrics.hard_currency.beta_adjusted.value !== undefined ? 
-                                formatNumber(risk_metrics.hard_currency.beta_adjusted.value) : 
+                                `${(parseFloat(risk_metrics.hard_currency.beta_adjusted.value) * 100).toFixed(2)}%` : 
                                 (risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta !== undefined && hard_currency.total_pct ?
-                                formatNumber(risk_metrics.hard_currency.beta * hard_currency.total_pct / 100) :
-                                formatNumber(hard_currency.beta_adjusted || ""))}
+                                `${(parseFloat(risk_metrics.hard_currency.beta) * parseFloat(hard_currency.total_pct) / 100 * 100).toFixed(2)}%` :
+                                (hard_currency.beta_adjusted ? `${(parseFloat(hard_currency.beta_adjusted) * 100).toFixed(2)}%` : "0.00%"))}
                         </td>
                     </tr>
                     <tr>
