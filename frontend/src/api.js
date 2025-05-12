@@ -9,6 +9,129 @@ const API_BASE_URL = '';
 
 // IMPORTANT: Define api as a global variable
 // This avoids the "exports is not defined" error that occurs when Babel tries to process ESM exports
+/**
+ * Validate and normalize chart data structure
+ * Ensures consistent formatting for all chart types
+ * @param {Object} data - Raw chart data from API
+ * @param {string} chartType - Type of chart (allocation, liquidity, performance)
+ * @returns {Object} Validated and normalized chart data
+ */
+function validateChartData(data, chartType) {
+    console.log(`🧪 Validating ${chartType} chart data`);
+    
+    // Default empty structure based on chart type
+    const emptyData = {
+        labels: ['No Data'],
+        datasets: [{ 
+            data: [100], 
+            backgroundColor: chartType === 'performance' 
+                ? ['rgba(224, 224, 224, 0.2)']
+                : ['#e0e0e0'],
+            borderColor: chartType === 'performance' ? '#e0e0e0' : undefined,
+            label: `No ${chartType} data available`
+        }]
+    };
+    
+    // If data is empty or not an object, return empty structure
+    if (!data || typeof data !== 'object') {
+        console.warn(`⚠️ ${chartType} chart data is null, undefined, or not an object`);
+        return emptyData;
+    }
+    
+    // Check for required properties
+    if (!data.labels || !Array.isArray(data.labels)) {
+        console.warn(`⚠️ ${chartType} chart data missing labels array`);
+        return emptyData;
+    }
+    
+    if (!data.datasets || !Array.isArray(data.datasets) || data.datasets.length === 0) {
+        console.warn(`⚠️ ${chartType} chart data missing datasets array`);
+        return emptyData;
+    }
+    
+    // Check for empty labels
+    if (data.labels.length === 0) {
+        console.warn(`⚠️ ${chartType} chart has empty labels array`);
+        return emptyData;
+    }
+    
+    // Check if first dataset contains data array
+    if (!data.datasets[0].data || !Array.isArray(data.datasets[0].data)) {
+        console.warn(`⚠️ ${chartType} chart missing data array in first dataset`);
+        return emptyData;
+    }
+    
+    // Check for empty data
+    if (data.datasets[0].data.length === 0) {
+        console.warn(`⚠️ ${chartType} chart has empty data array`);
+        return emptyData;
+    }
+    
+    // Create a clean, normalized structure
+    const normalizedData = {
+        labels: [...data.labels],
+        datasets: [{
+            data: data.datasets[0].data.map(val => 
+                val === null || val === undefined || isNaN(Number(val)) ? 0 : Number(val)
+            ),
+            backgroundColor: data.datasets[0].backgroundColor || 
+                (chartType === 'performance' 
+                    ? ['rgba(52, 152, 219, 0.2)'] 
+                    : ['#3498db', '#e74c3c', '#2ecc71', '#f1c40f', '#9b59b6']),
+            borderColor: chartType === 'performance' 
+                ? (data.datasets[0].borderColor || '#3498db') 
+                : undefined,
+            label: data.datasets[0].label || `${chartType.charAt(0).toUpperCase() + chartType.slice(1)} Data`
+        }]
+    };
+    
+    // Ensure we have enough colors
+    if (chartType !== 'performance' && 
+        normalizedData.datasets[0].backgroundColor.length < normalizedData.datasets[0].data.length) {
+        
+        // Default color palette
+        const defaultColors = ['#3498db', '#e74c3c', '#2ecc71', '#f1c40f', '#9b59b6', 
+                              '#e67e22', '#1abc9c', '#34495e', '#7f8c8d', '#d35400'];
+        
+        // Copy existing colors
+        const existingColors = [...normalizedData.datasets[0].backgroundColor];
+        
+        // Add colors from default palette until we have enough
+        while (normalizedData.datasets[0].backgroundColor.length < normalizedData.datasets[0].data.length) {
+            const index = normalizedData.datasets[0].backgroundColor.length % defaultColors.length;
+            normalizedData.datasets[0].backgroundColor.push(defaultColors[index]);
+        }
+        
+        console.log(`🎨 Extended colors for ${chartType} chart: `, 
+            normalizedData.datasets[0].backgroundColor.length);
+    }
+    
+    // Ensure data length and labels length match
+    if (normalizedData.datasets[0].data.length !== normalizedData.labels.length) {
+        console.warn(`⚠️ ${chartType} chart data/labels length mismatch: `,
+            {dataLength: normalizedData.datasets[0].data.length, labelsLength: normalizedData.labels.length});
+        
+        // Find the minimum length
+        const minLength = Math.min(
+            normalizedData.datasets[0].data.length,
+            normalizedData.labels.length
+        );
+        
+        // Truncate both arrays to match
+        normalizedData.datasets[0].data = normalizedData.datasets[0].data.slice(0, minLength);
+        normalizedData.labels = normalizedData.labels.slice(0, minLength);
+        
+        // For pie charts, also truncate the colors
+        if (chartType !== 'performance') {
+            normalizedData.datasets[0].backgroundColor = 
+                normalizedData.datasets[0].backgroundColor.slice(0, minLength);
+        }
+    }
+    
+    console.log(`✅ ${chartType} chart data successfully validated`);
+    return normalizedData;
+}
+
 window.api = {
     /**
      * Check API health
@@ -283,28 +406,21 @@ window.api = {
      */
     getPerformanceChartData: async (date, level, levelKey, period = 'YTD') => {
         try {
+            console.log(`📊 Fetching performance chart data: date=${date}, level=${level}, key=${levelKey}, period=${period}`);
             const response = await axios.get(
                 `${API_BASE_URL}/api/charts/performance`, {
                     params: { date, level, level_key: levelKey, period }
                 }
             );
             
-            if (!response.data || !response.data.labels || !response.data.datasets) {
-                console.warn('Performance chart data is incomplete');
-                return {
-                    labels: ['No Data'],
-                    datasets: [{ 
-                        data: [0],
-                        label: 'No performance data available',
-                        borderColor: '#e0e0e0',
-                        backgroundColor: 'rgba(224, 224, 224, 0.2)'
-                    }]
-                };
-            }
+            console.log('📈 Raw performance chart data received:', JSON.stringify(response.data));
             
-            return response.data;
+            // Validate and normalize response data
+            const validatedData = validateChartData(response.data, 'performance');
+            
+            return validatedData;
         } catch (error) {
-            console.error('Performance chart error:', error);
+            console.error('❌ Performance chart error:', error);
             // Return a default structure so UI doesn't break
             return {
                 labels: ['Error'],

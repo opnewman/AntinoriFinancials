@@ -77,7 +77,8 @@ class ChartComponentClass extends React.Component {
     createChart() {
         const { data, type } = this.props;
         
-        console.log(`🔍 Attempting to create ${type || 'bar'} chart with data:`, data);
+        console.log(`🔍 Attempting to create ${type || 'bar'} chart with data:`, 
+            typeof data === 'object' ? JSON.stringify(data) : data);
         
         if (!this.chartRef.current) {
             console.error('❌ Chart reference is missing, cannot create chart');
@@ -96,8 +97,8 @@ class ChartComponentClass extends React.Component {
             return;
         }
         
-        if (data.datasets.length === 0) {
-            console.error('❌ Chart data has empty datasets array');
+        if (!Array.isArray(data.datasets) || data.datasets.length === 0) {
+            console.error('❌ Chart data has empty or invalid datasets array');
             return;
         }
         
@@ -107,8 +108,8 @@ class ChartComponentClass extends React.Component {
             return;
         }
         
-        if (data.labels.length === 0) {
-            console.error('❌ Chart data has empty labels array');
+        if (!Array.isArray(data.labels) || data.labels.length === 0) {
+            console.error('❌ Chart data has empty or invalid labels array');
             return;
         }
         
@@ -130,30 +131,50 @@ class ChartComponentClass extends React.Component {
                 return;
             }
             
+            // Create a deep copy of the data to avoid modifying props
+            const chartData = {
+                labels: [...data.labels],
+                datasets: data.datasets.map(ds => ({...ds}))
+            };
+            
             // Validate first dataset has data
-            const firstDataset = data.datasets[0];
+            const firstDataset = chartData.datasets[0];
             if (!firstDataset.data) {
                 console.error('❌ First dataset has no data property');
                 return;
             }
             
-            if (firstDataset.data.length === 0) {
-                console.error('❌ First dataset has empty data array');
+            if (!Array.isArray(firstDataset.data) || firstDataset.data.length === 0) {
+                console.error('❌ First dataset has empty or invalid data array');
                 return;
             }
             
-            // Normalize the data for pie/doughnut charts
-            // This ensures null/undefined values don't break the chart
+            // Normalize all data for all chart types
+            // This ensures null/undefined/NaN values don't break the chart
+            firstDataset.data = firstDataset.data.map(val => {
+                if (val === null || val === undefined || isNaN(Number(val))) {
+                    console.warn(`⚠️ Converting invalid value to 0:`, val);
+                    return 0;
+                }
+                return Number(val);
+            });
+            
+            // Special handling for pie/doughnut charts
             if (type === 'pie' || type === 'doughnut') {
-                firstDataset.data = firstDataset.data.map(val => 
-                    (val === null || val === undefined) ? 0 : val
-                );
+                // Skip rendering if all values are zero
+                const allZeros = firstDataset.data.every(val => val === 0);
+                if (allZeros) {
+                    console.warn('⚠️ All values are zero in pie/doughnut chart');
+                    firstDataset.data = [1]; // Show a single empty chart
+                    chartData.labels = ['No Data'];
+                    firstDataset.backgroundColor = ['#e0e0e0'];
+                }
                 
                 // Ensure backgroundColor is an array with matching length
                 if (!firstDataset.backgroundColor || !Array.isArray(firstDataset.backgroundColor)) {
                     console.log("⚠️ Adding default colors to dataset");
                     firstDataset.backgroundColor = [
-                        '#3498db', '#e74c3c', '#f1c40f', '#2ecc71', '#9b59b6', 
+                        '#3498db', '#e74c3c', '#2ecc71', '#f1c40f', '#9b59b6', 
                         '#1abc9c', '#e67e22', '#34495e', '#7f8c8d', '#d35400'
                     ];
                 }
@@ -161,7 +182,7 @@ class ChartComponentClass extends React.Component {
                 // If we have more data points than colors, extend the color array
                 if (firstDataset.data.length > firstDataset.backgroundColor.length) {
                     const defaultColors = [
-                        '#3498db', '#e74c3c', '#f1c40f', '#2ecc71', '#9b59b6', 
+                        '#3498db', '#e74c3c', '#2ecc71', '#f1c40f', '#9b59b6', 
                         '#1abc9c', '#e67e22', '#34495e', '#7f8c8d', '#d35400'
                     ];
                     
@@ -170,18 +191,33 @@ class ChartComponentClass extends React.Component {
                         firstDataset.backgroundColor.push(nextColor);
                     }
                 }
+                
+                // Make sure we have matching lengths for data, labels, and colors
+                if (firstDataset.data.length !== chartData.labels.length) {
+                    console.warn('⚠️ Data and labels length mismatch, adjusting...');
+                    const minLength = Math.min(firstDataset.data.length, chartData.labels.length);
+                    firstDataset.data = firstDataset.data.slice(0, minLength);
+                    chartData.labels = chartData.labels.slice(0, minLength);
+                    firstDataset.backgroundColor = firstDataset.backgroundColor.slice(0, minLength);
+                }
+            }
+            
+            // For line charts, ensure we have borderColor
+            if (type === 'line' && !firstDataset.borderColor) {
+                firstDataset.borderColor = '#3498db';
             }
             
             console.log(`⚙️ Creating ${type || 'bar'} chart with:`, { 
-                labels: data.labels, 
-                dataPoints: firstDataset.data,
-                backgroundColor: firstDataset.backgroundColor
+                labels: chartData.labels, 
+                dataPoints: firstDataset.data.length,
+                hasBackgroundColor: !!firstDataset.backgroundColor,
+                hasBorderColor: !!firstDataset.borderColor
             });
             
             // Create chart with error handling
             this.chartInstance = new ChartJS(ctx, {
                 type: type || 'bar',
-                data: data,
+                data: chartData,
                 options: this.getChartOptions()
             });
             
@@ -194,23 +230,69 @@ class ChartComponentClass extends React.Component {
     }
     
     render() {
-        const { data, height } = this.props;
+        const { data, height, type } = this.props;
         
-        // Handle empty data
-        if (!data || !data.datasets || data.datasets.length === 0) {
+        // Handle empty or invalid data
+        if (!data || !data.datasets || !Array.isArray(data.datasets) || data.datasets.length === 0 ||
+            !data.labels || !Array.isArray(data.labels) || data.labels.length === 0) {
+            
+            // Show a styled empty state
             return (
                 <div 
-                    className="bg-white rounded-lg shadow-md p-6 flex items-center justify-center"
+                    className="bg-white rounded-lg shadow-md p-6 flex flex-col items-center justify-center"
                     style={{ height: height || '300px' }}
                 >
                     <div className="text-center text-gray-500">
-                        <i className="fas fa-chart-bar text-2xl mb-2"></i>
-                        <p>No chart data available.</p>
+                        {type === 'pie' || type === 'doughnut' ? (
+                            <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                                <i className="fas fa-chart-pie text-gray-300 text-3xl"></i>
+                            </div>
+                        ) : type === 'line' ? (
+                            <div className="w-32 h-24 mx-auto mb-4 flex items-end justify-between">
+                                <div className="w-1 h-8 bg-gray-200 rounded"></div>
+                                <div className="w-1 h-12 bg-gray-200 rounded"></div>
+                                <div className="w-1 h-6 bg-gray-200 rounded"></div>
+                                <div className="w-1 h-16 bg-gray-200 rounded"></div>
+                                <div className="w-1 h-10 bg-gray-200 rounded"></div>
+                            </div>
+                        ) : (
+                            <div className="w-32 h-24 mx-auto mb-4 flex items-end justify-between">
+                                <div className="w-4 h-8 bg-gray-200 rounded-t"></div>
+                                <div className="w-4 h-12 bg-gray-200 rounded-t"></div>
+                                <div className="w-4 h-6 bg-gray-200 rounded-t"></div>
+                                <div className="w-4 h-16 bg-gray-200 rounded-t"></div>
+                                <div className="w-4 h-10 bg-gray-200 rounded-t"></div>
+                            </div>
+                        )}
+                        
+                        <p className="text-gray-500 mb-1">No data available</p>
+                        <p className="text-xs text-gray-400">Data is currently being loaded or processed</p>
                     </div>
                 </div>
             );
         }
         
+        // Check if we have valid data in the first dataset
+        if (!data.datasets[0].data || !Array.isArray(data.datasets[0].data) || data.datasets[0].data.length === 0) {
+            return (
+                <div 
+                    className="bg-white rounded-lg shadow-md p-6 flex flex-col items-center justify-center"
+                    style={{ height: height || '300px' }}
+                >
+                    <div className="text-center text-gray-500">
+                        <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-amber-50 flex items-center justify-center">
+                            <i className="fas fa-exclamation-triangle text-amber-400 text-xl"></i>
+                        </div>
+                        <p className="text-gray-600 font-medium">Chart Data Issue</p>
+                        <p className="text-xs text-gray-400 mt-1 max-w-xs">
+                            The chart data structure is valid, but contains no data points to display
+                        </p>
+                    </div>
+                </div>
+            );
+        }
+        
+        // Normal chart render
         return (
             <div className="bg-white rounded-lg shadow-md p-6">
                 <div style={{ height: height || '300px' }}>
