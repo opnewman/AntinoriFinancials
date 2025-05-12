@@ -706,19 +706,40 @@ def find_matching_risk_stat(
             )
             
             try:
-                # Create simple SQL query with parameters
+                # Create a custom SQL query based on the table type to handle different column structures
                 table_name = model_class.__tablename__
                 
-                # Determine column names
-                columns = ["id", "beta", "volatility"]
-                if hasattr(model_class, 'duration'):
-                    columns.append("duration")
+                # Determine the appropriate columns based on the asset class
+                if 'fixed_income' in table_name:
+                    # Fixed income has duration but no beta or volatility
+                    columns = ["id", "duration"]
+                elif 'equity' in table_name:
+                    # Equity has beta and volatility
+                    columns = ["id", "beta", "volatility"]
+                elif 'alternatives' in table_name or 'hard_currency' in table_name:
+                    # Alternatives/hard currency have beta and volatility
+                    columns = ["id", "beta", "volatility"]
+                else:
+                    # Default fallback
+                    columns = ["id"]
                 
-                # Sanitize the identifier value even further to prevent SQL injection
+                # Sanitize the identifier value to prevent SQL injection
                 if isinstance(identifier_value, str):
                     identifier_value = identifier_value.replace("'", "''")
                 
-                # Build a simple SQL query to avoid ORM overhead
+                # Use the correct column for matching based on the table structure
+                # Check if the column exists in the table before using it
+                valid_columns = ["position", "cusip"]
+                
+                # Only use ticker_symbol if that's what we're searching by
+                if identifier_type == "ticker":
+                    identifier_type = "ticker_symbol"
+                
+                # Make sure we're using a valid column name
+                if identifier_type not in valid_columns and identifier_type != "ticker_symbol":
+                    identifier_type = "position"  # Default to position if invalid column
+                
+                # Build a safer SQL query with valid columns
                 sql = f"""
                     SELECT {', '.join(columns)}
                     FROM {table_name}
