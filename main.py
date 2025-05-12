@@ -2066,18 +2066,30 @@ def generate_portfolio_report():
                 )
                 
                 # Structure the risk metrics in the report data
+                # Log the entire risk metrics object for debugging
+                logger.debug(f"Raw risk metrics from calculation: {risk_metrics}")
+                
                 report_data["risk_metrics"] = {
                     "equity": {
                         "beta": risk_metrics.get("equity", {}).get("beta", {}).get("value"),
+                        "beta_adjusted": {
+                            "value": risk_metrics.get("equity", {}).get("beta_adjusted", {}).get("value")
+                        },
                         "volatility": risk_metrics.get("equity", {}).get("volatility", {}).get("value"),
                         "coverage_pct": risk_metrics.get("equity", {}).get("beta", {}).get("coverage_pct")
                     },
                     "fixed_income": {
                         "duration": risk_metrics.get("fixed_income", {}).get("duration", {}).get("value"),
+                        "municipal_bonds": risk_metrics.get("fixed_income", {}).get("municipal_bonds", {}),
+                        "investment_grade": risk_metrics.get("fixed_income", {}).get("investment_grade", {}),
+                        "government_bonds": risk_metrics.get("fixed_income", {}).get("government_bonds", {}),
                         "coverage_pct": risk_metrics.get("fixed_income", {}).get("duration", {}).get("coverage_pct")
                     },
                     "hard_currency": {
                         "beta": risk_metrics.get("hard_currency", {}).get("beta", {}).get("value"),
+                        "beta_adjusted": {
+                            "value": risk_metrics.get("hard_currency", {}).get("beta_adjusted", {}).get("value")
+                        },
                         "coverage_pct": risk_metrics.get("hard_currency", {}).get("beta", {}).get("coverage_pct")
                     },
                     "alternatives": {
