@@ -10,7 +10,7 @@ import signal
 import time
 from contextlib import contextmanager
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional, Set
 import copy
 
@@ -91,11 +91,17 @@ def with_timeout(func, args=None, kwargs=None, timeout_duration=10, default=None
 
 def convert_position_value_to_decimal(position_value: Any, position_name: Any = "unknown") -> Decimal:
     """
-    Convert a position value string to Decimal, handling encrypted values 
-    and various invalid formats.
+    Convert a position value to Decimal, handling various types and formats.
+    
+    This function handles:
+    - Encrypted values with "ENC:" prefix
+    - Various string formats including "$1,234.56"
+    - Float/int values
+    - None values
+    - Edge cases like "nan" or empty strings
     
     Args:
-        position_value: The position value as a string (may be encrypted or have formatting)
+        position_value: The position value (may be string, float, int, or encrypted)
         position_name: The name of the position (for logging purposes)
         
     Returns:
@@ -104,6 +110,7 @@ def convert_position_value_to_decimal(position_value: Any, position_name: Any = 
     # Import the encryption service
     from src.utils.encryption import encryption_service
     
+    # Handle None values
     if position_value is None:
         return Decimal('0.0')
     
@@ -112,36 +119,43 @@ def convert_position_value_to_decimal(position_value: Any, position_name: Any = 
         try:
             # Use the encryption service to decrypt the value
             decrypted_value = encryption_service.decrypt_to_float(position_value)
+            # Convert float to string first to ensure Decimal precision
             return Decimal(str(decrypted_value))
         except Exception as e:
             logger.warning(f"Could not decrypt position value {position_value} for {position_name}: {str(e)}")
             return Decimal('0.0')
     
-    # Convert to string first if it's not already
+    # Handle non-string types
     if not isinstance(position_value, str):
         try:
+            # Always convert to string first to avoid float precision issues
             return Decimal(str(position_value))
-        except (ValueError, TypeError, ArithmeticError):
-            logger.warning(f"Could not convert position value {position_value} for {position_name} to Decimal")
+        except (ValueError, TypeError, ArithmeticError, InvalidOperation) as e:
+            logger.warning(f"Could not convert position value {position_value} for {position_name} to Decimal: {e}")
             return Decimal('0.0')
     
-    # Handle different formats and edge cases
+    # Process string values
     try:
         # Remove any non-numeric characters except for a decimal point
-        position_value = position_value.replace('$', '').replace(',', '')
+        clean_value = position_value.replace('$', '').replace(',', '').strip()
         
-        # Handling common problematic patterns found in the data
-        if position_value.strip() == '':
+        # Handle common edge cases
+        if clean_value == '':
             return Decimal('0.0')
-        elif 'nan' in position_value.lower():
+        elif 'nan' in clean_value.lower() or 'n/a' in clean_value.lower():
             return Decimal('0.0')
-        elif '*' in position_value:  # Handle encrypted values
+        elif '*' in clean_value:  # Handle encrypted values
             return Decimal('0.0')
+        elif '%' in clean_value:  # Handle percentage values
+            # Remove the % and convert percentage to decimal
+            clean_value = clean_value.replace('%', '')
+            percentage = Decimal(clean_value)
+            return percentage / Decimal(100)
             
         # Try to convert to Decimal
-        return Decimal(position_value)
-    except (ValueError, TypeError, ArithmeticError):
-        logger.warning(f"Could not convert position value {position_value} for {position_name} to Decimal")
+        return Decimal(clean_value)
+    except (ValueError, TypeError, ArithmeticError, InvalidOperation) as e:
+        logger.warning(f"Could not convert position value {position_value} for {position_name} to Decimal: {e}")
         return Decimal('0.0')
 
 def calculate_portfolio_risk_metrics(
@@ -149,7 +163,7 @@ def calculate_portfolio_risk_metrics(
     level: str,
     level_key: str,
     report_date: date,
-    max_positions: Optional[int] = 100  # Default to 100 positions
+    max_positions: Optional[int] = None  # No limit on positions by default
 ) -> Dict[str, Any]:
     """
     Calculate risk metrics for a portfolio based on its positions.

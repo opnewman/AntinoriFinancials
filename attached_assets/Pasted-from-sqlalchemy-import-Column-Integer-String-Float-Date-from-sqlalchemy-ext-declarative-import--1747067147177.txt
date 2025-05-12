@@ -1,0 +1,74 @@
+from sqlalchemy import Column, Integer, String, Float, Date
+from sqlalchemy.ext.declarative import declarative_base
+import sqlalchemy
+
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    email = Column(String, unique=True, index=True)
+    password = Column(String)  # Store hashed password
+
+class FinancialPosition(Base):
+    __tablename__ = "financial_positions"
+    __table_args__ = (
+        sqlalchemy.UniqueConstraint('holding_account_number', 'position', 'date', 'upload_date', name='uix_holding_position_date_upload'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    position = Column(String(500))
+    top_level_client = Column(String)
+    holding_account = Column(String)
+    holding_account_number = Column(String, index=True)
+    portfolio = Column(String)
+    cusip = Column(String)
+    ticker_symbol = Column(String)
+    asset_class = Column(String)
+    second_level = Column(String)
+    third_level = Column(String)
+    adv_classification = Column(String)
+    liquid_vs_illiquid = Column(String)
+    adjusted_value = Column(Float, nullable=False, default=0)
+    date = Column(Date, index=True)
+    upload_date = Column(Date, index=True)  # For historical tracking
+
+class OwnershipHierarchy(Base):
+    __tablename__ = "ownership_hierarchy"
+    id = Column(Integer, primary_key=True, index=True)
+    holding_account = Column(String)
+    holding_account_number = Column(String, index=True)
+    top_level_client = Column(String)
+    entity_id = Column(String)
+    portfolio = Column(String)
+    groups = Column(String)
+    last_updated = Column(Date, index=True)  # For historical tracking
+
+class RiskStatisticEquity(Base):
+    __tablename__ = "risk_statistic_equity"
+    id = Column(Integer, primary_key=True, index=True)
+    position = Column(String, index=True)  # Indexed for faster queries
+    ticker_symbol = Column(String, index=True)
+    cusip = Column(String, index=True)  # Added for better matching
+    vol = Column(Float, nullable=False, default=0)  # Volatility for Equity
+    beta = Column(Float, nullable=False, default=0)  # Beta for Equity
+    upload_date = Column(Date, index=True)  # For historical tracking
+
+class RiskStatisticFixedIncome(Base):
+    __tablename__ = "risk_statistic_fixed_income"
+    id = Column(Integer, primary_key=True, index=True)
+    position = Column(String, index=True)
+    ticker_symbol = Column(String, index=True)
+    cusip = Column(String, index=True)
+    duration = Column(Float, nullable=False, default=0)  # Duration for Fixed Income
+    upload_date = Column(Date, index=True)
+
+class RiskStatisticAlternatives(Base):
+    __tablename__ = "risk_statistic_alternatives"
+    id = Column(Integer, primary_key=True, index=True)
+    position = Column(String, index=True)
+    ticker_symbol = Column(String, index=True)
+    cusip = Column(String, index=True)
+    beta = Column(Float, nullable=False, default=0)  # Beta to gold for Alternatives
+    upload_date = Column(Date, index=True)

@@ -1,0 +1,452 @@
+from fastapi import UploadFile
+from sqlalchemy.orm import Session
+from sqlalchemy.sql import func, text
+from backend.models import FinancialPosition, OwnershipHierarchy, RiskStatisticEquity, RiskStatisticFixedIncome, RiskStatisticAlternatives  # Updated import path
+from backend.database import get_db
+import openpyxl
+import pandas as pd
+import structlog
+from datetime import datetime, date
+
+logger = structlog.get_logger()
+
+def clean_adjusted_value(value, row_data=None):
+    """
+    Clean and convert the adjusted_value string to a float.
+    Handles formats like '$1,234.56', '-$1,234.56', or invalid entries like '-'.
+    """
+    if value is None:
+        return 0.0
+    # Convert to string if not already
+    value = str(value).strip()
+    if not value or value == '-':  # Handle empty strings or just a dash
+        logger.warning(f"Invalid adjusted_value '{value}' in row: {row_data}, defaulting to 0.0")
+        return 0.0
+    # Remove currency symbols, commas, and spaces
+    value = value.replace('$', '').replace(',', '').replace(' ', '')
+    try:
+        return float(value)
+    except ValueError as e:
+        logger.error(f"Failed to convert adjusted_value to float: '{value}' in row: {row_data}", error=str(e))
+        raise ValueError(f"Could not convert adjusted_value to float: {value}")
+
+async def upload_data_dump(file: UploadFile, report_date: str, db: Session):
+    """
+    Process and store data from data_dump.xlsx.
+    """
+    logger.info("Starting data_dump processing")
+    # Parse the date for filtering
+    upload_date = datetime.strptime(report_date, "%Y-%m-%d")
+    date_str = upload_date.strftime('%Y-%m-%d')
+    logger.info(f"Upload date parsed as: {date_str}")
+
+    # Get the current date for the upload_date column
+    current_date = date.today()
+    logger.info(f"Current date for upload_date: {current_date}")
+
+    # Check existing rows for the date and upload date
+    existing_rows = db.query(FinancialPosition).filter(
+        func.date(FinancialPosition.date) == date_str,
+        func.date(FinancialPosition.upload_date) == current_date
+    ).count()
+    logger.info(f"Existing rows for date {date_str} and upload_date {current_date}: {existing_rows}")
+    if existing_rows > 0:
+        logger.warning(f"Data for date {date_str} and upload_date {current_date} already exists, skipping upload")
+        return {"message": f"Data for date {date_str} and upload_date {current_date} already exists"}
+
+    workbook = openpyxl.load_workbook(file.file, read_only=True)
+    sheet = workbook.active
+
+    batch_size = 10000
+    batch = []
+    # Track seen keys to avoid duplicates within the same upload
+    seen_keys = set()
+    # Skip the first three rows (metadata) and start from row 4 (headers are in row 4, data starts in row 5)
+    for row in sheet.iter_rows(min_row=5, values_only=True):
+        position, top_level_client, holding_account, holding_account_number, portfolio, cusip, ticker_symbol, asset_class, second_level, third_level, adv_classification, liquid_vs_illiquid, adjusted_value = row
+        # Log the row data for debugging
+        row_data = {
+            "position": position,
+            "top_level_client": top_level_client,
+            "holding_account": holding_account,
+            "holding_account_number": holding_account_number,
+            "portfolio": portfolio,
+            "cusip": cusip,
+            "ticker_symbol": ticker_symbol,
+            "asset_class": asset_class,
+            "second_level": second_level,
+            "third_level": third_level,
+            "adv_classification": adv_classification,
+            "liquid_vs_illiquid": liquid_vs_illiquid,
+            "adjusted_value": adjusted_value
+        }
+        logger.debug(f"Processing row: {row_data}")
+
+        # Create a unique key for the constraint
+        unique_key = (holding_account_number, position, date_str, current_date.strftime('%Y-%m-%d'))
+        if unique_key in seen_keys:
+            logger.warning(f"Skipping duplicate row within upload: {row_data}")
+            continue
+        seen_keys.add(unique_key)
+
+        record = FinancialPosition(
+            position=position,
+            top_level_client=top_level_client,
+            holding_account=holding_account,
+            holding_account_number=holding_account_number,
+            portfolio=portfolio,
+            cusip=cusip,
+            ticker_symbol=ticker_symbol,
+            asset_class=asset_class,
+            second_level=second_level,
+            third_level=third_level,
+            adv_classification=adv_classification,
+            liquid_vs_illiquid=liquid_vs_illiquid,
+            adjusted_value=clean_adjusted_value(adjusted_value, row_data),
+            date=upload_date,
+            upload_date=current_date  # Set the upload date
+        )
+        batch.append(record)
+
+        if len(batch) >= batch_size:
+            db.add_all(batch)
+            db.commit()
+            logger.info(f"Committed batch of {batch_size} rows")
+            batch = []
+
+    if batch:
+        db.add_all(batch)
+        db.commit()
+        logger.info(f"Committed final batch of {len(batch)} rows")
+
+    logger.info("Completed data_dump processing")
+    return {"message": f"Uploaded data_dump.xlsx for date {date_str}"}
+
+async def upload_ownership_tree(file: UploadFile, db: Session):
+    """
+    Process and store data from ownership.xlsx, replacing existing data.
+    """
+    logger.info("Starting ownership_tree processing")
+    # Clear existing data
+    total_rows = db.query(OwnershipHierarchy).count()
+    logger.info(f"Total rows in ownership_hierarchy before deletion: {total_rows}")
+    db.execute(text("DELETE FROM ownership_hierarchy"))
+    db.commit()
+    logger.info("Cleared all rows from ownership_hierarchy")
+    remaining_rows = db.query(OwnershipHierarchy).count()
+    logger.info(f"Total rows in ownership_hierarchy after deletion: {remaining_rows}")
+
+    workbook = openpyxl.load_workbook(file.file, read_only=True)
+    sheet = workbook.active
+
+    # Extract metadata date from the first few rows (assuming it's in the format "MM-DD-YYYY")
+    metadata_date = None
+    for row in sheet.iter_rows(min_row=1, max_row=3, values_only=True):
+        for cell in row:
+            if cell and isinstance(cell, str) and '-' in cell:
+                try:
+                    metadata_date = datetime.strptime(cell, "%m-%d-%Y").date()
+                    break
+                except ValueError:
+                    continue
+        if metadata_date:
+            break
+    if not metadata_date:
+        metadata_date = date.today()
+        logger.warning(f"No metadata date found in Excel file, using current date: {metadata_date}")
+    logger.info(f"Metadata date extracted: {metadata_date}")
+
+    batch_size = 10000
+    batch = []
+    # Track seen accounts to build group lists
+    account_groups = {}
+    # Skip the first three rows (metadata) and start from row 4 (headers are in row 4, data starts in row 5)
+    current_account = None
+    for row in sheet.iter_rows(min_row=5, values_only=True):
+        holding_account, holding_account_number, top_level_client, entity_id, portfolio = row
+        # Log the row data for debugging
+        row_data = {
+            "holding_account": holding_account,
+            "holding_account_number": holding_account_number,
+            "top_level_client": top_level_client,
+            "entity_id": entity_id,
+            "portfolio": portfolio
+        }
+        logger.debug(f"Processing row: {row_data}")
+
+        if holding_account_number:  # This is an account row (first row of a group)
+            current_account = holding_account_number
+            account_groups[current_account] = {
+                "holding_account": holding_account,
+                "holding_account_number": holding_account_number,
+                "top_level_client": top_level_client,
+                "entity_id": entity_id,
+                "portfolio": portfolio,
+                "groups": []
+            }
+        else:  # This is a group row (subsequent rows)
+            if current_account and holding_account:
+                account_groups[current_account]["groups"].append(holding_account)
+
+    # Process the grouped data into records
+    for account_number, data in account_groups.items():
+        groups = ", ".join(data["groups"]) if data["groups"] else None
+        record = OwnershipHierarchy(
+            holding_account=data["holding_account"],
+            holding_account_number=data["holding_account_number"],
+            top_level_client=data["top_level_client"],
+            entity_id=data["entity_id"],
+            portfolio=data["portfolio"],
+            groups=groups,
+            last_updated=metadata_date
+        )
+        batch.append(record)
+
+        if len(batch) >= batch_size:
+            db.add_all(batch)
+            db.commit()
+            logger.info(f"Committed batch of {batch_size} rows")
+            batch = []
+
+    if batch:
+        db.add_all(batch)
+        db.commit()
+        logger.info(f"Committed final batch of {len(batch)} rows")
+
+    logger.info("Completed ownership_tree processing")
+    return {"message": f"Uploaded ownership.xlsx with metadata date {metadata_date}"}
+
+async def upload_security_risk_stats(file: UploadFile, db: Session):
+    """
+    Process and store data from risk_stats.xlsx (three tabs: Equity, Fixed Income, Alternatives).
+    """
+    logger.info("Starting security_risk_stats processing")
+    # Clear existing data
+    db.query(RiskStatisticEquity).delete()
+    db.query(RiskStatisticFixedIncome).delete()
+    db.query(RiskStatisticAlternatives).delete()
+    db.commit()
+
+    workbook = openpyxl.load_workbook(file.file, read_only=True)
+
+    # Process Equity tab
+    equity_sheet = workbook['Equity']
+    equity_batch = []
+    batch_size = 10000
+    for row in equity_sheet.iter_rows(min_row=2, values_only=True):
+        position, ticker_symbol, vol, beta = row[:4]  # Simplified for example
+        record = RiskStatisticEquity(
+            position=position,
+            ticker_symbol=ticker_symbol,
+            vol=vol if vol is not None else 0,
+            beta=beta if beta is not None else 0
+        )
+        equity_batch.append(record)
+
+        if len(equity_batch) >= batch_size:
+            db.add_all(equity_batch)
+            db.commit()
+            equity_batch = []
+
+    if equity_batch:
+        db.add_all(equity_batch)
+        db.commit()
+
+    # Process Fixed Income tab
+    fixed_income_sheet = workbook['Fixed Income']
+    fixed_income_batch = []
+    for row in fixed_income_sheet.iter_rows(min_row=2, values_only=True):
+        position, ticker_symbol, vol, beta = row[:4]  # Simplified for example
+        record = RiskStatisticFixedIncome(
+            position=position,
+            ticker_symbol=ticker_symbol,
+            vol=vol if vol is not None else 0,
+            beta=beta if beta is not None else 0
+        )
+        fixed_income_batch.append(record)
+
+        if len(fixed_income_batch) >= batch_size:
+            db.add_all(fixed_income_batch)
+            db.commit()
+            fixed_income_batch = []
+
+    if fixed_income_batch:
+        db.add_all(fixed_income_batch)
+        db.commit()
+
+    # Process Alternatives tab
+    alternatives_sheet = workbook['Alternatives']
+    alternatives_batch = []
+    for row in alternatives_sheet.iter_rows(min_row=2, values_only=True):
+        position, ticker_symbol, vol, beta = row[:4]  # Simplified for example
+        record = RiskStatisticAlternatives(
+            position=position,
+            ticker_symbol=ticker_symbol,
+            vol=vol if vol is not None else 0,
+            beta=beta if beta is not None else 0
+        )
+        alternatives_batch.append(record)
+
+        if len(alternatives_batch) >= batch_size:
+            db.add_all(alternatives_batch)
+            db.commit()
+            alternatives_batch = []
+
+    if alternatives_batch:
+        db.add_all(alternatives_batch)
+        db.commit()
+
+    logger.info("Completed security_risk_stats processing")
+    return {"message": "Uploaded risk_stats.xlsx"}
+
+def generate_portfolio_report(report_date: str, db: Session, level: str = "portfolio", filters: dict = None):
+    """
+    Generate a portfolio report for the given date at the specified level (client, group, portfolio, account, or custom subset).
+
+    Args:
+        report_date (str): The date for which to generate the report (format: YYYY-MM-DD).
+        db (Session): The database session.
+        level (str): The level at which to generate the report ('client', 'group', 'portfolio', 'account', or 'custom').
+        filters (dict): Optional filters to specify a subset of clients, groups, portfolios, or accounts.
+
+    Returns:
+        dict: A structured report with asset class allocations, subcategories, weighted percentages, and dollar amounts.
+    """
+    logger.info(f"Generating portfolio report for date {report_date} at level {level} with filters {filters}")
+
+    # Parse the date
+    report_date = datetime.strptime(report_date, "%Y-%m-%d").date()
+
+    # Get the latest upload date for the given report date
+    latest_upload = db.query(func.max(FinancialPosition.upload_date)).filter(
+        func.date(FinancialPosition.date) == report_date
+    ).scalar()
+    if not latest_upload:
+        logger.error(f"No data found for date {report_date}")
+        return {"error": f"No data found for date {report_date}"}
+
+    # Join financial_positions and ownership_hierarchy to map positions to portfolios
+    query = db.query(
+        FinancialPosition.top_level_client,
+        OwnershipHierarchy.groups,
+        FinancialPosition.portfolio,
+        FinancialPosition.holding_account,
+        FinancialPosition.holding_account_number,
+        FinancialPosition.asset_class,
+        FinancialPosition.second_level,
+        FinancialPosition.third_level,
+        FinancialPosition.liquid_vs_illiquid,
+        FinancialPosition.adjusted_value
+    ).join(
+        OwnershipHierarchy,
+        FinancialPosition.holding_account_number == OwnershipHierarchy.holding_account_number
+    ).filter(
+        func.date(FinancialPosition.date) == report_date,
+        func.date(FinancialPosition.upload_date) == latest_upload
+    )
+
+    # Apply filters if provided
+    if filters:
+        if level == "client" and "clients" in filters:
+            query = query.filter(FinancialPosition.top_level_client.in_(filters["clients"]))
+        elif level == "group" and "groups" in filters:
+            query = query.filter(OwnershipHierarchy.groups.in_(filters["groups"]))
+        elif level == "portfolio" and "portfolios" in filters:
+            query = query.filter(FinancialPosition.portfolio.in_(filters["portfolios"]))
+        elif level == "account" and "accounts" in filters:
+            query = query.filter(FinancialPosition.holding_account_number.in_(filters["accounts"]))
+        elif level == "custom" and "custom_accounts" in filters:
+            query = query.filter(FinancialPosition.holding_account_number.in_(filters["custom_accounts"]))
+
+    positions = query.all()
+
+    # Aggregate totals by level
+    if level == "client":
+        key_field = "top_level_client"
+    elif level == "group":
+        key_field = "groups"
+    elif level == "portfolio":
+        key_field = "portfolio"
+    elif level == "account":
+        key_field = "holding_account_number"
+    else:  # Custom subset
+        key_field = "holding_account_number"
+
+    # Calculate totals by key (e.g., portfolio, client, etc.)
+    totals = {}
+    for pos in positions:
+        key = getattr(pos, key_field)
+        if key not in totals:
+            totals[key] = 0.0
+        totals[key] += pos.adjusted_value
+
+    # Structure the report
+    report = {}
+    for pos in positions:
+        key = getattr(pos, key_field)
+        if key not in report:
+            report[key] = {
+                "total_value": totals[key],
+                "allocations": {},
+                "liquidity": {"liquid": 0.0, "illiquid": 0.0}
+            }
+
+        # Aggregate by asset class, second level, and third level
+        asset_class = pos.asset_class if pos.asset_class else "Other"
+        second_level = pos.second_level if pos.second_level else "Other"
+        third_level = pos.third_level if pos.third_level else "Other"
+
+        if asset_class not in report[key]["allocations"]:
+            report[key]["allocations"][asset_class] = {}
+        if second_level not in report[key]["allocations"][asset_class]:
+            report[key]["allocations"][asset_class][second_level] = {}
+        if third_level not in report[key]["allocations"][asset_class][second_level]:
+            report[key]["allocations"][asset_class][second_level][third_level] = {"value": 0.0, "percentage": 0.0}
+
+        report[key]["allocations"][asset_class][second_level][third_level]["value"] += pos.adjusted_value
+        report[key]["allocations"][asset_class][second_level][third_level]["percentage"] = (
+            report[key]["allocations"][asset_class][second_level][third_level]["value"] / totals[key] * 100
+        )
+
+        # Aggregate liquidity
+        if pos.liquid_vs_illiquid == "Liquid":
+            report[key]["liquidity"]["liquid"] += pos.adjusted_value
+        elif pos.liquid_vs_illiquid == "Illiquid":
+            report[key]["liquidity"]["illiquid"] += pos.adjusted_value
+
+    # Convert liquidity to percentages
+    for key in report:
+        report[key]["liquidity"]["liquid_percentage"] = report[key]["liquidity"]["liquid"] / totals[key] * 100
+        report[key]["liquidity"]["illiquid_percentage"] = report[key]["liquidity"]["illiquid"] / totals[key] * 100
+
+    # Placeholder for performance metrics (MTD, QTD, YTD)
+    for key in report:
+        report[key]["performance"] = {
+            "MTD": "N/A",
+            "QTD": "N/A",
+            "YTD": "N/A"
+        }
+
+    logger.info(f"Portfolio report generated successfully for {level}")
+    return report
+
+def get_ownership_tree(db: Session):
+    """
+    Retrieve the ownership hierarchy as a JSON tree.
+    """
+    logger.info("Fetching ownership tree")
+    hierarchies = db.query(OwnershipHierarchy).all()
+    tree = {}
+    for h in hierarchies:
+        client = h.top_level_client
+        if client not in tree:
+            tree[client] = []
+        tree[client].append({
+            "holding_account": h.holding_account,
+            "holding_account_number": h.holding_account_number,
+            "entity_id": h.entity_id,
+            "portfolio": h.portfolio,
+            "groups": h.groups,
+            "last_updated": h.last_updated.strftime('%Y-%m-%d') if h.last_updated else None
+        })
+    return tree
