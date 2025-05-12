@@ -215,6 +215,11 @@ def calculate_portfolio_risk_metrics(
                 "coverage_pct": Decimal('0.0'),
                 "category": None
             },
+            # Duration percentage breakdown for overall FI portfolio
+            "short_duration_pct": Decimal('0.0'),  # < 2 years
+            "market_duration_pct": Decimal('0.0'), # 2-7 years
+            "long_duration_pct": Decimal('0.0'),   # > 7 years
+            # Subcategory breakdowns
             "municipal_bonds": {
                 "total": Decimal('0.0'),
                 "short_duration": Decimal('0.0'),  # < 2 years
@@ -766,6 +771,11 @@ def process_fixed_income_risk(
     3. Rapid batch operations with automatic failover
     4. Extensive diagnostic logging
     5. Hard timeout limits for every operation
+    
+    The output structure includes detailed fixed income duration metrics:
+    - Overall duration value for the fixed income portfolio
+    - Duration breakdowns by subcategories (municipal_bonds, investment_grade, government_bonds)
+    - Each subcategory includes short_duration, market_duration, and long_duration percentages
     """
     if not cache:
         cache = {}
@@ -959,6 +969,41 @@ def process_fixed_income_risk(
         if totals["fixed_income"] > Decimal('0.0'):
             coverage = (matched_value / totals["fixed_income"]) * 100
             risk_metrics["fixed_income"]["duration"]["coverage_pct"] = coverage
+            
+            # Ensure the duration value is properly set
+            if risk_metrics["fixed_income"]["duration"]["weighted_sum"] > Decimal('0.0'):
+                # Set the final duration value
+                risk_metrics["fixed_income"]["duration"]["value"] = risk_metrics["fixed_income"]["duration"]["weighted_sum"]
+                logger.info(f"Fixed income duration value set to: {risk_metrics['fixed_income']['duration']['value']}")
+            else:
+                # Set default value if no weighted sum was calculated
+                risk_metrics["fixed_income"]["duration"]["value"] = Decimal('0.0')
+                logger.warning("No fixed income duration weighted sum - setting duration value to 0.0")
+                
+            # Calculate duration percentage breakdown
+            # Combine the subcategories to get totals by duration category
+            short_duration_total = Decimal('0.0')
+            market_duration_total = Decimal('0.0')
+            long_duration_total = Decimal('0.0')
+            
+            # Sum up the duration buckets from each subcategory
+            for category in ['municipal_bonds', 'investment_grade', 'government_bonds']:
+                short_duration_total += risk_metrics["fixed_income"][category]["short_duration"]
+                market_duration_total += risk_metrics["fixed_income"][category]["market_duration"]
+                long_duration_total += risk_metrics["fixed_income"][category]["long_duration"]
+            
+            # Calculate total value across all duration categories
+            total_duration_value = short_duration_total + market_duration_total + long_duration_total
+            
+            # Calculate percentages based on total duration value
+            if total_duration_value > Decimal('0.0'):
+                risk_metrics["fixed_income"]["short_duration_pct"] = (short_duration_total / total_duration_value) * 100
+                risk_metrics["fixed_income"]["market_duration_pct"] = (market_duration_total / total_duration_value) * 100
+                risk_metrics["fixed_income"]["long_duration_pct"] = (long_duration_total / total_duration_value) * 100
+                
+                logger.info(f"Fixed income duration breakdown: Short: {risk_metrics['fixed_income']['short_duration_pct']:.1f}%, " + 
+                          f"Market: {risk_metrics['fixed_income']['market_duration_pct']:.1f}%, " +
+                          f"Long: {risk_metrics['fixed_income']['long_duration_pct']:.1f}%")
         
         # Log detailed statistics
         end_time = time.time()
@@ -966,6 +1011,7 @@ def process_fixed_income_risk(
         
         logger.info(f"Fixed income duration processing completed in {total_time:.2f} seconds")
         logger.info(f"Duration matches: {duration_matches}/{total_positions} positions ({coverage:.2f}% coverage)")
+        logger.info(f"Final fixed income duration value: {risk_metrics['fixed_income']['duration'].get('value', 'N/A')}")
         logger.info(f"Match sources: CUSIP={match_counts['cusip']}, Ticker={match_counts['ticker']}, Position={match_counts['position']}, None={match_counts['none']}")
         
     except Exception as e:

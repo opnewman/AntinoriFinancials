@@ -767,13 +767,21 @@ def generate_portfolio_report(db: Session, report_date: date, level: str, level_
                     duration_value = fi_metrics['duration'].get('value')
                     coverage_pct = fi_metrics['duration'].get('coverage_pct')
                 
+                # Log the duration value for debugging
+                logger.info(f"Fixed income duration value extracted: {duration_value}")
+                
                 # Safely extract percentage values with null checks
-                if 'short_duration_pct' in fi_metrics:
-                    short_duration_pct = fi_metrics['short_duration_pct']
-                if 'market_duration_pct' in fi_metrics:
-                    market_duration_pct = fi_metrics['market_duration_pct']
-                if 'long_duration_pct' in fi_metrics:
-                    long_duration_pct = fi_metrics['long_duration_pct']
+                short_duration_pct = fi_metrics.get('short_duration_pct')
+                market_duration_pct = fi_metrics.get('market_duration_pct')
+                long_duration_pct = fi_metrics.get('long_duration_pct')
+                
+                # Log the duration percentages for debugging
+                logger.info(f"Fixed income duration percentages: short={short_duration_pct}, market={market_duration_pct}, long={long_duration_pct}")
+                
+                # Extract subcategory breakdowns (municipal bonds, investment grade, govt bonds)
+                municipal_bonds = fi_metrics.get('municipal_bonds', {})
+                investment_grade = fi_metrics.get('investment_grade', {})
+                government_bonds = fi_metrics.get('government_bonds', {})
                 
                 # Create the risk metrics structure with safe conversion
                 report_data['risk_metrics']['fixed_income'] = {
@@ -781,7 +789,23 @@ def generate_portfolio_report(db: Session, report_date: date, level: str, level_
                     'coverage_pct': float(coverage_pct) if coverage_pct is not None else None,
                     'short_duration_pct': float(short_duration_pct) if short_duration_pct is not None else None,
                     'market_duration_pct': float(market_duration_pct) if market_duration_pct is not None else None,
-                    'long_duration_pct': float(long_duration_pct) if long_duration_pct is not None else None
+                    'long_duration_pct': float(long_duration_pct) if long_duration_pct is not None else None,
+                    # Add subcategory breakdowns if available
+                    'municipal_bonds': {
+                        'short_duration': float(municipal_bonds.get('short_duration', 0)) if municipal_bonds else 0,
+                        'market_duration': float(municipal_bonds.get('market_duration', 0)) if municipal_bonds else 0,
+                        'long_duration': float(municipal_bonds.get('long_duration', 0)) if municipal_bonds else 0
+                    },
+                    'investment_grade': {
+                        'short_duration': float(investment_grade.get('short_duration', 0)) if investment_grade else 0,
+                        'market_duration': float(investment_grade.get('market_duration', 0)) if investment_grade else 0,
+                        'long_duration': float(investment_grade.get('long_duration', 0)) if investment_grade else 0
+                    },
+                    'government_bonds': {
+                        'short_duration': float(government_bonds.get('short_duration', 0)) if government_bonds else 0,
+                        'market_duration': float(government_bonds.get('market_duration', 0)) if government_bonds else 0,
+                        'long_duration': float(government_bonds.get('long_duration', 0)) if government_bonds else 0
+                    }
                 }
             except Exception as e:
                 logger.warning(f"Error processing fixed income risk metrics: {str(e)}")
@@ -896,18 +920,23 @@ def generate_portfolio_report(db: Session, report_date: date, level: str, level_
             try:
                 hc_metrics = risk_metrics_result['risk_metrics']['hard_currency']
                 
-                # Safely extract values
+                # Safely extract values with explicit beta_adjusted check
                 beta_value = hc_metrics.get('beta', {}).get('value')
                 coverage_pct = hc_metrics.get('beta', {}).get('coverage_pct')
+                beta_adjusted_value = hc_metrics.get('beta_adjusted', {}).get('value')
+                
+                # Log the extracted values for debugging
+                logger.info(f"Hard currency metrics extracted - beta: {beta_value}, coverage: {coverage_pct}, beta_adjusted: {beta_adjusted_value}")
                 
                 # Create the risk metrics structure with safe conversion
                 report_data['risk_metrics']['hard_currency'] = {
                     'beta': float(beta_value) if beta_value is not None else None,
-                    'coverage_pct': float(coverage_pct) if coverage_pct is not None else None
+                    'coverage_pct': float(coverage_pct) if coverage_pct is not None else None,
+                    'beta_adjusted': float(beta_adjusted_value) if beta_adjusted_value is not None else None
                 }
                 
-                # Calculate beta adjusted value for hard currency with safety checks
-                if report_data['risk_metrics']['hard_currency']['beta'] is not None and 'hard_currency' in report_data and 'total_pct' in report_data['hard_currency']:
+                # If beta_adjusted is None but we have beta value and hard currency percentage, calculate it as a fallback
+                if report_data['risk_metrics']['hard_currency']['beta_adjusted'] is None and report_data['risk_metrics']['hard_currency']['beta'] is not None and 'hard_currency' in report_data and 'total_pct' in report_data['hard_currency']:
                     try:
                         # Convert Decimal to float before multiplication to avoid type errors
                         hc_total_pct = float(report_data['hard_currency']['total_pct']) if hasattr(report_data['hard_currency']['total_pct'], 'to_float') else float(report_data['hard_currency']['total_pct'])
@@ -915,11 +944,11 @@ def generate_portfolio_report(db: Session, report_date: date, level: str, level_
                         
                         # Beta adjusted = Hard Currency % × Portfolio's Hard Currency Beta
                         report_data['risk_metrics']['hard_currency']['beta_adjusted'] = (hc_total_pct * hc_beta) / 100.0
+                        logger.info(f"Hard currency beta_adjusted calculated as fallback: {report_data['risk_metrics']['hard_currency']['beta_adjusted']}")
                     except (TypeError, ValueError) as e:
                         logger.warning(f"Error calculating hard currency beta adjusted value: {str(e)}")
-                        report_data['risk_metrics']['hard_currency']['beta_adjusted'] = None
                 else:
-                    report_data['risk_metrics']['hard_currency']['beta_adjusted'] = None
+                    logger.info(f"Using pre-calculated hard currency beta_adjusted value: {report_data['risk_metrics']['hard_currency']['beta_adjusted']}")
             except Exception as e:
                 logger.warning(f"Error processing hard currency risk metrics: {str(e)}")
                 # Keep default values if processing fails
