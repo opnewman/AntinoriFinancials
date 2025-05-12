@@ -312,7 +312,13 @@ def calculate_portfolio_risk_metrics(
             totals["other"] += value
     
     # Create a risk statistics cache to reduce database queries
-    risk_stats_cache = {}
+    # The cache has the structure: {asset_class: {identifier_type: {identifier_value: risk_stat}}}
+    risk_stats_cache = {
+        "equity": {"cusip": {}, "ticker_symbol": {}, "position": {}},
+        "fixed_income": {"cusip": {}, "ticker_symbol": {}, "position": {}},
+        "alternatives": {"cusip": {}, "ticker_symbol": {}, "position": {}},
+        "hard_currency": {"cusip": {}, "ticker_symbol": {}, "position": {}}
+    }
     
     # Set a timeout limit per asset class processing (45 seconds per asset class to handle larger portfolios)
     MAX_PROCESSING_TIME = 45  # seconds
@@ -394,9 +400,20 @@ def calculate_portfolio_risk_metrics(
     # Finalize risk metrics (convert weighted sums to actual values)
     finalize_risk_metrics(risk_metrics, percentages)
     
-    # Add totals to the result
-    risk_metrics["totals"] = totals
-    risk_metrics["percentages"] = percentages
+    # Create properly structured dictionaries for totals and percentages
+    asset_totals = {}
+    asset_percentages = {}
+    
+    # Convert flat dictionaries to nested ones to match expected structure
+    for asset_class, value in totals.items():
+        asset_totals[asset_class] = {"value": value}
+    
+    for asset_class, pct in percentages.items():
+        asset_percentages[asset_class] = {"value": pct}
+    
+    # Add the structured totals and percentages to the result
+    risk_metrics["totals"] = asset_totals
+    risk_metrics["percentages"] = asset_percentages
     
     return risk_metrics
 
@@ -782,20 +799,28 @@ def find_matching_risk_stat(
     safe_cusip = ultra_sanitize(cusip)
     safe_ticker = ultra_sanitize(ticker_symbol).lower()
     
-    # Use more specific cache keys to improve hit rates
-    cache_prefix = asset_class_str.replace(" ", "_")
+    # Determine the asset class key for cache lookup
+    asset_class_key = None
+    if "equity" in asset_class_str:
+        asset_class_key = "equity"
+    elif "fixed" in asset_class_str:
+        asset_class_key = "fixed_income"
+    elif "alternative" in asset_class_str:
+        asset_class_key = "alternatives"
+    elif "hard" in asset_class_str and "currency" in asset_class_str:
+        asset_class_key = "hard_currency"
     
-    # Check cache first - no database access needed
-    if cache is not None:
-        # Try all identifiers with specific prefixes to avoid collisions
-        if safe_cusip and f"{cache_prefix}:cusip:{safe_cusip}" in cache:
-            return cache[f"{cache_prefix}:cusip:{safe_cusip}"]
+    # Check cache first - no database access needed if we have a cached value
+    if cache is not None and asset_class_key:
+        # Try all identifiers in order of reliability
+        if safe_cusip and safe_cusip in cache.get(asset_class_key, {}).get("cusip", {}):
+            return cache[asset_class_key]["cusip"][safe_cusip]
             
-        if safe_ticker and f"{cache_prefix}:ticker:{safe_ticker}" in cache:
-            return cache[f"{cache_prefix}:ticker:{safe_ticker}"]
+        if safe_ticker and safe_ticker in cache.get(asset_class_key, {}).get("ticker_symbol", {}):
+            return cache[asset_class_key]["ticker_symbol"][safe_ticker]
             
-        if safe_position and f"{cache_prefix}:position:{safe_position}" in cache:
-            return cache[f"{cache_prefix}:position:{safe_position}"]
+        if safe_position and safe_position in cache.get(asset_class_key, {}).get("position", {}):
+            return cache[asset_class_key]["position"][safe_position]
     
     # Create a function for all database queries to reduce code duplication
     def execute_query(condition, identifier_type, identifier_value):
@@ -908,10 +933,14 @@ def find_matching_risk_stat(
                     if len(risk_stat) > 3 and risk_stat[3] is not None:
                         risk_dict['duration'] = risk_stat[3]
                     
-                    # Cache the result if cache is available
-                    if cache is not None:
-                        cache_key = f"{cache_prefix}:{identifier_type}:{identifier_value}"
-                        cache[cache_key] = risk_dict
+                    # Cache the result in the structured cache
+                    if cache is not None and asset_class_key:
+                        try:
+                            # Store in the appropriate nested dictionary
+                            if identifier_type in cache[asset_class_key]:
+                                cache[asset_class_key][identifier_type][identifier_value] = risk_dict
+                        except Exception as e:
+                            logger.warning(f"Cache storage error: {str(e)}")
                     
                     return risk_dict
                     
@@ -1139,8 +1168,14 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
         alternatives_pct = percentages.get("alternatives", Decimal('0.0')) / Decimal('100.0') if "alternatives" in percentages else Decimal('0.0')
         portfolio_beta += risk_metrics["alternatives"]["beta"]["value"] * alternatives_pct
     
-    # Create a new dictionary for portfolio level metrics to avoid type errors
-    portfolio_metrics = {"beta": portfolio_beta}
+    # Create a properly structured metrics dictionary for portfolio-level metrics
+    portfolio_metrics = {
+        "beta": {
+            "weighted_sum": portfolio_beta,
+            "value": portfolio_beta,
+            "coverage_pct": Decimal('100.0')  # Using full coverage for calculated values
+        }
+    }
     
-    # Store the overall portfolio beta in a new key to avoid type errors
+    # Store the overall portfolio beta in a structured dictionary that matches the expected types
     risk_metrics["portfolio"] = portfolio_metrics
