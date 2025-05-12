@@ -1,0 +1,1006 @@
+from fastapi import UploadFile
+from sqlalchemy import MetaData, Table, Column, Integer, String, Float, Date
+from sqlalchemy.orm import Session
+from sqlalchemy.sql import func, text, or_
+from backend.models import FinancialPosition, OwnershipHierarchy, RiskStatisticEquity, RiskStatisticFixedIncome, RiskStatisticAlternatives
+from backend.database import get_db
+import openpyxl
+import pandas as pd
+import structlog
+from datetime import datetime, date, timedelta
+import traceback
+
+logger = structlog.get_logger()
+
+metadata = MetaData()
+financial_summary = Table(
+    'financial_summary', metadata,
+    Column('id', Integer, primary_key=True),
+    Column('level', String, nullable=False),
+    Column('level_key', String, nullable=False),
+    Column('total_adjusted_value', Float, nullable=False),
+    Column('upload_date', Date, nullable=False),
+    Column('report_date', Date, nullable=False)
+)
+
+def clean_adjusted_value(value, row_data=None):
+    if value is None:
+        return 0.0
+    value = str(value).strip()
+    if not value or value == '-':
+        return 0.0
+    value = value.replace('$', '').replace(',', '').replace(' ', '')
+    try:
+        return float(value)
+    except ValueError as e:
+        raise ValueError(f"Could not convert adjusted_value to float: {value}")
+
+async def upload_data_dump(file: UploadFile, report_date: str, db: Session):
+    upload_date = datetime.strptime(report_date, "%Y-%m-%d")
+    date_str = upload_date.strftime('%Y-%m-%d')
+    current_date = date.today()
+
+    existing_rows = db.query(FinancialPosition).filter(
+        FinancialPosition.date == date_str,
+        FinancialPosition.upload_date == current_date
+    ).count()
+    if existing_rows > 0:
+        return {"message": f"Data for date {date_str} and upload_date {current_date} already exists"}
+
+    workbook = openpyxl.load_workbook(file.file, read_only=True)
+    sheet = workbook.active
+
+    batch_size = 10000
+    batch = []
+    seen_keys = set()
+    for row in sheet.iter_rows(min_row=5, values_only=True):
+        position, top_level_client, holding_account, holding_account_number, portfolio, cusip, ticker_symbol, asset_class, second_level, third_level, adv_classification, liquid_vs_illiquid, adjusted_value = row
+        unique_key = (holding_account_number, position, date_str, current_date.strftime('%Y-%m-%d'))
+        if unique_key in seen_keys:
+            continue
+        seen_keys.add(unique_key)
+
+        record = FinancialPosition(
+            position=position,
+            top_level_client=top_level_client,
+            holding_account=holding_account,
+            holding_account_number=holding_account_number,
+            portfolio=portfolio,
+            cusip=cusip,
+            ticker_symbol=ticker_symbol,
+            asset_class=asset_class,
+            second_level=second_level,
+            third_level=third_level,
+            adv_classification=adv_classification,
+            liquid_vs_illiquid=liquid_vs_illiquid,
+            adjusted_value=clean_adjusted_value(adjusted_value),
+            date=upload_date,
+            upload_date=current_date
+        )
+        batch.append(record)
+
+        if len(batch) >= batch_size:
+            db.add_all(batch)
+            db.commit()
+            batch = []
+
+    if batch:
+        db.add_all(batch)
+        db.commit()
+
+    account_totals = db.query(
+        FinancialPosition.holding_account_number,
+        func.sum(FinancialPosition.adjusted_value).label('total')
+    ).filter(
+        FinancialPosition.date == date_str,
+        FinancialPosition.upload_date == current_date
+    ).group_by(FinancialPosition.holding_account_number).all()
+
+    portfolio_totals = db.query(
+        FinancialPosition.portfolio,
+        func.sum(FinancialPosition.adjusted_value).label('total')
+    ).filter(
+        FinancialPosition.date == date_str,
+        FinancialPosition.upload_date == current_date
+    ).group_by(FinancialPosition.portfolio).all()
+
+    client_totals = db.query(
+        FinancialPosition.top_level_client,
+        func.sum(FinancialPosition.adjusted_value).label('total')
+    ).filter(
+        FinancialPosition.date == date_str,
+        FinancialPosition.upload_date == current_date
+    ).group_by(FinancialPosition.top_level_client).all()
+
+    group_totals = db.query(
+        OwnershipHierarchy.groups,
+        func.sum(FinancialPosition.adjusted_value).label('total')
+    ).join(
+        FinancialPosition,
+        OwnershipHierarchy.holding_account_number == FinancialPosition.holding_account_number
+    ).filter(
+        FinancialPosition.date == date_str,
+        FinancialPosition.upload_date == current_date
+    ).group_by(OwnershipHierarchy.groups).all()
+
+    summary_records = []
+    for account, total in account_totals:
+        summary_records.append({
+            'level': 'account',
+            'level_key': account,
+            'total_adjusted_value': float(total),
+            'upload_date': current_date,
+            'report_date': upload_date
+        })
+    for portfolio, total in portfolio_totals:
+        summary_records.append({
+            'level': 'portfolio',
+            'level_key': portfolio,
+            'total_adjusted_value': float(total),
+            'upload_date': current_date,
+            'report_date': upload_date
+        })
+    for client, total in client_totals:
+        summary_records.append({
+            'level': 'client',
+            'level_key': client,
+            'total_adjusted_value': float(total),
+            'upload_date': current_date,
+            'report_date': upload_date
+        })
+    for group, total in group_totals:
+        if group:
+            summary_records.append({
+                'level': 'group',
+                'level_key': group,
+                'total_adjusted_value': float(total),
+                'upload_date': current_date,
+                'report_date': upload_date
+            })
+
+    if summary_records:
+        db.execute(financial_summary.insert(), summary_records)
+        db.commit()
+
+    return {"message": f"Uploaded data_dump.xlsx for date {date_str}"}
+
+async def upload_ownership_tree(file: UploadFile, db: Session):
+    db.execute(text("DELETE FROM ownership_hierarchy"))
+    db.commit()
+
+    workbook = openpyxl.load_workbook(file.file, read_only=True)
+    sheet = workbook.active
+
+    metadata_date = None
+    for row in sheet.iter_rows(min_row=1, max_row=3, values_only=True):
+        for cell in row:
+            if cell and isinstance(cell, str) and '-' in cell:
+                try:
+                    metadata_date = datetime.strptime(cell, "%m-%d-%Y").date()
+                    break
+                except ValueError:
+                    continue
+        if metadata_date:
+            break
+    if not metadata_date:
+        metadata_date = date.today()
+
+    batch_size = 10000
+    batch = []
+    account_groups = {}
+    current_account = None
+    for row in sheet.iter_rows(min_row=5, values_only=True):
+        holding_account, holding_account_number, top_level_client, entity_id, portfolio = row
+        if holding_account_number:
+            current_account = holding_account_number
+            account_groups[current_account] = {
+                "holding_account": holding_account,
+                "holding_account_number": holding_account_number,
+                "top_level_client": top_level_client,
+                "entity_id": entity_id,
+                "portfolio": portfolio,
+                "groups": []
+            }
+        else:
+            if current_account and holding_account:
+                account_groups[current_account]["groups"].append(holding_account)
+
+    for account_number, data in account_groups.items():
+        groups = ", ".join(data["groups"]) if data["groups"] else None
+        record = OwnershipHierarchy(
+            holding_account=data["holding_account"],
+            holding_account_number=data["holding_account_number"],
+            top_level_client=data["top_level_client"],
+            entity_id=data["entity_id"],
+            portfolio=data["portfolio"],
+            groups=groups,
+            last_updated=metadata_date
+        )
+        batch.append(record)
+
+        if len(batch) >= batch_size:
+            db.add_all(batch)
+            db.commit()
+            batch = []
+
+    if batch:
+        db.add_all(batch)
+        db.commit()
+
+    return {"message": f"Uploaded ownership.xlsx with metadata date {metadata_date}"}
+
+async def upload_security_risk_stats(file: UploadFile, db: Session):
+    # Read Excel file with multiple sheets
+    xls = pd.ExcelFile(file.file)
+    upload_date = datetime.now().date()
+    logger.info(f"Processing upload: {file.filename} with tabs: {xls.sheet_names}")
+    
+    # Log raw sheet names for debugging
+    logger.debug(f"Raw sheet names: {xls.sheet_names}")
+    
+    # Process Equity tab
+    equity_records = 0
+    equity_sheet_name = next((name for name in xls.sheet_names if name.lower() == "equity"), None)
+    if equity_sheet_name:
+        logger.info(f"Equity tab found: {equity_sheet_name}")
+        try:
+            # Try reading the sheet with different header rows
+            df = pd.read_excel(xls, sheet_name=equity_sheet_name, header=0)
+            logger.info(f"Equity tab loaded with {len(df)} rows before cleaning")
+            
+            # Clean column names (strip spaces, normalize case)
+            df.columns = [col.strip().lower() if isinstance(col, str) else str(col).strip().lower() for col in df.columns]
+            logger.debug(f"Equity tab columns after cleaning: {list(df.columns)}")
+            
+            # Drop rows where all relevant columns are NaN
+            relevant_columns = ['position', 'ticker symbol', 'amended id', 'vol', 'beta']
+            df = df.dropna(subset=relevant_columns, how='all')
+            logger.info(f"Equity tab after dropping empty rows: {len(df)} rows")
+            
+            # Log the first few rows to inspect the data
+            if not df.empty:
+                logger.debug(f"First 5 rows of Equity tab:\n{df.head().to_string()}")
+            else:
+                logger.warning("Equity tab is empty after cleaning")
+
+            for idx, row in df.iterrows():
+                # Ensure row values are accessible
+                position = str(row.get('position', '')).strip() if pd.notnull(row.get('position')) else ''
+                ticker_symbol = str(row.get('ticker symbol', '')).strip() if pd.notnull(row.get('ticker symbol')) else ''
+                cusip = str(row.get('amended id', '')).strip() if pd.notnull(row.get('amended id')) else ''
+                vol_raw = row.get('vol', None)
+                beta_raw = row.get('beta', None)
+
+                # Handle cases where only one metric is present (assume it's beta for options)
+                if pd.isna(vol_raw) and not pd.isna(beta_raw):
+                    vol = 0.0
+                    beta = beta_raw
+                else:
+                    vol = vol_raw if pd.notnull(vol_raw) else 0.0
+                    beta = beta_raw if pd.notnull(beta_raw) else 0.0
+
+                # Convert error values to 0.0
+                if isinstance(vol, str) and any(err in vol.lower() for err in ["#n/a", "#value"]):
+                    vol = 0.0
+                if isinstance(beta, str) and any(err in beta.lower() for err in ["#n/a", "#value"]):
+                    beta = 0.0
+
+                try:
+                    vol = float(vol) if vol is not None else 0.0
+                    beta = float(beta) if beta is not None else 0.0
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid vol or beta value for equity row {idx}: position={position}, vol={vol}, beta={beta}. Setting to 0.0")
+                    vol = 0.0
+                    beta = 0.0
+
+                logger.debug(f"Equity row {idx} data: position={position}, ticker_symbol={ticker_symbol}, cusip={cusip}, vol={vol}, beta={beta}")
+
+                if not position and not ticker_symbol and not cusip:
+                    logger.warning(f"Equity row {idx} skipped: no valid identifier (position, ticker_symbol, cusip)")
+                    continue
+
+                if vol == 0 and beta == 0:
+                    logger.warning(f"Equity row {idx} has vol=0 and beta=0: position={position}, ticker_symbol={ticker_symbol}, cusip={cusip}")
+
+                record = RiskStatisticEquity(
+                    position=position if position else None,
+                    ticker_symbol=ticker_symbol if ticker_symbol else None,
+                    cusip=cusip if cusip else None,
+                    vol=vol,
+                    beta=beta,
+                    upload_date=upload_date
+                )
+                db.add(record)
+                equity_records += 1
+                logger.debug(f"Added equity record: position={record.position}, vol={record.vol}, beta={record.beta}")
+        except Exception as e:
+            logger.error(f"Error processing Equity tab: {str(e)}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+    
+    # Process Fixed Income tab
+    fixed_income_records = 0
+    fixed_income_sheet_name = next((name for name in xls.sheet_names if name.lower() == "fixed income"), None)
+    if fixed_income_sheet_name:
+        logger.info(f"Fixed Income tab found: {fixed_income_sheet_name}")
+        try:
+            df = pd.read_excel(xls, sheet_name=fixed_income_sheet_name, header=0)
+            logger.info(f"Fixed Income tab loaded with {len(df)} rows before cleaning")
+            
+            # Clean column names
+            df.columns = [col.strip().lower() if isinstance(col, str) else str(col).strip().lower() for col in df.columns]
+            logger.debug(f"Fixed Income tab columns after cleaning: {list(df.columns)}")
+            
+            # Drop empty rows
+            relevant_columns = ['position', 'ticker symbol', 'amended id', 'vol or duration']
+            df = df.dropna(subset=relevant_columns, how='all')
+            logger.info(f"Fixed Income tab after dropping empty rows: {len(df)} rows")
+            
+            # Log the first few rows
+            if not df.empty:
+                logger.debug(f"First 5 rows of Fixed Income tab:\n{df.head().to_string()}")
+            
+            for idx, row in df.iterrows():
+                position = str(row.get("position", "")).strip() if pd.notnull(row.get("position")) else ''
+                ticker_symbol = str(row.get("ticker symbol", "")).strip() if pd.notnull(row.get("ticker symbol")) else ''
+                cusip = str(row.get("amended id", "")).strip() if pd.notnull(row.get("amended id")) else ''
+                duration = row.get("vol or duration", 0.0)
+
+                # Convert error values to 0.0
+                if isinstance(duration, str) and any(err in duration.lower() for err in ["#n/a", "#value"]):
+                    duration = 0.0
+
+                try:
+                    duration = float(duration) if pd.notnull(duration) else 0.0
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid duration value for fixed income row {idx}: position={position}, duration={duration}. Setting to 0.0")
+                    duration = 0.0
+
+                logger.debug(f"Fixed Income row {idx} data: position={position}, ticker_symbol={ticker_symbol}, cusip={cusip}, duration={duration}")
+
+                if not position and not ticker_symbol and not cusip:
+                    logger.warning(f"Fixed Income row {idx} skipped: no valid identifier (position, ticker_symbol, cusip)")
+                    continue
+
+                if duration == 0:
+                    logger.warning(f"Fixed Income row {idx} has duration=0: position={position}, ticker_symbol={ticker_symbol}, cusip={cusip}")
+
+                record = RiskStatisticFixedIncome(
+                    position=position if position else None,
+                    ticker_symbol=ticker_symbol if ticker_symbol else None,
+                    cusip=cusip if cusip else None,
+                    duration=duration,
+                    upload_date=upload_date
+                )
+                db.add(record)
+                fixed_income_records += 1
+                logger.debug(f"Added Fixed Income record: position={record.position}, duration={record.duration}")
+        except Exception as e:
+            logger.error(f"Error processing Fixed Income tab: {str(e)}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+    
+    # Process Alternatives tab
+    alternatives_records = 0
+    alternatives_sheet_name = next((name for name in xls.sheet_names if name.lower() == "alternatives"), None)
+    if alternatives_sheet_name:
+        logger.info(f"Alternatives tab found: {alternatives_sheet_name}")
+        try:
+            df = pd.read_excel(xls, sheet_name=alternatives_sheet_name, header=0)
+            logger.info(f"Alternatives tab loaded with {len(df)} rows before cleaning")
+            
+            # Clean column names
+            df.columns = [col.strip().lower() if isinstance(col, str) else str(col).strip().lower() for col in df.columns]
+            logger.debug(f"Alternatives tab columns after cleaning: {list(df.columns)}")
+            
+            # Drop empty rows
+            relevant_columns = ['position', 'ticker symbol', 'amended id', 'beta']
+            df = df.dropna(subset=relevant_columns, how='all')
+            logger.info(f"Alternatives tab after dropping empty rows: {len(df)} rows")
+            
+            # Log the first few rows
+            if not df.empty:
+                logger.debug(f"First 5 rows of Alternatives tab:\n{df.head().to_string()}")
+            
+            for idx, row in df.iterrows():
+                position = str(row.get("position", "")).strip() if pd.notnull(row.get("position")) else ''
+                ticker_symbol = str(row.get("ticker symbol", "")).strip() if pd.notnull(row.get("ticker symbol")) else ''
+                cusip = str(row.get("amended id", "")).strip() if pd.notnull(row.get("amended id")) else ''
+                beta = row.get("beta", 0.0)
+
+                # Convert error values to 0.0
+                if isinstance(beta, str) and any(err in beta.lower() for err in ["#n/a", "#value"]):
+                    beta = 0.0
+
+                try:
+                    beta = float(beta) if pd.notnull(beta) else 0.0
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid beta value for alternatives row {idx}: position={position}, beta={beta}. Setting to 0.0")
+                    beta = 0.0
+
+                logger.debug(f"Alternatives row {idx} data: position={position}, ticker_symbol={ticker_symbol}, cusip={cusip}, beta={beta}")
+
+                if not position and not ticker_symbol and not cusip:
+                    logger.warning(f"Alternatives row {idx} skipped: no valid identifier (position, ticker_symbol, cusip)")
+                    continue
+
+                if beta == 0:
+                    logger.warning(f"Alternatives row {idx} has beta=0: position={position}, ticker_symbol={ticker_symbol}, cusip={cusip}")
+
+                record = RiskStatisticAlternatives(
+                    position=position if position else None,
+                    ticker_symbol=ticker_symbol if ticker_symbol else None,
+                    cusip=cusip if cusip else None,
+                    beta=beta,
+                    upload_date=upload_date
+                )
+                db.add(record)
+                alternatives_records += 1
+                logger.debug(f"Added Alternatives record: position={record.position}, beta={record.beta}")
+        except Exception as e:
+            logger.error(f"Error processing Alternatives tab: {str(e)}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+    
+    db.commit()
+    logger.info(f"Upload completed: {equity_records} equity records, {fixed_income_records} fixed income records, {alternatives_records} alternatives records")
+
+    return {"message": "Uploaded risk_stats.xlsx"}
+
+def generate_portfolio_report(report_date_str: str, db: Session, level: str = "portfolio", filters: dict = None):
+    logger.info(f"Generating portfolio report for date {report_date_str} at level {level} with filters {filters}")
+    try:
+        report_date = datetime.strptime(report_date_str, "%Y-%m-%d").date()
+
+        latest_upload = db.query(func.max(FinancialPosition.upload_date)).filter(
+            FinancialPosition.date == report_date
+        ).scalar()
+        if not latest_upload:
+            logger.error(f"No data found for date {report_date_str}")
+            return {"error": f"No data found for date {report_date_str}"}
+
+        # Preload risk statistics for efficiency
+        equity_risk_stats = db.query(RiskStatisticEquity).filter(RiskStatisticEquity.upload_date <= report_date).all()
+        equity_risk_by_position = {}
+        equity_risk_by_cusip = {}
+        equity_risk_by_ticker = {}
+        for stat in equity_risk_stats:
+            if stat.position:
+                if stat.position not in equity_risk_by_position or equity_risk_by_position[stat.position].upload_date < stat.upload_date:
+                    equity_risk_by_position[stat.position] = stat
+            if stat.cusip:
+                if stat.cusip not in equity_risk_by_cusip or equity_risk_by_cusip[stat.cusip].upload_date < stat.upload_date:
+                    equity_risk_by_cusip[stat.cusip] = stat
+            if stat.ticker_symbol:
+                if stat.ticker_symbol not in equity_risk_by_ticker or equity_risk_by_ticker[stat.ticker_symbol].upload_date < stat.upload_date:
+                    equity_risk_by_ticker[stat.ticker_symbol] = stat
+
+        fixed_income_risk_stats = db.query(RiskStatisticFixedIncome).filter(RiskStatisticFixedIncome.upload_date <= report_date).all()
+        fixed_income_risk_by_position = {}
+        fixed_income_risk_by_cusip = {}
+        fixed_income_risk_by_ticker = {}
+        for stat in fixed_income_risk_stats:
+            if stat.position:
+                if stat.position not in fixed_income_risk_by_position or fixed_income_risk_by_position[stat.position].upload_date < stat.upload_date:
+                    fixed_income_risk_by_position[stat.position] = stat
+            if stat.cusip:
+                if stat.cusip not in fixed_income_risk_by_cusip or fixed_income_risk_by_cusip[stat.cusip].upload_date < stat.upload_date:
+                    fixed_income_risk_by_cusip[stat.cusip] = stat
+            if stat.ticker_symbol:
+                if stat.ticker_symbol not in fixed_income_risk_by_ticker or fixed_income_risk_by_ticker[stat.ticker_symbol].upload_date < stat.upload_date:
+                    fixed_income_risk_by_ticker[stat.ticker_symbol] = stat
+
+        alternatives_risk_stats = db.query(RiskStatisticAlternatives).filter(RiskStatisticAlternatives.upload_date <= report_date).all()
+        alternatives_risk_by_position = {}
+        alternatives_risk_by_cusip = {}
+        alternatives_risk_by_ticker = {}
+        for stat in alternatives_risk_stats:
+            if stat.position:
+                if stat.position not in alternatives_risk_by_position or alternatives_risk_by_position[stat.position].upload_date < stat.upload_date:
+                    alternatives_risk_by_position[stat.position] = stat
+            if stat.cusip:
+                if stat.cusip not in alternatives_risk_by_cusip or alternatives_risk_by_cusip[stat.cusip].upload_date < stat.upload_date:
+                    alternatives_risk_by_cusip[stat.cusip] = stat
+            if stat.ticker_symbol:
+                if stat.ticker_symbol not in alternatives_risk_by_ticker or alternatives_risk_by_ticker[stat.ticker_symbol].upload_date < stat.upload_date:
+                    alternatives_risk_by_ticker[stat.ticker_symbol] = stat
+
+        # Initialize dictionaries for weighted sums
+        equity_vol_sums = {}
+        equity_beta_sums = {}
+        fixed_income_duration_sums = {}
+        hard_currency_hc_beta_sums = {}
+
+        # Update query to include cusip and ticker_symbol for risk stats matching
+        query = db.query(
+            FinancialPosition.top_level_client,
+            OwnershipHierarchy.groups,
+            FinancialPosition.portfolio,
+            FinancialPosition.holding_account,
+            FinancialPosition.holding_account_number,
+            FinancialPosition.asset_class,
+            FinancialPosition.second_level,
+            FinancialPosition.third_level,
+            FinancialPosition.liquid_vs_illiquid,
+            FinancialPosition.adjusted_value,
+            FinancialPosition.position,
+            FinancialPosition.cusip,
+            FinancialPosition.ticker_symbol
+        ).join(
+            OwnershipHierarchy,
+            FinancialPosition.holding_account_number == OwnershipHierarchy.holding_account_number
+        ).filter(
+            FinancialPosition.date == report_date,
+            FinancialPosition.upload_date == latest_upload
+        )
+
+        if level == "client":
+            key_field = FinancialPosition.top_level_client
+            if filters and "clients" in filters:
+                query = query.filter(or_(*[FinancialPosition.top_level_client == client for client in filters["clients"]]))
+        elif level == "group":
+            key_field = OwnershipHierarchy.groups
+            if filters and "groups" in filters:
+                query = query.filter(or_(*[OwnershipHierarchy.groups == group for group in filters["groups"]]))
+        elif level == "portfolio":
+            key_field = FinancialPosition.portfolio
+            if filters and "portfolios" in filters:
+                query = query.filter(or_(*[FinancialPosition.portfolio == portfolio for portfolio in filters["portfolios"]]))
+        elif level == "account":
+            key_field = FinancialPosition.holding_account_number
+            if filters and "accounts" in filters:
+                query = query.filter(or_(*[FinancialPosition.holding_account_number == account for account in filters["accounts"]]))
+        elif level == "custom":
+            key_field = FinancialPosition.holding_account_number
+            if filters and "custom_accounts" in filters:
+                query = query.filter(or_(*[FinancialPosition.holding_account_number == account for account in filters["custom_accounts"]]))
+        else:
+            raise ValueError(f"Unsupported level: {level}")
+
+        positions = query.all()
+        logger.info(f"Fetched {len(positions)} positions")
+
+        totals_query = db.query(
+            financial_summary.c.level_key,
+            financial_summary.c.total_adjusted_value
+        ).filter(
+            financial_summary.c.level == level,
+            financial_summary.c.report_date == report_date,
+            financial_summary.c.upload_date == latest_upload
+        )
+
+        if filters:
+            if level == "client" and "clients" in filters:
+                totals_query = totals_query.filter(or_(*[financial_summary.c.level_key == client for client in filters["clients"]]))
+            elif level == "group" and "groups" in filters:
+                totals_query = totals_query.filter(or_(*[financial_summary.c.level_key == group for group in filters["groups"]]))
+            elif level == "portfolio" and "portfolios" in filters:
+                totals_query = totals_query.filter(or_(*[financial_summary.c.level_key == portfolio for portfolio in filters["portfolios"]]))
+            elif level == "account" and "accounts" in filters:
+                totals_query = totals_query.filter(or_(*[financial_summary.c.level_key == account for account in filters["accounts"]]))
+            elif level == "custom" and "custom_accounts" in filters:
+                totals_query = totals_query.filter(or_(*[financial_summary.c.level_key == account for account in filters["custom_accounts"]]))
+
+        totals = {row.level_key: row.total_adjusted_value for row in totals_query.all()}
+        logger.info(f"Fetched totals for {len(totals)} keys")
+
+        performance_metrics = {}
+        for key in totals:
+            performance_metrics[key] = {}
+
+            prev_day = report_date - timedelta(days=1)
+            prev_day_total = db.query(financial_summary.c.total_adjusted_value).filter(
+                financial_summary.c.level == level,
+                financial_summary.c.level_key == key,
+                financial_summary.c.report_date == prev_day
+            ).order_by(financial_summary.c.upload_date.desc()).first()
+            dod = None
+            if prev_day_total and prev_day_total.total_adjusted_value:
+                prev_value = prev_day_total.total_adjusted_value
+                current_value = totals[key]
+                if prev_value != 0:
+                    dod = ((current_value - prev_value) / prev_value) * 100
+            performance_metrics[key]["1D"] = round(dod, 2) if dod is not None else "N/A"
+
+            start_of_month = date(report_date.year, report_date.month, 1)
+            mtd_total = db.query(financial_summary.c.total_adjusted_value).filter(
+                financial_summary.c.level == level,
+                financial_summary.c.level_key == key,
+                financial_summary.c.report_date == start_of_month
+            ).order_by(financial_summary.c.upload_date.desc()).first()
+            mtd = None
+            if mtd_total and mtd_total.total_adjusted_value:
+                start_value = mtd_total.total_adjusted_value
+                current_value = totals[key]
+                if start_value != 0:
+                    mtd = ((current_value - start_value) / start_value) * 100
+            performance_metrics[key]["MTD"] = round(mtd, 2) if mtd is not None else "N/A"
+
+            quarter_start_month = ((report_date.month - 1) // 3) * 3 + 1
+            start_of_quarter = date(report_date.year, quarter_start_month, 1)
+            qtd_total = db.query(financial_summary.c.total_adjusted_value).filter(
+                financial_summary.c.level == level,
+                financial_summary.c.level_key == key,
+                financial_summary.c.report_date == start_of_quarter
+            ).order_by(financial_summary.c.upload_date.desc()).first()
+            qtd = None
+            if qtd_total and qtd_total.total_adjusted_value:
+                start_value = qtd_total.total_adjusted_value
+                current_value = totals[key]
+                if start_value != 0:
+                    qtd = ((current_value - start_value) / start_value) * 100
+            performance_metrics[key]["QTD"] = round(qtd, 2) if qtd is not None else "N/A"
+
+            start_of_year = date(report_date.year, 1, 1)
+            ytd_total = db.query(financial_summary.c.total_adjusted_value).filter(
+                financial_summary.c.level == level,
+                financial_summary.c.level_key == key,
+                financial_summary.c.report_date == start_of_year
+            ).order_by(financial_summary.c.upload_date.desc()).first()
+            ytd = None
+            if ytd_total and ytd_total.total_adjusted_value:
+                start_value = ytd_total.total_adjusted_value
+                current_value = totals[key]
+                if start_value != 0:
+                    ytd = ((current_value - start_value) / start_value) * 100
+            performance_metrics[key]["YTD"] = round(ytd, 2) if ytd is not None else "N/A"
+
+        report = {}
+        def get_risk_stat(position, cusip, ticker_symbol, risk_by_position, risk_by_cusip, risk_by_ticker):
+            for identifier in [position, cusip, ticker_symbol]:
+                if identifier:
+                    if identifier in risk_by_position:
+                        return risk_by_position[identifier]
+                    elif identifier in risk_by_cusip:
+                        return risk_by_cusip[identifier]
+                    elif identifier in risk_by_ticker:
+                        return risk_by_ticker[identifier]
+            return None
+
+        for pos in positions:
+            if level == "client":
+                key = pos[0]
+            elif level == "group":
+                key = pos[1]
+            elif level == "portfolio":
+                key = pos[2]
+            elif level == "account":
+                key = pos[4]
+            elif level == "custom":
+                key = "Custom Collection"
+            else:
+                raise ValueError(f"Unsupported level: {level}")
+
+            if key not in totals:
+                continue
+
+            if key not in report:
+                report[key] = {
+                    "pm": "",
+                    "classification": "",
+                    "equity": {
+                        "total": 0.0,
+                        "vol": 0.0,
+                        "beta": 0.0,
+                        "beta_adjusted": 0.0,
+                        "breakdown": {
+                            "US Markets": 0.0,
+                            "Global Markets": 0.0,
+                            "Emerging Markets": 0.0,
+                            "Commodities": 0.0,
+                            "Real Estate": 0.0,
+                            "Private Equity": 0.0,
+                            "High Yield": 0.0,
+                            "Venture Capital": 0.0,
+                            "Low Beta Alpha": 0.0,
+                            "Equity Derivatives": 0.0,
+                            "Income Notes": 0.0
+                        }
+                    },
+                    "fixed_income": {
+                        "total": 0.0,
+                        "duration": 0.0,
+                        "breakdown": {
+                            "Municipal Bonds": {
+                                "total": 0.0,
+                                "Low Duration": 0.0,
+                                "Market Duration": 0.0,
+                                "Long Duration": 0.0
+                            },
+                            "Government Bonds": {
+                                "total": 0.0,
+                                "Low Duration": 0.0,
+                                "Market Duration": 0.0,
+                                "Long Duration": 0.0
+                            },
+                            "Investment Grade": {
+                                "total": 0.0,
+                                "Low Duration": 0.0,
+                                "Market Duration": 0.0,
+                                "Long Duration": 0.0
+                            },
+                            "Fixed Income Derivatives": 0.0
+                        }
+                    },
+                    "hard_currency": {
+                        "total": 0.0,
+                        "hc_beta": 0.0,
+                        "beta_adjusted": 0.0,
+                        "breakdown": {
+                            "Gold": 0.0,
+                            "Gold Miners": 0.0,
+                            "Silver": 0.0,
+                            "Silver Miners": 0.0,
+                            "Industrial Metals": 0.0,
+                            "Hard Currency Private Investment": 0.0,
+                            "Precious Metals Derivatives": 0.0
+                        }
+                    },
+                    "uncorrelated_alternatives": {
+                        "total": 0.0,
+                        "breakdown": {
+                            "Crypto": 0.0,
+                            "Proficio Short Term Alts": 0.0,
+                            "Proficio Long Term Alts": 0.0,
+                            "Other": 0.0
+                        }
+                    },
+                    "cash_and_cash_equivalent": 0.0,
+                    "liquidity": {
+                        "liquid_assets": 0.0,
+                        "illiquid_assets": 0.0
+                    },
+                    "performance": performance_metrics.get(key, {
+                        "1D": "N/A",
+                        "MTD": "N/A",
+                        "QTD": "N/A",
+                        "YTD": "N/A"
+                    }),
+                    "adjusted_value": 0.0
+                }
+
+            adjusted_value = pos[9]
+            liquid_vs_illiquid = pos[8]
+            report[key]["adjusted_value"] += adjusted_value
+            if liquid_vs_illiquid == "Liquid":
+                report[key]["liquidity"]["liquid_assets"] += adjusted_value
+            elif liquid_vs_illiquid == "Illiquid":
+                report[key]["liquidity"]["illiquid_assets"] += adjusted_value
+
+            asset_class = pos[5]
+            second_level = pos[6]
+            third_level = pos[7]
+            position = pos[10]
+            cusip = pos[11]
+            ticker_symbol = pos[12]
+
+            if asset_class == "Equity":
+                report[key]["equity"]["total"] += adjusted_value
+                risk_stat = get_risk_stat(position, cusip, ticker_symbol, equity_risk_by_position, equity_risk_by_cusip, equity_risk_by_ticker)
+                if risk_stat:
+                    if key not in equity_vol_sums:
+                        equity_vol_sums[key] = 0.0
+                        equity_beta_sums[key] = 0.0
+                    equity_vol_sums[key] += risk_stat.vol * adjusted_value
+                    equity_beta_sums[key] += risk_stat.beta * adjusted_value
+                    logger.debug(f"Equity risk stats for position {position}: vol={risk_stat.vol}, beta={risk_stat.beta}")
+                else:
+                    logger.warning(f"No risk stats found for equity position {position}, cusip {cusip}, ticker {ticker_symbol}")
+                second_level_key = second_level if second_level in report[key]["equity"]["breakdown"] else None
+                if second_level_key:
+                    report[key]["equity"]["breakdown"][second_level_key] += adjusted_value
+
+            elif asset_class == "Fixed Income":
+                report[key]["fixed_income"]["total"] += adjusted_value
+                risk_stat = get_risk_stat(position, cusip, ticker_symbol, fixed_income_risk_by_position, fixed_income_risk_by_cusip, fixed_income_risk_by_ticker)
+                duration = 0.0
+                if risk_stat:
+                    if key not in fixed_income_duration_sums:
+                        fixed_income_duration_sums[key] = 0.0
+                    fixed_income_duration_sums[key] += risk_stat.duration * adjusted_value
+                    duration = risk_stat.duration
+                    logger.debug(f"Fixed Income risk stats for position {position}: duration={risk_stat.duration}")
+                else:
+                    logger.warning(f"No risk stats found for fixed income position {position}, cusip {cusip}, ticker {ticker_symbol}")
+                second_level_key = second_level if second_level in report[key]["fixed_income"]["breakdown"] else None
+                if second_level_key:
+                    if second_level_key == "Fixed Income Derivatives":
+                        report[key]["fixed_income"]["breakdown"][second_level_key] += adjusted_value
+                    else:
+                        report[key]["fixed_income"]["breakdown"][second_level_key]["total"] += adjusted_value
+                        # Classify the duration into Low, Market, or Long
+                        if duration <= 3.0:
+                            report[key]["fixed_income"]["breakdown"][second_level_key]["Low Duration"] += adjusted_value
+                        elif 3.0 < duration <= 7.0:
+                            report[key]["fixed_income"]["breakdown"][second_level_key]["Market Duration"] += adjusted_value
+                        else:
+                            report[key]["fixed_income"]["breakdown"][second_level_key]["Long Duration"] += adjusted_value
+
+            elif asset_class == "Alternatives":
+                if second_level == "Precious Metals":
+                    report[key]["hard_currency"]["total"] += adjusted_value
+                    risk_stat = get_risk_stat(position, cusip, ticker_symbol, alternatives_risk_by_position, alternatives_risk_by_cusip, alternatives_risk_by_ticker)
+                    if risk_stat:
+                        if key not in hard_currency_hc_beta_sums:
+                            hard_currency_hc_beta_sums[key] = 0.0
+                        hard_currency_hc_beta_sums[key] += risk_stat.beta * adjusted_value
+                        logger.debug(f"Hard Currency risk stats for position {position}: hc_beta={risk_stat.beta}")
+                    else:
+                        logger.warning(f"No risk stats found for hard currency position {position}, cusip {cusip}, ticker {ticker_symbol}")
+                    third_level_key = third_level if third_level in report[key]["hard_currency"]["breakdown"] else None
+                    if third_level_key:
+                        report[key]["hard_currency"]["breakdown"][third_level_key] += adjusted_value
+                else:
+                    report[key]["uncorrelated_alternatives"]["total"] += adjusted_value
+                    if third_level == "Crypto":
+                        report[key]["uncorrelated_alternatives"]["breakdown"]["Crypto"] += adjusted_value
+                    elif "Proficio Short Term Alts" in position:
+                        report[key]["uncorrelated_alternatives"]["breakdown"]["Proficio Short Term Alts"] += adjusted_value
+                    elif "Proficio Long Term Alts" in position:
+                        report[key]["uncorrelated_alternatives"]["breakdown"]["Proficio Long Term Alts"] += adjusted_value
+                    else:
+                        report[key]["uncorrelated_alternatives"]["breakdown"]["Other"] += adjusted_value
+
+            elif asset_class == "Cash & Cash Equivalent":
+                report[key]["cash_and_cash_equivalent"] += adjusted_value
+
+        # Calculate weighted averages for risk statistics
+        for key in report:
+            if key in equity_vol_sums and report[key]["equity"]["total"] > 0:
+                report[key]["equity"]["vol"] = equity_vol_sums[key] / report[key]["equity"]["total"]
+                report[key]["equity"]["beta"] = equity_beta_sums[key] / report[key]["equity"]["total"]
+                logger.info(f"Equity risk stats for {key}: vol={report[key]['equity']['vol']}, beta={report[key]['equity']['beta']}")
+            else:
+                report[key]["equity"]["vol"] = 0.0
+                report[key]["equity"]["beta"] = 0.0
+                logger.debug(f"No equity risk stats calculated for {key}")
+
+            if key in fixed_income_duration_sums and report[key]["fixed_income"]["total"] > 0:
+                report[key]["fixed_income"]["duration"] = fixed_income_duration_sums[key] / report[key]["fixed_income"]["total"]
+                logger.info(f"Fixed Income duration for {key}: duration={report[key]['fixed_income']['duration']}")
+            else:
+                report[key]["fixed_income"]["duration"] = 0.0
+                logger.debug(f"No fixed income duration calculated for {key}")
+
+            if key in hard_currency_hc_beta_sums and report[key]["hard_currency"]["total"] > 0:
+                report[key]["hard_currency"]["hc_beta"] = hard_currency_hc_beta_sums[key] / report[key]["hard_currency"]["total"]
+                logger.info(f"Hard Currency hc_beta for {key}: hc_beta={report[key]['hard_currency']['hc_beta']}")
+            else:
+                report[key]["hard_currency"]["hc_beta"] = 0.0
+                logger.debug(f"No hard currency hc_beta calculated for {key}")
+
+            total_value = totals[key]
+            if total_value == 0:
+                continue
+
+            report[key]["adjusted_value"] = f"${int(report[key]['adjusted_value']):,}"
+
+            equity_total = report[key]["equity"]["total"]
+            report[key]["equity"]["total"] = round((equity_total / total_value) * 100, 2)
+            for category in report[key]["equity"]["breakdown"]:
+                report[key]["equity"]["breakdown"][category] = round((report[key]["equity"]["breakdown"][category] / total_value) * 100, 2)
+            report[key]["equity"]["beta_adjusted"] = report[key]["equity"]["beta"] * (report[key]["equity"]["total"] / 100)
+
+            fixed_income_total = report[key]["fixed_income"]["total"]
+            report[key]["fixed_income"]["total"] = round((fixed_income_total / total_value) * 100, 2)
+            for category in report[key]["fixed_income"]["breakdown"]:
+                if category == "Fixed Income Derivatives":
+                    report[key]["fixed_income"]["breakdown"][category] = round((report[key]["fixed_income"]["breakdown"][category] / total_value) * 100, 2)
+                else:
+                    category_total = report[key]["fixed_income"]["breakdown"][category]["total"]
+                    report[key]["fixed_income"]["breakdown"][category]["total"] = round((category_total / total_value) * 100, 2)
+                    report[key]["fixed_income"]["breakdown"][category]["Low Duration"] = round((report[key]["fixed_income"]["breakdown"][category]["Low Duration"] / total_value) * 100, 2)
+                    report[key]["fixed_income"]["breakdown"][category]["Market Duration"] = round((report[key]["fixed_income"]["breakdown"][category]["Market Duration"] / total_value) * 100, 2)
+                    report[key]["fixed_income"]["breakdown"][category]["Long Duration"] = round((report[key]["fixed_income"]["breakdown"][category]["Long Duration"] / total_value) * 100, 2)
+
+            hard_currency_total = report[key]["hard_currency"]["total"]
+            report[key]["hard_currency"]["total"] = round((hard_currency_total / total_value) * 100, 2)
+            for category in report[key]["hard_currency"]["breakdown"]:
+                report[key]["hard_currency"]["breakdown"][category] = round((report[key]["hard_currency"]["breakdown"][category] / total_value) * 100, 2)
+            report[key]["hard_currency"]["beta_adjusted"] = report[key]["hard_currency"]["hc_beta"] * (report[key]["hard_currency"]["total"] / 100)
+
+            uncorrelated_alts_total = report[key]["uncorrelated_alternatives"]["total"]
+            report[key]["uncorrelated_alternatives"]["total"] = round((uncorrelated_alts_total / total_value) * 100, 2)
+            for category in report[key]["uncorrelated_alternatives"]["breakdown"]:
+                report[key]["uncorrelated_alternatives"]["breakdown"][category] = round((report[key]["uncorrelated_alternatives"]["breakdown"][category] / total_value) * 100, 2)
+
+            report[key]["cash_and_cash_equivalent"] = round((report[key]["cash_and_cash_equivalent"] / total_value) * 100, 2)
+
+            report[key]["liquidity"]["liquid_assets"] = round((report[key]["liquidity"]["liquid_assets"] / total_value) * 100, 2)
+            report[key]["liquidity"]["illiquid_assets"] = round((report[key]["liquidity"]["illiquid_assets"] / total_value) * 100, 2)
+
+        return report
+
+    except Exception as e:
+        logger.error(f"Error generating portfolio report: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        raise Exception(f"Error generating report: {str(e)}")
+
+def get_chart_allocations(report_date_str: str, db: Session, level: str = "portfolio", filters: dict = None):
+    report = generate_portfolio_report(report_date_str, db, level, filters)
+    if "error" in report:
+        return report
+
+    chart_data = {}
+    for key in report:
+        chart_data[key] = {
+            "equity": {
+                "labels": list(report[key]["equity"]["breakdown"].keys()),
+                "percentages": [report[key]["equity"]["breakdown"][cat] for cat in report[key]["equity"]["breakdown"]],
+                "total_percentage": report[key]["equity"]["total"],
+                "color": "pastel_blue"
+            },
+            "fixed_income": {
+                "labels": list(report[key]["fixed_income"]["breakdown"].keys()),
+                "percentages": [report[key]["fixed_income"]["breakdown"][cat]["total"] if isinstance(report[key]["fixed_income"]["breakdown"][cat], dict) else report[key]["fixed_income"]["breakdown"][cat] for cat in report[key]["fixed_income"]["breakdown"]],
+                "total_percentage": report[key]["fixed_income"]["total"],
+                "color": "pastel_red"
+            },
+            "hard_currency": {
+                "labels": list(report[key]["hard_currency"]["breakdown"].keys()),
+                "percentages": [report[key]["hard_currency"]["breakdown"][cat] for cat in report[key]["hard_currency"]["breakdown"]],
+                "total_percentage": report[key]["hard_currency"]["total"],
+                "color": "pastel_yellow"
+            },
+            "uncorrelated_alternatives": {
+                "labels": list(report[key]["uncorrelated_alternatives"]["breakdown"].keys()),
+                "percentages": [report[key]["uncorrelated_alternatives"]["breakdown"][cat] for cat in report[key]["uncorrelated_alternatives"]["breakdown"]],
+                "total_percentage": report[key]["uncorrelated_alternatives"]["total"],
+                "color": "pastel_green"
+            },
+            "cash_and_cash_equivalent": {
+                "labels": ["Cash & Cash Equivalent"],
+                "percentages": [report[key]["cash_and_cash_equivalent"]],
+                "total_percentage": report[key]["cash_and_cash_equivalent"],
+                "color": "pastel_gray"
+            }
+        }
+    return chart_data
+
+def get_chart_performance(report_date_str: str, db: Session, level: str = "portfolio", filters: dict = None):
+    report = generate_portfolio_report(report_date_str, db, level, filters)
+    if "error" in report:
+        return report
+
+    chart_data = {}
+    for key in report:
+        chart_data[key] = {
+            "labels": ["1D", "MTD", "QTD", "YTD"],
+            "data": [
+                report[key]["performance"]["1D"],
+                report[key]["performance"]["MTD"],
+                report[key]["performance"]["QTD"],
+                report[key]["performance"]["YTD"]
+            ]
+        }
+    return chart_data
+
+def get_chart_liquidity(report_date_str: str, db: Session, level: str = "portfolio", filters: dict = None):
+    report = generate_portfolio_report(report_date_str, db, level, filters)
+    if "error" in report:
+        return report
+
+    chart_data = {}
+    for key in report:
+        chart_data[key] = {
+            "labels": ["Liquid Assets", "Illiquid Assets"],
+            "data": [
+                report[key]["liquidity"]["liquid_assets"],
+                report[key]["liquidity"]["illiquid_assets"]
+            ]
+        }
+    return chart_data
+
+def get_ownership_tree(db: Session):
+    hierarchies = db.query(OwnershipHierarchy).all()
+    tree = {}
+    for h in hierarchies:
+        client = h.top_level_client
+        if client not in tree:
+            tree[client] = []
+        tree[client].append({
+            "holding_account": h.holding_account,
+            "holding_account_number": h.holding_account_number,
+            "entity_id": h.entity_id,
+            "portfolio": h.portfolio,
+            "groups": h.groups,
+            "last_updated": h.last_updated.strftime('%Y-%m-%d') if h.last_updated else None
+        })
+    return tree
