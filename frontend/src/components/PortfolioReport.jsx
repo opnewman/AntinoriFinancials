@@ -349,10 +349,16 @@ window.PortfolioReport = ({
                             Market Duration
                         </td>
                         <td className="border px-4 py-2 text-right">
-                            {formatValue(
-                                fixed_income.subcategories.municipal_bonds
-                                    .market_duration,
-                            )}
+                            {(() => {
+                                // Check if we have fixed income risk metrics with municipal bonds data
+                                if (risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.municipal_bonds) {
+                                    console.log("Using risk metrics for municipal bonds market duration", risk_metrics.fixed_income.municipal_bonds.market_duration);
+                                    return formatValue(risk_metrics.fixed_income.municipal_bonds.market_duration);
+                                } else {
+                                    // Fallback to standard data
+                                    return formatValue(fixed_income.subcategories.municipal_bonds.market_duration);
+                                }
+                            })()}
                         </td>
                     </tr>
                     <tr>
@@ -360,10 +366,16 @@ window.PortfolioReport = ({
                             Long Duration
                         </td>
                         <td className="border px-4 py-2 text-right">
-                            {formatValue(
-                                fixed_income.subcategories.municipal_bonds
-                                    .long_duration,
-                            )}
+                            {(() => {
+                                // Check if we have fixed income risk metrics with municipal bonds data
+                                if (risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.municipal_bonds) {
+                                    console.log("Using risk metrics for municipal bonds long duration", risk_metrics.fixed_income.municipal_bonds.long_duration);
+                                    return formatValue(risk_metrics.fixed_income.municipal_bonds.long_duration);
+                                } else {
+                                    // Fallback to standard data
+                                    return formatValue(fixed_income.subcategories.municipal_bonds.long_duration);
+                                }
+                            })()}
                         </td>
                     </tr>
                     <tr>
@@ -382,10 +394,16 @@ window.PortfolioReport = ({
                             Low Duration
                         </td>
                         <td className="border px-4 py-2 text-right">
-                            {formatValue(
-                                fixed_income.subcategories.investment_grade
-                                    .short_duration,
-                            )}
+                            {(() => {
+                                // Check if we have fixed income risk metrics with investment grade data
+                                if (risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.investment_grade) {
+                                    console.log("Using risk metrics for investment grade short duration", risk_metrics.fixed_income.investment_grade.short_duration);
+                                    return formatValue(risk_metrics.fixed_income.investment_grade.short_duration);
+                                } else {
+                                    // Fallback to standard data
+                                    return formatValue(fixed_income.subcategories.investment_grade.short_duration);
+                                }
+                            })()}
                         </td>
                     </tr>
                     <tr>
@@ -393,10 +411,16 @@ window.PortfolioReport = ({
                             Market Duration
                         </td>
                         <td className="border px-4 py-2 text-right">
-                            {formatValue(
-                                fixed_income.subcategories.investment_grade
-                                    .market_duration,
-                            )}
+                            {(() => {
+                                // Check if we have fixed income risk metrics with investment grade data
+                                if (risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.investment_grade) {
+                                    console.log("Using risk metrics for investment grade market duration", risk_metrics.fixed_income.investment_grade.market_duration);
+                                    return formatValue(risk_metrics.fixed_income.investment_grade.market_duration);
+                                } else {
+                                    // Fallback to standard data
+                                    return formatValue(fixed_income.subcategories.investment_grade.market_duration);
+                                }
+                            })()}
                         </td>
                     </tr>
                     <tr>
@@ -404,10 +428,16 @@ window.PortfolioReport = ({
                             Long Duration
                         </td>
                         <td className="border px-4 py-2 text-right">
-                            {formatValue(
-                                fixed_income.subcategories.investment_grade
-                                    .long_duration,
-                            )}
+                            {(() => {
+                                // Check if we have fixed income risk metrics with investment grade data
+                                if (risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.investment_grade) {
+                                    console.log("Using risk metrics for investment grade long duration", risk_metrics.fixed_income.investment_grade.long_duration);
+                                    return formatValue(risk_metrics.fixed_income.investment_grade.long_duration);
+                                } else {
+                                    // Fallback to standard data
+                                    return formatValue(fixed_income.subcategories.investment_grade.long_duration);
+                                }
+                            })()}
                         </td>
                     </tr>
                     <tr>
@@ -426,10 +456,16 @@ window.PortfolioReport = ({
                             Low Duration
                         </td>
                         <td className="border px-4 py-2 text-right">
-                            {formatValue(
-                                fixed_income.subcategories.government_bonds
-                                    .short_duration,
-                            )}
+                            {(() => {
+                                // Check if we have fixed income risk metrics with government bonds data
+                                if (risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.government_bonds) {
+                                    console.log("Using risk metrics for government bonds short duration", risk_metrics.fixed_income.government_bonds.short_duration);
+                                    return formatValue(risk_metrics.fixed_income.government_bonds.short_duration);
+                                } else {
+                                    // Fallback to standard data
+                                    return formatValue(fixed_income.subcategories.government_bonds.short_duration);
+                                }
+                            })()}
                         </td>
                     </tr>
                     <tr>
@@ -437,10 +473,16 @@ window.PortfolioReport = ({
                             Market Duration
                         </td>
                         <td className="border px-4 py-2 text-right">
-                            {formatValue(
-                                fixed_income.subcategories.government_bonds
-                                    .market_duration,
-                            )}
+                            {(() => {
+                                // Check if we have fixed income risk metrics with government bonds data
+                                if (risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.government_bonds) {
+                                    console.log("Using risk metrics for government bonds market duration", risk_metrics.fixed_income.government_bonds.market_duration);
+                                    return formatValue(risk_metrics.fixed_income.government_bonds.market_duration);
+                                } else {
+                                    // Fallback to standard data
+                                    return formatValue(fixed_income.subcategories.government_bonds.market_duration);
+                                }
+                            })()}
                         </td>
                     </tr>
                     <tr>
@@ -448,10 +490,16 @@ window.PortfolioReport = ({
                             Long Duration
                         </td>
                         <td className="border px-4 py-2 text-right">
-                            {formatValue(
-                                fixed_income.subcategories.government_bonds
-                                    .long_duration,
-                            )}
+                            {(() => {
+                                // Check if we have fixed income risk metrics with government bonds data
+                                if (risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.government_bonds) {
+                                    console.log("Using risk metrics for government bonds long duration", risk_metrics.fixed_income.government_bonds.long_duration);
+                                    return formatValue(risk_metrics.fixed_income.government_bonds.long_duration);
+                                } else {
+                                    // Fallback to standard data
+                                    return formatValue(fixed_income.subcategories.government_bonds.long_duration);
+                                }
+                            })()}
                         </td>
                     </tr>
                     <tr>
