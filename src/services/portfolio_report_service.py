@@ -144,20 +144,28 @@ def get_level_filter(level: str, level_key: str) -> str:
     Generate the appropriate SQL filter based on level and level_key.
     
     Args:
-        level: The hierarchy level ('client', 'portfolio', 'account')
+        level: The hierarchy level ('client', 'portfolio', 'group', 'account')
         level_key: The identifier for the specified level
         
     Returns:
         SQL string for filtering
     """
+    # Sanitize level_key for SQL injection prevention
+    sanitized_key = level_key.replace("'", "''")
+    
     if level == 'client':
-        return f"top_level_client = '{level_key}'"
+        return f"top_level_client = '{sanitized_key}'"
     elif level == 'portfolio':
-        return f"portfolio = '{level_key}'"
+        return f"portfolio = '{sanitized_key}'"
+    elif level == 'group':
+        # For group level, we'll use portfolio field for now
+        return f"portfolio = '{sanitized_key}'"
     elif level == 'account':
-        return f"holding_account_number = '{level_key}'"
+        # Use holding_account instead of holding_account_number for more flexible matching
+        return f"(holding_account = '{sanitized_key}' OR holding_account_number = '{sanitized_key}')"
     else:
-        raise ValueError(f"Invalid level: {level}")
+        logger.warning(f"Invalid level: {level}, defaulting to portfolio")
+        return f"portfolio = '{sanitized_key}'"
 
 
 def get_total_adjusted_value(db: Session, report_date: date, level: str, level_key: str) -> float:

@@ -602,21 +602,30 @@ class Dashboard extends React.Component {
                             <div>
                                 <h3 className="text-lg font-semibold mb-3">Asset Allocation</h3>
                                 {allocationsChart ? (
-                                    <DoughnutChart 
-                                        data={allocationsChart} 
-                                        options={{
-                                            plugins: {
-                                                title: {
-                                                    display: false
-                                                },
-                                                legend: {
-                                                    position: 'right'
-                                                }
-                                            },
-                                            cutout: '60%'
-                                        }}
-                                        height="250px"
-                                    />
+                                    <div id="allocation-chart-container">
+                                        {/* Using the window.DoughnutChart directly to avoid missing reference */}
+                                        {typeof window.DoughnutChart === 'function' ? (
+                                            <window.DoughnutChart 
+                                                data={allocationsChart} 
+                                                options={{
+                                                    plugins: {
+                                                        title: {
+                                                            display: false
+                                                        },
+                                                        legend: {
+                                                            position: 'right'
+                                                        }
+                                                    },
+                                                    cutout: '60%'
+                                                }}
+                                                height="250px"
+                                            />
+                                        ) : (
+                                            <div className="p-4 bg-yellow-100 text-yellow-800 rounded">
+                                                Chart component not available. Please refresh the page.
+                                            </div>
+                                        )}
+                                    </div>
                                 ) : (
                                     <div className="bg-white rounded-lg shadow-md p-6 flex items-center justify-center" style={{ height: '250px' }}>
                                         <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-green-800"></div>
@@ -627,20 +636,29 @@ class Dashboard extends React.Component {
                             <div>
                                 <h3 className="text-lg font-semibold mb-3">Liquidity Profile</h3>
                                 {liquidityChart ? (
-                                    <PieChart 
-                                        data={liquidityChart} 
-                                        options={{
-                                            plugins: {
-                                                title: {
-                                                    display: false
-                                                },
-                                                legend: {
-                                                    position: 'right'
-                                                }
-                                            }
-                                        }}
-                                        height="250px"
-                                    />
+                                    <div id="liquidity-chart-container">
+                                        {/* Using the window.PieChart directly to avoid missing reference */}
+                                        {typeof window.PieChart === 'function' ? (
+                                            <window.PieChart 
+                                                data={liquidityChart} 
+                                                options={{
+                                                    plugins: {
+                                                        title: {
+                                                            display: false
+                                                        },
+                                                        legend: {
+                                                            position: 'right'
+                                                        }
+                                                    }
+                                                }}
+                                                height="250px"
+                                            />
+                                        ) : (
+                                            <div className="p-4 bg-yellow-100 text-yellow-800 rounded">
+                                                Chart component not available. Please refresh the page.
+                                            </div>
+                                        )}
+                                    </div>
                                 ) : (
                                     <div className="bg-white rounded-lg shadow-md p-6 flex items-center justify-center" style={{ height: '250px' }}>
                                         <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-green-800"></div>
