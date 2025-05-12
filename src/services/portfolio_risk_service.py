@@ -314,8 +314,8 @@ def calculate_portfolio_risk_metrics(
     # Create a risk statistics cache to reduce database queries
     risk_stats_cache = {}
     
-    # Set a timeout limit per asset class processing (20 seconds per asset class)
-    MAX_PROCESSING_TIME = 20  # seconds
+    # Set a timeout limit per asset class processing (45 seconds per asset class to handle larger portfolios)
+    MAX_PROCESSING_TIME = 45  # seconds
     
     # Process each asset class separately with individual timeouts for better resilience
     # Process equity positions
@@ -1085,12 +1085,12 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
     if "weighted_sum" in risk_metrics["equity"]["beta"] and risk_metrics["equity"]["beta"]["weighted_sum"] > Decimal('0.0'):
         risk_metrics["equity"]["beta"]["value"] = risk_metrics["equity"]["beta"]["weighted_sum"]
     else:
-        risk_metrics["equity"]["beta"]["value"] = None
+        risk_metrics["equity"]["beta"]["value"] = Decimal('0.0')
         
     if "weighted_sum" in risk_metrics["equity"]["volatility"] and risk_metrics["equity"]["volatility"]["weighted_sum"] > Decimal('0.0'):
         risk_metrics["equity"]["volatility"]["value"] = risk_metrics["equity"]["volatility"]["weighted_sum"]
     else:
-        risk_metrics["equity"]["volatility"]["value"] = None
+        risk_metrics["equity"]["volatility"]["value"] = Decimal('0.0')
         
     # Fixed Income - calculate final duration and categorize it
     if "weighted_sum" in risk_metrics["fixed_income"]["duration"] and risk_metrics["fixed_income"]["duration"]["weighted_sum"] > Decimal('0.0'):
@@ -1098,46 +1098,49 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
         risk_metrics["fixed_income"]["duration"]["value"] = duration_value
         
         # Categorize duration
-        if duration_value < 2:
-            risk_metrics["fixed_income"]["duration"]["category"] = "short_duration"
-        elif duration_value < 7:
-            risk_metrics["fixed_income"]["duration"]["category"] = "market_duration"
+        if duration_value < Decimal('2.0'):
+            risk_metrics["fixed_income"]["duration"]["category"] = Decimal('1.0')  # short_duration
+        elif duration_value < Decimal('7.0'):
+            risk_metrics["fixed_income"]["duration"]["category"] = Decimal('2.0')  # market_duration
         else:
-            risk_metrics["fixed_income"]["duration"]["category"] = "long_duration"
+            risk_metrics["fixed_income"]["duration"]["category"] = Decimal('3.0')  # long_duration
             
     else:
-        risk_metrics["fixed_income"]["duration"]["value"] = None
-        risk_metrics["fixed_income"]["duration"]["category"] = "unknown"
+        risk_metrics["fixed_income"]["duration"]["value"] = Decimal('0.0')
+        risk_metrics["fixed_income"]["duration"]["category"] = Decimal('0.0')  # unknown
         
     # Hard Currency - calculate final beta
     if "weighted_sum" in risk_metrics["hard_currency"]["beta"] and risk_metrics["hard_currency"]["beta"]["weighted_sum"] > Decimal('0.0'):
         risk_metrics["hard_currency"]["beta"]["value"] = risk_metrics["hard_currency"]["beta"]["weighted_sum"]
     else:
-        risk_metrics["hard_currency"]["beta"]["value"] = None
+        risk_metrics["hard_currency"]["beta"]["value"] = Decimal('0.0')
         
     # Alternatives - calculate final beta
     if "weighted_sum" in risk_metrics["alternatives"]["beta"] and risk_metrics["alternatives"]["beta"]["weighted_sum"] > Decimal('0.0'):
         risk_metrics["alternatives"]["beta"]["value"] = risk_metrics["alternatives"]["beta"]["weighted_sum"]
     else:
-        risk_metrics["alternatives"]["beta"]["value"] = None
+        risk_metrics["alternatives"]["beta"]["value"] = Decimal('0.0')
         
     # Calculate overall portfolio beta
     portfolio_beta = Decimal('0.0')
     
     # Add equity contribution to portfolio beta
-    if "value" in risk_metrics["equity"]["beta"] and risk_metrics["equity"]["beta"]["value"] is not None:
-        equity_pct = percentages.get("equity", Decimal('0.0')) / 100 if "equity" in percentages else Decimal('0.0')
+    if "value" in risk_metrics["equity"]["beta"] and risk_metrics["equity"]["beta"]["value"] > Decimal('0.0'):
+        equity_pct = percentages.get("equity", Decimal('0.0')) / Decimal('100.0') if "equity" in percentages else Decimal('0.0')
         portfolio_beta += risk_metrics["equity"]["beta"]["value"] * equity_pct
         
     # Add hard currency contribution to portfolio beta
-    if "value" in risk_metrics["hard_currency"]["beta"] and risk_metrics["hard_currency"]["beta"]["value"] is not None:
-        hard_currency_pct = percentages.get("hard_currency", Decimal('0.0')) / 100 if "hard_currency" in percentages else Decimal('0.0')
+    if "value" in risk_metrics["hard_currency"]["beta"] and risk_metrics["hard_currency"]["beta"]["value"] > Decimal('0.0'):
+        hard_currency_pct = percentages.get("hard_currency", Decimal('0.0')) / Decimal('100.0') if "hard_currency" in percentages else Decimal('0.0')
         portfolio_beta += risk_metrics["hard_currency"]["beta"]["value"] * hard_currency_pct
         
     # Add alternatives contribution to portfolio beta
-    if "value" in risk_metrics["alternatives"]["beta"] and risk_metrics["alternatives"]["beta"]["value"] is not None:
-        alternatives_pct = percentages.get("alternatives", Decimal('0.0')) / 100 if "alternatives" in percentages else Decimal('0.0')
+    if "value" in risk_metrics["alternatives"]["beta"] and risk_metrics["alternatives"]["beta"]["value"] > Decimal('0.0'):
+        alternatives_pct = percentages.get("alternatives", Decimal('0.0')) / Decimal('100.0') if "alternatives" in percentages else Decimal('0.0')
         portfolio_beta += risk_metrics["alternatives"]["beta"]["value"] * alternatives_pct
-        
-    # Store the overall portfolio beta
-    risk_metrics["portfolio_beta"] = portfolio_beta
+    
+    # Create a new dictionary for portfolio level metrics to avoid type errors
+    portfolio_metrics = {"beta": portfolio_beta}
+    
+    # Store the overall portfolio beta in a new key to avoid type errors
+    risk_metrics["portfolio"] = portfolio_metrics
