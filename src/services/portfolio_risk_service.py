@@ -1897,6 +1897,15 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
     else:
         risk_metrics["equity"]["volatility"]["value"] = Decimal('0.0')
         
+    # Calculate beta adjusted for equity
+    # Beta adjusted = portfolio beta × gross amount in beta (equity percentage)
+    if "value" in risk_metrics["equity"]["beta"] and risk_metrics["equity"]["beta"]["value"] is not None:
+        equity_pct = percentages.get("equity", Decimal('0.0'))
+        risk_metrics["equity"]["beta_adjusted"]["value"] = risk_metrics["equity"]["beta"]["value"] * equity_pct / Decimal('100.0')
+        logger.info(f"Calculated equity beta adjusted: {risk_metrics['equity']['beta_adjusted']['value']}")
+    else:
+        risk_metrics["equity"]["beta_adjusted"]["value"] = Decimal('0.0')
+        
     # Fixed Income - calculate final duration and categorize it
     if "weighted_sum" in risk_metrics["fixed_income"]["duration"] and risk_metrics["fixed_income"]["duration"]["weighted_sum"] > Decimal('0.0'):
         duration_value = risk_metrics["fixed_income"]["duration"]["weighted_sum"]
@@ -1913,12 +1922,58 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
     else:
         risk_metrics["fixed_income"]["duration"]["value"] = Decimal('0.0')
         risk_metrics["fixed_income"]["duration"]["category"] = Decimal('0.0')  # unknown
+    
+    # Update fixed income subcategories with duration breakdowns
+    # Assuming municipal_bonds, investment_grade, and government_bonds are populated elsewhere
+    # We will calculate the duration breakdowns for each subcategory
+    if "municipal_bonds" in risk_metrics["fixed_income"]:
+        municipal_total = risk_metrics["fixed_income"]["municipal_bonds"]["total"]
+        if municipal_total > Decimal('0.0'):
+            # Based on duration category, distribute the total value
+            duration_cat = risk_metrics["fixed_income"]["duration"]["category"]
+            if duration_cat == Decimal('1.0'):  # short duration
+                risk_metrics["fixed_income"]["municipal_bonds"]["short_duration"] = municipal_total
+            elif duration_cat == Decimal('2.0'):  # market duration
+                risk_metrics["fixed_income"]["municipal_bonds"]["market_duration"] = municipal_total
+            elif duration_cat == Decimal('3.0'):  # long duration
+                risk_metrics["fixed_income"]["municipal_bonds"]["long_duration"] = municipal_total
+    
+    if "investment_grade" in risk_metrics["fixed_income"]:
+        investment_total = risk_metrics["fixed_income"]["investment_grade"]["total"]
+        if investment_total > Decimal('0.0'):
+            duration_cat = risk_metrics["fixed_income"]["duration"]["category"]
+            if duration_cat == Decimal('1.0'):  # short duration
+                risk_metrics["fixed_income"]["investment_grade"]["short_duration"] = investment_total
+            elif duration_cat == Decimal('2.0'):  # market duration
+                risk_metrics["fixed_income"]["investment_grade"]["market_duration"] = investment_total
+            elif duration_cat == Decimal('3.0'):  # long duration
+                risk_metrics["fixed_income"]["investment_grade"]["long_duration"] = investment_total
+    
+    if "government_bonds" in risk_metrics["fixed_income"]:
+        government_total = risk_metrics["fixed_income"]["government_bonds"]["total"]
+        if government_total > Decimal('0.0'):
+            duration_cat = risk_metrics["fixed_income"]["duration"]["category"]
+            if duration_cat == Decimal('1.0'):  # short duration
+                risk_metrics["fixed_income"]["government_bonds"]["short_duration"] = government_total
+            elif duration_cat == Decimal('2.0'):  # market duration
+                risk_metrics["fixed_income"]["government_bonds"]["market_duration"] = government_total
+            elif duration_cat == Decimal('3.0'):  # long duration
+                risk_metrics["fixed_income"]["government_bonds"]["long_duration"] = government_total
         
     # Hard Currency - calculate final beta
     if "weighted_sum" in risk_metrics["hard_currency"]["beta"] and risk_metrics["hard_currency"]["beta"]["weighted_sum"] > Decimal('0.0'):
         risk_metrics["hard_currency"]["beta"]["value"] = risk_metrics["hard_currency"]["beta"]["weighted_sum"]
     else:
         risk_metrics["hard_currency"]["beta"]["value"] = Decimal('0.0')
+        
+    # Calculate beta adjusted for hard currency
+    # Beta adjusted = hard currency beta × gross amount in hard currency
+    if "value" in risk_metrics["hard_currency"]["beta"] and risk_metrics["hard_currency"]["beta"]["value"] is not None:
+        hc_pct = percentages.get("hard_currency", Decimal('0.0'))
+        risk_metrics["hard_currency"]["beta_adjusted"]["value"] = risk_metrics["hard_currency"]["beta"]["value"] * hc_pct / Decimal('100.0')
+        logger.info(f"Calculated hard currency beta adjusted: {risk_metrics['hard_currency']['beta_adjusted']['value']}")
+    else:
+        risk_metrics["hard_currency"]["beta_adjusted"]["value"] = Decimal('0.0')
         
     # Alternatives - calculate final beta
     if "weighted_sum" in risk_metrics["alternatives"]["beta"] and risk_metrics["alternatives"]["beta"]["weighted_sum"] > Decimal('0.0'):
@@ -1950,8 +2005,14 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
             "weighted_sum": portfolio_beta,
             "value": portfolio_beta,
             "coverage_pct": Decimal('100.0')  # Using full coverage for calculated values
+        },
+        "beta_adjusted": {
+            "value": portfolio_beta * percentages.get("equity", Decimal('0.0')) / Decimal('100.0')
         }
     }
     
     # Store the overall portfolio beta in a structured dictionary that matches the expected types
     risk_metrics["portfolio"] = portfolio_metrics
+    
+    logger.info(f"Risk metrics finalized with portfolio beta: {portfolio_beta}")
+    logger.info(f"Beta adjusted calculated for equity and hard currency")
