@@ -1899,10 +1899,15 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
         
     # Calculate beta adjusted for equity
     # Beta adjusted = portfolio beta × gross amount in beta (equity percentage)
+    # The formula is: equity percentage * beta value = beta adjusted equity
     if "value" in risk_metrics["equity"]["beta"] and risk_metrics["equity"]["beta"]["value"] is not None:
         equity_pct = percentages.get("equity", Decimal('0.0'))
-        risk_metrics["equity"]["beta_adjusted"]["value"] = risk_metrics["equity"]["beta"]["value"] * equity_pct / Decimal('100.0')
-        logger.info(f"Calculated equity beta adjusted: {risk_metrics['equity']['beta_adjusted']['value']}")
+        # Fix the formula: Beta adjusted equity should be equity_pct * beta_value
+        beta_value = risk_metrics["equity"]["beta"]["value"]
+        beta_adjusted_equity = beta_value * equity_pct / Decimal('100.0')
+        
+        risk_metrics["equity"]["beta_adjusted"]["value"] = beta_adjusted_equity
+        logger.info(f"Calculated equity beta adjusted: {beta_adjusted_equity} (beta: {beta_value} * equity%: {equity_pct})")
     else:
         risk_metrics["equity"]["beta_adjusted"]["value"] = Decimal('0.0')
         
@@ -1924,41 +1929,114 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
         risk_metrics["fixed_income"]["duration"]["category"] = Decimal('0.0')  # unknown
     
     # Update fixed income subcategories with duration breakdowns
-    # Assuming municipal_bonds, investment_grade, and government_bonds are populated elsewhere
-    # We will calculate the duration breakdowns for each subcategory
-    if "municipal_bonds" in risk_metrics["fixed_income"]:
-        municipal_total = risk_metrics["fixed_income"]["municipal_bonds"]["total"]
-        if municipal_total > Decimal('0.0'):
-            # Based on duration category, distribute the total value
-            duration_cat = risk_metrics["fixed_income"]["duration"]["category"]
-            if duration_cat == Decimal('1.0'):  # short duration
-                risk_metrics["fixed_income"]["municipal_bonds"]["short_duration"] = municipal_total
-            elif duration_cat == Decimal('2.0'):  # market duration
-                risk_metrics["fixed_income"]["municipal_bonds"]["market_duration"] = municipal_total
-            elif duration_cat == Decimal('3.0'):  # long duration
-                risk_metrics["fixed_income"]["municipal_bonds"]["long_duration"] = municipal_total
+    # This section needs more detailed logging to debug issues with duration metrics
+    logger.info(f"Processing fixed income duration metrics. Overall duration value: {risk_metrics['fixed_income']['duration']['value']}")
     
-    if "investment_grade" in risk_metrics["fixed_income"]:
-        investment_total = risk_metrics["fixed_income"]["investment_grade"]["total"]
-        if investment_total > Decimal('0.0'):
-            duration_cat = risk_metrics["fixed_income"]["duration"]["category"]
-            if duration_cat == Decimal('1.0'):  # short duration
-                risk_metrics["fixed_income"]["investment_grade"]["short_duration"] = investment_total
-            elif duration_cat == Decimal('2.0'):  # market duration
-                risk_metrics["fixed_income"]["investment_grade"]["market_duration"] = investment_total
-            elif duration_cat == Decimal('3.0'):  # long duration
-                risk_metrics["fixed_income"]["investment_grade"]["long_duration"] = investment_total
+    # Make sure we have the right structure for municipal bonds
+    if "municipal_bonds" not in risk_metrics["fixed_income"]:
+        logger.warning("Municipal bonds category missing - initializing it")
+        risk_metrics["fixed_income"]["municipal_bonds"] = {
+            "total": Decimal('0.0'),
+            "short_duration": Decimal('0.0'),
+            "market_duration": Decimal('0.0'),
+            "long_duration": Decimal('0.0')
+        }
     
-    if "government_bonds" in risk_metrics["fixed_income"]:
-        government_total = risk_metrics["fixed_income"]["government_bonds"]["total"]
-        if government_total > Decimal('0.0'):
-            duration_cat = risk_metrics["fixed_income"]["duration"]["category"]
-            if duration_cat == Decimal('1.0'):  # short duration
-                risk_metrics["fixed_income"]["government_bonds"]["short_duration"] = government_total
-            elif duration_cat == Decimal('2.0'):  # market duration
-                risk_metrics["fixed_income"]["government_bonds"]["market_duration"] = government_total
-            elif duration_cat == Decimal('3.0'):  # long duration
-                risk_metrics["fixed_income"]["government_bonds"]["long_duration"] = government_total
+    # Make sure we have the right structure for investment grade
+    if "investment_grade" not in risk_metrics["fixed_income"]:
+        logger.warning("Investment grade category missing - initializing it")
+        risk_metrics["fixed_income"]["investment_grade"] = {
+            "total": Decimal('0.0'),
+            "short_duration": Decimal('0.0'),
+            "market_duration": Decimal('0.0'),
+            "long_duration": Decimal('0.0')
+        }
+    
+    # Make sure we have the right structure for government bonds
+    if "government_bonds" not in risk_metrics["fixed_income"]:
+        logger.warning("Government bonds category missing - initializing it")
+        risk_metrics["fixed_income"]["government_bonds"] = {
+            "total": Decimal('0.0'),
+            "short_duration": Decimal('0.0'),
+            "market_duration": Decimal('0.0'),
+            "long_duration": Decimal('0.0')
+        }
+    
+    # Municipal Bonds duration breakdown
+    municipal_total = risk_metrics["fixed_income"]["municipal_bonds"].get("total", Decimal('0.0'))
+    logger.info(f"Municipal bonds total: {municipal_total}")
+    
+    if municipal_total > Decimal('0.0'):
+        # Based on duration category, distribute the total value
+        duration_cat = risk_metrics["fixed_income"]["duration"]["category"]
+        logger.info(f"Duration category for municipal bonds: {duration_cat}")
+        
+        # Initialize all durations to zero first
+        risk_metrics["fixed_income"]["municipal_bonds"]["short_duration"] = Decimal('0.0')
+        risk_metrics["fixed_income"]["municipal_bonds"]["market_duration"] = Decimal('0.0')
+        risk_metrics["fixed_income"]["municipal_bonds"]["long_duration"] = Decimal('0.0')
+        
+        # Set the appropriate duration category
+        if duration_cat == Decimal('1.0'):  # short duration
+            risk_metrics["fixed_income"]["municipal_bonds"]["short_duration"] = municipal_total
+            logger.info(f"Set municipal bonds short duration to {municipal_total}")
+        elif duration_cat == Decimal('2.0'):  # market duration
+            risk_metrics["fixed_income"]["municipal_bonds"]["market_duration"] = municipal_total
+            logger.info(f"Set municipal bonds market duration to {municipal_total}")
+        elif duration_cat == Decimal('3.0'):  # long duration
+            risk_metrics["fixed_income"]["municipal_bonds"]["long_duration"] = municipal_total
+            logger.info(f"Set municipal bonds long duration to {municipal_total}")
+    
+    # Investment Grade duration breakdown
+    investment_total = risk_metrics["fixed_income"]["investment_grade"].get("total", Decimal('0.0'))
+    logger.info(f"Investment grade total: {investment_total}")
+    
+    if investment_total > Decimal('0.0'):
+        duration_cat = risk_metrics["fixed_income"]["duration"]["category"]
+        logger.info(f"Duration category for investment grade: {duration_cat}")
+        
+        # Initialize all durations to zero first
+        risk_metrics["fixed_income"]["investment_grade"]["short_duration"] = Decimal('0.0')
+        risk_metrics["fixed_income"]["investment_grade"]["market_duration"] = Decimal('0.0')
+        risk_metrics["fixed_income"]["investment_grade"]["long_duration"] = Decimal('0.0')
+        
+        # Set the appropriate duration category
+        if duration_cat == Decimal('1.0'):  # short duration
+            risk_metrics["fixed_income"]["investment_grade"]["short_duration"] = investment_total
+            logger.info(f"Set investment grade short duration to {investment_total}")
+        elif duration_cat == Decimal('2.0'):  # market duration
+            risk_metrics["fixed_income"]["investment_grade"]["market_duration"] = investment_total
+            logger.info(f"Set investment grade market duration to {investment_total}")
+        elif duration_cat == Decimal('3.0'):  # long duration
+            risk_metrics["fixed_income"]["investment_grade"]["long_duration"] = investment_total
+            logger.info(f"Set investment grade long duration to {investment_total}")
+    
+    # Government Bonds duration breakdown
+    government_total = risk_metrics["fixed_income"]["government_bonds"].get("total", Decimal('0.0'))
+    logger.info(f"Government bonds total: {government_total}")
+    
+    if government_total > Decimal('0.0'):
+        duration_cat = risk_metrics["fixed_income"]["duration"]["category"]
+        logger.info(f"Duration category for government bonds: {duration_cat}")
+        
+        # Initialize all durations to zero first
+        risk_metrics["fixed_income"]["government_bonds"]["short_duration"] = Decimal('0.0')
+        risk_metrics["fixed_income"]["government_bonds"]["market_duration"] = Decimal('0.0')
+        risk_metrics["fixed_income"]["government_bonds"]["long_duration"] = Decimal('0.0')
+        
+        # Set the appropriate duration category
+        if duration_cat == Decimal('1.0'):  # short duration
+            risk_metrics["fixed_income"]["government_bonds"]["short_duration"] = government_total
+            logger.info(f"Set government bonds short duration to {government_total}")
+        elif duration_cat == Decimal('2.0'):  # market duration
+            risk_metrics["fixed_income"]["government_bonds"]["market_duration"] = government_total
+            logger.info(f"Set government bonds market duration to {government_total}")
+        elif duration_cat == Decimal('3.0'):  # long duration
+            risk_metrics["fixed_income"]["government_bonds"]["long_duration"] = government_total
+            logger.info(f"Set government bonds long duration to {government_total}")
+            
+    # Log the final fixed income structure for debugging
+    logger.info(f"Final fixed income duration metrics: {risk_metrics['fixed_income']}")
         
     # Hard Currency - calculate final beta
     if "weighted_sum" in risk_metrics["hard_currency"]["beta"] and risk_metrics["hard_currency"]["beta"]["weighted_sum"] > Decimal('0.0'):
@@ -1967,15 +2045,28 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
         risk_metrics["hard_currency"]["beta"]["value"] = Decimal('0.0')
         
     # Calculate beta adjusted for hard currency
-    # Beta adjusted = hard currency beta × gross amount in hard currency
+    # Beta adjusted = hard currency beta × gross amount in hard currency (percentage)
     logger.info(f"DEBUGGING HC BETA: hard_currency beta structure: {risk_metrics['hard_currency']['beta']}")
     
+    # Make sure we have the correct structure
+    if "beta_adjusted" not in risk_metrics["hard_currency"]:
+        risk_metrics["hard_currency"]["beta_adjusted"] = {"value": None}
+    
+    # Check if we have the beta value
     if "value" in risk_metrics["hard_currency"]["beta"] and risk_metrics["hard_currency"]["beta"]["value"] is not None:
+        beta_value = risk_metrics["hard_currency"]["beta"]["value"]
+        # Get the hard currency percentage
         hc_pct = percentages.get("hard_currency", Decimal('0.0'))
-        logger.info(f"DEBUGGING HC BETA: Hard currency percent: {hc_pct}%, beta value: {risk_metrics['hard_currency']['beta']['value']}")
+        logger.info(f"DEBUGGING HC BETA: Hard currency percent: {hc_pct}%, beta value: {beta_value}")
         
-        risk_metrics["hard_currency"]["beta_adjusted"]["value"] = risk_metrics["hard_currency"]["beta"]["value"] * hc_pct / Decimal('100.0')
-        logger.info(f"DEBUGGING HC BETA: Calculated hard currency beta adjusted: {risk_metrics['hard_currency']['beta_adjusted']['value']}")
+        if hc_pct > Decimal('0.0'):
+            # Calculate beta adjusted as beta value * hard currency percentage
+            beta_adjusted_hc = beta_value * hc_pct / Decimal('100.0')
+            risk_metrics["hard_currency"]["beta_adjusted"]["value"] = beta_adjusted_hc
+            logger.info(f"DEBUGGING HC BETA: Calculated hard currency beta adjusted: {beta_adjusted_hc} (beta: {beta_value} * hc%: {hc_pct})")
+        else:
+            logger.warning(f"DEBUGGING HC BETA: Hard currency percentage is zero, setting beta adjusted to zero")
+            risk_metrics["hard_currency"]["beta_adjusted"]["value"] = Decimal('0.0')
     else:
         logger.warning(f"DEBUGGING HC BETA: Cannot calculate beta adjusted - missing or null beta value")
         risk_metrics["hard_currency"]["beta_adjusted"]["value"] = Decimal('0.0')
