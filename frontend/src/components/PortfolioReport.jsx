@@ -161,7 +161,9 @@ window.PortfolioReport = ({
                         <td className="border px-4 py-2 text-right bg-blue-50">
                             {risk_metrics && risk_metrics.equity && risk_metrics.equity.beta_adjusted && risk_metrics.equity.beta_adjusted.value !== undefined ? 
                                 formatNumber(risk_metrics.equity.beta_adjusted.value) : 
-                                formatNumber(equities.beta_adjusted || "")}
+                                (risk_metrics && risk_metrics.equity && risk_metrics.equity.beta !== undefined && equities.total_pct ?
+                                formatNumber(risk_metrics.equity.beta * equities.total_pct / 100) :
+                                formatNumber(equities.beta_adjusted || ""))}
                         </td>
                     </tr>
                     <tr>
@@ -453,8 +455,8 @@ window.PortfolioReport = ({
                             HC Beta
                         </td>
                         <td className="border px-4 py-2 text-right bg-yellow-50">
-                            {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta && risk_metrics.hard_currency.beta.value !== undefined ? 
-                                formatNumber(risk_metrics.hard_currency.beta.value) : 
+                            {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta !== undefined ? 
+                                formatNumber(risk_metrics.hard_currency.beta) : 
                                 formatNumber(hard_currency.beta || "")}
                             {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.coverage_pct && 
                                 <span className="text-xs text-gray-500 ml-1">
@@ -470,7 +472,9 @@ window.PortfolioReport = ({
                         <td className="border px-4 py-2 text-right bg-yellow-50">
                             {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta_adjusted && risk_metrics.hard_currency.beta_adjusted.value !== undefined ? 
                                 formatNumber(risk_metrics.hard_currency.beta_adjusted.value) : 
-                                formatNumber(hard_currency.beta_adjusted || "")}
+                                (risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta !== undefined && hard_currency.total_pct ?
+                                formatNumber(risk_metrics.hard_currency.beta * hard_currency.total_pct / 100) :
+                                formatNumber(hard_currency.beta_adjusted || ""))}
                         </td>
                     </tr>
                     <tr>
