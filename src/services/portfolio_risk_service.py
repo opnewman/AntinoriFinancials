@@ -825,12 +825,10 @@ def find_matching_risk_stat(
     # Create a function for all database queries to reduce code duplication
     def execute_query(condition, identifier_type, identifier_value):
         """Execute a database query with proper connection handling and caching"""
-        # Check cache first for faster retrievals
-        if cache is not None:
-            cache_key = f"{cache_prefix}:{identifier_type}:{identifier_value}"
-            cached_result = cache.get(cache_key)
-            if cached_result is not None:
-                return cached_result
+        # Check structured cache first for faster retrievals
+        if cache is not None and asset_class_key and identifier_type in cache.get(asset_class_key, {}):
+            if identifier_value in cache[asset_class_key][identifier_type]:
+                return cache[asset_class_key][identifier_type][identifier_value]
         
         # Avoid connection issues by using a direct connection instead of session
         try:
