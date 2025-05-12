@@ -3,6 +3,7 @@ Optimized version of the find_matching_risk_stat function
 """
 import re
 import logging
+import string
 from datetime import date
 from typing import Dict, Any, Optional, List
 from sqlalchemy.orm import Session
@@ -211,16 +212,46 @@ def find_matching_risk_stat(
                     # Strategy 3: Try matching bond maturity patterns like "5.5% 2025"
                     if not query:
                         # Look for patterns like "X.X% 20XX" which are common in bond names
-                        import re
-                        maturity_pattern = re.search(r'(\d+\.?\d*)\%.*?20(\d{2})', safe_position)
-                        if maturity_pattern:
-                            rate = maturity_pattern.group(1)
-                            year = maturity_pattern.group(2)
-                            pattern = f"{rate}%{' '}20{year}"
-                            query = db.query(RiskStatisticFixedIncome).filter(
-                                RiskStatisticFixedIncome.position.ilike(f"%{pattern}%"),
-                                RiskStatisticFixedIncome.upload_date == latest_date
-                            ).first()
+                        try:
+                            maturity_pattern = re.search(r'(\d+\.?\d*)\%.*?20(\d{2})', safe_position)
+                            if maturity_pattern:
+                                rate = maturity_pattern.group(1)
+                                year = maturity_pattern.group(2)
+                                pattern = f"{rate}%{' '}20{year}"
+                                query = db.query(RiskStatisticFixedIncome).filter(
+                                    RiskStatisticFixedIncome.position.ilike(f"%{pattern}%"),
+                                    RiskStatisticFixedIncome.upload_date == latest_date
+                                ).first()
+                        except Exception as e:
+                            logger.warning(f"Error matching bond pattern: {e}")
+                            
+                            # Fallback approach: extract percentage and year through string parsing
+                            try:
+                                # Try to find a pattern like "5.625%" or "5.625 %"
+                                parts = safe_position.split('%')
+                                if len(parts) > 1:
+                                    # Get the part before the % sign, which should be the rate
+                                    rate_part = parts[0].split()[-1].strip()
+                                    
+                                    # Now look for a year after the % sign
+                                    after_percent = parts[1]
+                                    year_match = None
+                                    
+                                    # Look for patterns like "2033" or "20XX"
+                                    for word in after_percent.split():
+                                        word = word.strip('.,;:()')
+                                        if word.isdigit() and len(word) == 4 and word.startswith('20'):
+                                            year_match = word[2:]  # Just get the last 2 digits
+                                            break
+                                    
+                                    if rate_part and year_match:
+                                        pattern = f"{rate_part}%{' '}20{year_match}"
+                                        query = db.query(RiskStatisticFixedIncome).filter(
+                                            RiskStatisticFixedIncome.position.ilike(f"%{pattern}%"),
+                                            RiskStatisticFixedIncome.upload_date == latest_date
+                                        ).first()
+                            except Exception as e:
+                                logger.warning(f"Error in fallback bond pattern matching: {e}")
                         
                         if query:
                             matched_value = {"id": query.id, "duration": query.duration}

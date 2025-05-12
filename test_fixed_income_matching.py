@@ -50,7 +50,67 @@ def test_fixed_income_matching():
         
         # Create some test data to demonstrate the matching
         logger.info("Creating sample risk statistics for testing...")
+        
+        # Create slightly altered variants of the test bonds to test our matching logic
+        
+        # Creating variants with different formatting but same essential info
+        variants = []
         for bond_name, cusip, ticker in TEST_BONDS:
+            # Original exact copy
+            variants.append((bond_name, cusip, ticker))
+            
+            # CUSIP without dashes
+            if cusip and "-" in cusip:
+                clean_cusip = cusip.replace("-", "")
+                variants.append((bond_name, clean_cusip, ticker))
+            
+            # Variant with different formatting of the % sign
+            if "%" in bond_name:
+                variant1 = bond_name.replace("%", " %")
+                variant2 = bond_name.replace("%", "% ")
+                variant3 = bond_name.replace("%", " percent ")
+                variants.append((variant1, cusip, ticker))
+                variants.append((variant2, cusip, ticker))
+                variants.append((variant3, cusip, ticker))
+            
+            # Variant with different date formatting
+            if "/" in bond_name:
+                variant = bond_name.replace("/", "-")
+                variants.append((variant, cusip, ticker))
+                
+            # Variant with abbreviated name
+            words = bond_name.split()
+            if len(words) > 3:
+                short_name = " ".join(words[:3])
+                variants.append((short_name, cusip, ticker))
+        
+        # Create risk statistics for all variants
+        for bond_name, cusip, ticker in variants:
+            test_stat = RiskStatisticFixedIncome(
+                position=bond_name,
+                cusip=cusip,
+                ticker=ticker,
+                duration=5.0,  # Example duration
+                upload_date=latest_date
+            )
+            db.add(test_stat)
+        
+        # Add test statistics that mimic real samples
+        real_samples = [
+            # Position name, CUSIP, Ticker
+            ("AMERICAN EXPRESS CO 1.65% 11/04/2026", "025816CU2", "AXP"),
+            ("Apple Inc 3.85% 05/04/2043", "037833AL4", "AAPL"),
+            ("FHLMC 30YR UMBS SUPER TBA", "31317YA32", ""),
+            ("US TREAS 1.50% 02/15/2025", "912828ZX1", ""),
+            ("VERIZON COMMUNICATIONS 5.5% 03/16/2047", "92343VFS8", "VZ"),
+            ("AMAZON.COM INC 3.15% 08/22/2027", "023135CE5", "AMZN"),
+            ("WALMART INC 2.55% 04/11/2023", "931142DP5", "WMT"),
+            ("MICROSOFT CORP 2.4% 08/08/2026", "594918BW3", "MSFT"),
+            ("Federal Home Loan Bank 3.375% 06/12/2024", "3130A3GE8", ""),
+            ("FNMA 30YR 3.0 TBA", "3138EXVN8", "")
+        ]
+        
+        for bond_name, cusip, ticker in real_samples:
             test_stat = RiskStatisticFixedIncome(
                 position=bond_name,
                 cusip=cusip,
@@ -61,7 +121,7 @@ def test_fixed_income_matching():
             db.add(test_stat)
         
         db.commit()
-        logger.info("Test data created")
+        logger.info(f"Test data created with {len(variants) + len(real_samples)} variants")
     else:
         latest_date = latest_date_record[0]
         logger.info(f"Using latest available risk statistics date: {latest_date}")
