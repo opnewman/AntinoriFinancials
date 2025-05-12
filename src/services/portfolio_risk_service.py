@@ -508,10 +508,22 @@ def process_equity_risk(
                     for risk_stat in ticker_results:
                         if risk_stat.ticker_symbol:
                             ticker_key = risk_stat.ticker_symbol.lower()
+                            # Get volatility from either field (try both column names)
+                            volatility_value = None
+                            try:
+                                if hasattr(risk_stat, 'volatility') and risk_stat.volatility is not None:
+                                    volatility_value = risk_stat.volatility
+                                elif hasattr(risk_stat, 'vol') and risk_stat.vol is not None:
+                                    volatility_value = risk_stat.vol
+                                
+                                logger.debug(f"Equity volatility value: ticker={ticker_key}, vol={volatility_value}, has_vol_field={hasattr(risk_stat, 'vol')}, has_volatility_field={hasattr(risk_stat, 'volatility')}")
+                            except Exception as e:
+                                logger.error(f"Error accessing volatility field: {str(e)}")
+                            
                             cache['equity']['ticker_symbol'][ticker_key] = {
                                 'id': risk_stat.id,
-                                'beta': risk_stat.beta,
-                                'volatility': risk_stat.volatility
+                                'beta': risk_stat.beta if risk_stat.beta is not None else None,
+                                'volatility': volatility_value
                             }
             
             for cusip_chunk in cusip_chunks:
@@ -524,10 +536,23 @@ def process_equity_risk(
                     for risk_stat in cusip_results:
                         if risk_stat.cusip:
                             cusip_key = risk_stat.cusip.lower()
+                            
+                            # Get volatility from either field (try both column names)
+                            volatility_value = None
+                            try:
+                                if hasattr(risk_stat, 'volatility') and risk_stat.volatility is not None:
+                                    volatility_value = risk_stat.volatility
+                                elif hasattr(risk_stat, 'vol') and risk_stat.vol is not None:
+                                    volatility_value = risk_stat.vol
+                                
+                                logger.debug(f"Equity volatility value: cusip={cusip_key}, vol={volatility_value}")
+                            except Exception as e:
+                                logger.error(f"Error accessing volatility field: {str(e)}")
+                            
                             cache['equity']['cusip'][cusip_key] = {
                                 'id': risk_stat.id,
-                                'beta': risk_stat.beta,
-                                'volatility': risk_stat.volatility
+                                'beta': risk_stat.beta if risk_stat.beta is not None else None,
+                                'volatility': volatility_value
                             }
             
             # For position names, use a direct SQL query with more efficient LIKE operations
@@ -548,10 +573,22 @@ def process_equity_risk(
                         exact_match = position_query.first()
                         
                         if exact_match:
+                            # Get volatility from either field (try both column names)
+                            volatility_value = None
+                            try:
+                                if hasattr(exact_match, 'volatility') and exact_match.volatility is not None:
+                                    volatility_value = exact_match.volatility
+                                elif hasattr(exact_match, 'vol') and exact_match.vol is not None:
+                                    volatility_value = exact_match.vol
+                                
+                                logger.debug(f"Equity volatility value: position={position_name}, vol={volatility_value}")
+                            except Exception as e:
+                                logger.error(f"Error accessing volatility field: {str(e)}")
+                            
                             cache['equity']['position'][position_name] = {
                                 'id': exact_match.id,
-                                'beta': exact_match.beta,
-                                'volatility': exact_match.volatility
+                                'beta': exact_match.beta if exact_match.beta is not None else None,
+                                'volatility': volatility_value
                             }
             
             preload_time = time.time() - preload_start
@@ -628,10 +665,16 @@ def process_equity_risk(
                     # Handle any conversion errors safely
                     logger.warning(f"Error processing beta for {position.position}: {e}")
                     
-            # Process volatility calculation  
+            # Process volatility calculation - try both field names
             volatility_value = risk_stat.get("volatility")
+            if volatility_value is None:
+                volatility_value = risk_stat.get("vol")  # Try alternative field name
+                
             if volatility_value is not None:
                 try:
+                    # Log the actual volatility value we found
+                    logger.debug(f"Found volatility {volatility_value} for {position.position} via {match_source}")
+                    
                     # Ensure we're working with Decimal for all calculations
                     volatility = Decimal(str(volatility_value))
                     
@@ -647,6 +690,8 @@ def process_equity_risk(
                 except (ValueError, TypeError) as e:
                     # Handle any conversion errors safely
                     logger.warning(f"Error processing volatility for {position.position}: {e}")
+            else:
+                logger.debug(f"No volatility found for {position.position}")
     
     # Calculate coverage percentages
     coverage = Decimal('0.0')
@@ -679,11 +724,20 @@ def process_fixed_income_risk(
     This optimized implementation:
     1. Pre-filters positions to only fixed income to reduce iterations
     2. Implements better error handling for duration calculations
-    3. Adds extra logging for debugging
+    3. Uses batch processing for improved performance
+    4. Adds detailed diagnostics and error recovery
     """
     if not cache:
         cache = {}
-        
+    
+    # Initialize fixed income risk stats cache if not present
+    if 'fixed_income' not in cache:
+        cache['fixed_income'] = {
+            'cusip': {},
+            'ticker_symbol': {},
+            'position': {}
+        }
+    
     # Pre-filter positions to fixed income only to reduce iterations
     fixed_income_positions = [
         p for p in positions 
@@ -694,62 +748,172 @@ def process_fixed_income_risk(
     if not fixed_income_positions:
         logger.info("No fixed income positions found for duration calculations")
         return
-        
+    
+    # Pre-load frequently used fixed income stats to avoid repeated DB queries
+    if not cache.get('fixed_income', {}).get('preloaded'):
+        try:
+            start_time = time.time()
+            
+            # Get unique identifiers
+            cusips = [p.cusip for p in fixed_income_positions if p.cusip]
+            ticker_symbols = [p.ticker_symbol for p in fixed_income_positions if p.ticker_symbol]
+            
+            # Create query - this is optimized for fixed income which primarily uses cusip
+            from src.models.models import RiskStatisticFixedIncome
+            from sqlalchemy.sql import func
+            
+            # Batch process cusips
+            if cusips:
+                logger.info(f"Preloading fixed income risk stats for {len(cusips)} cusips")
+                cusip_chunks = chunk_list([c.lower() for c in cusips if c], 500)
+                
+                for cusip_chunk in cusip_chunks:
+                    try:
+                        # Create a fresh session for each batch to avoid connection issues
+                        with db.begin():
+                            cusip_query = db.query(RiskStatisticFixedIncome).filter(
+                                func.lower(RiskStatisticFixedIncome.cusip).in_(cusip_chunk),
+                                RiskStatisticFixedIncome.upload_date <= latest_risk_stats_date
+                            ).order_by(RiskStatisticFixedIncome.upload_date.desc())
+                            
+                            cusip_results = cusip_query.all()
+                            logger.debug(f"Found {len(cusip_results)} fixed income risk stats for cusip batch")
+                            
+                            for stat in cusip_results:
+                                if stat.cusip:
+                                    cache['fixed_income']['cusip'][stat.cusip.lower()] = {
+                                        'id': stat.id,
+                                        'duration': stat.duration
+                                    }
+                    except Exception as e:
+                        logger.error(f"Error preloading fixed income cusip batch: {str(e)}")
+            
+            # Process tickers similarly (though less common for fixed income)
+            if ticker_symbols:
+                logger.info(f"Preloading fixed income risk stats for {len(ticker_symbols)} ticker symbols")
+                ticker_chunks = chunk_list([t.lower() for t in ticker_symbols if t], 500)
+                
+                for ticker_chunk in ticker_chunks:
+                    try:
+                        with db.begin():
+                            ticker_query = db.query(RiskStatisticFixedIncome).filter(
+                                func.lower(RiskStatisticFixedIncome.ticker_symbol).in_(ticker_chunk),
+                                RiskStatisticFixedIncome.upload_date <= latest_risk_stats_date
+                            ).order_by(RiskStatisticFixedIncome.upload_date.desc())
+                            
+                            ticker_results = ticker_query.all()
+                            
+                            for stat in ticker_results:
+                                if stat.ticker_symbol:
+                                    cache['fixed_income']['ticker_symbol'][stat.ticker_symbol.lower()] = {
+                                        'id': stat.id,
+                                        'duration': stat.duration
+                                    }
+                    except Exception as e:
+                        logger.error(f"Error preloading fixed income ticker batch: {str(e)}")
+            
+            # Mark cache as preloaded
+            cache['fixed_income']['preloaded'] = True
+            preload_time = time.time() - start_time
+            logger.info(f"Preloaded fixed income risk stats in {preload_time:.2f} seconds")
+            
+        except Exception as e:
+            logger.error(f"Error preloading fixed income risk stats: {str(e)}")
+            # Continue with empty cache - we'll fall back to individual lookups
+    
+    # Initialize counters for metrics
+    matched_value = Decimal('0.0')
+    duration_matches = 0
+    processed_count = 0
+    position_count = len(fixed_income_positions)
+    last_log_time = time.time()
+    
+    # Process each fixed income position using optimized approach
     logger.info(f"Processing {len(fixed_income_positions)} fixed income positions for duration")
     
-    # Initialize counters
-    matched_value = Decimal('0.0')
-    
-    # Process each fixed income position
     for position in fixed_income_positions:
-        # Convert position value with proper error handling
-        position_value = convert_position_value_to_decimal(position.adjusted_value, position.position)
-        
-        # Skip positions with zero value
-        if position_value <= Decimal('0.0'):
-            continue
+        try:
+            # Convert position value with proper error handling
+            position_value = convert_position_value_to_decimal(position.adjusted_value, position.position)
             
-        # Find matching risk statistic with optimized matching for fixed income
-        risk_stat = find_matching_risk_stat(
-            db, 
-            position.position, 
-            position.cusip, 
-            position.ticker_symbol, 
-            "Fixed Income", 
-            latest_risk_stats_date,
-            cache
-        )
-        
-        if risk_stat is not None:
-            # Extract duration with type safety
-            duration_value = risk_stat.get("duration") if isinstance(risk_stat, dict) else None
+            # Skip positions with zero value
+            if position_value <= Decimal('0.0'):
+                continue
             
-            if duration_value is not None:
-                try:
-                    # Ensure we're working with Decimal for all calculations
-                    duration = Decimal(str(duration_value))
-                    
-                    # Calculate weighted duration (safely handle division by zero)
-                    if totals["fixed_income"] > Decimal('0.0'):
-                        weighted_duration = (duration * position_value) / totals["fixed_income"]
-                    else:
-                        weighted_duration = Decimal('0.0')
+            processed_count += 1
+            
+            # Log progress every 100 positions or 5 seconds
+            if processed_count % 100 == 0 or (time.time() - last_log_time) > 5:
+                progress_pct = (processed_count / position_count) * 100
+                logger.info(f"Processed {processed_count}/{position_count} fixed income positions ({progress_pct:.1f}%)")
+                last_log_time = time.time()
+            
+            # Find matching risk statistic using cache first
+            risk_stat = None
+            match_source = None
+            
+            # Check CUSIP first (most reliable for fixed income)
+            if position.cusip and position.cusip.lower() in cache.get('fixed_income', {}).get('cusip', {}):
+                risk_stat = cache['fixed_income']['cusip'][position.cusip.lower()]
+                match_source = "cusip"
+            
+            # Then check ticker symbol
+            elif position.ticker_symbol and position.ticker_symbol.lower() in cache.get('fixed_income', {}).get('ticker_symbol', {}):
+                risk_stat = cache['fixed_income']['ticker_symbol'][position.ticker_symbol.lower()]
+                match_source = "ticker"
+            
+            # If not in cache, try direct lookup
+            if risk_stat is None:
+                risk_stat = find_matching_risk_stat(
+                    db, 
+                    position.position, 
+                    position.cusip, 
+                    position.ticker_symbol, 
+                    "Fixed Income", 
+                    latest_risk_stats_date,
+                    cache
+                )
+                match_source = "direct"
+            
+            if risk_stat is not None:
+                # Extract duration with type safety
+                duration_value = risk_stat.get("duration") if isinstance(risk_stat, dict) else None
+                
+                if duration_value is not None:
+                    try:
+                        # Log the actual duration value we found
+                        logger.debug(f"Found duration {duration_value} for {position.position} via {match_source}")
                         
-                    # Update weighted sum and matched value
-                    risk_metrics["fixed_income"]["duration"]["weighted_sum"] += weighted_duration
-                    matched_value += position_value
-                    
-                except (ValueError, TypeError) as e:
-                    # Handle any conversion errors safely
-                    logger.warning(f"Error processing duration for {position.position}: {e}")
+                        # Ensure we're working with Decimal for all calculations
+                        duration = Decimal(str(duration_value))
+                        
+                        # Calculate weighted duration (safely handle division by zero)
+                        if totals["fixed_income"] > Decimal('0.0'):
+                            weighted_duration = (duration * position_value) / totals["fixed_income"]
+                        else:
+                            weighted_duration = Decimal('0.0')
+                            
+                        # Update weighted sum and matched value
+                        risk_metrics["fixed_income"]["duration"]["weighted_sum"] += weighted_duration
+                        matched_value += position_value
+                        duration_matches += 1
+                        
+                    except (ValueError, TypeError) as e:
+                        # Handle any conversion errors safely
+                        logger.warning(f"Error processing duration for {position.position}: {e}")
+                else:
+                    logger.debug(f"No duration value found for {position.position} in match via {match_source}")
+        except Exception as e:
+            # Catch any unexpected errors but allow processing to continue
+            logger.error(f"Error processing fixed income position {position.position}: {str(e)}")
     
     # Calculate coverage percentage
     coverage = Decimal('0.0')
     if totals["fixed_income"] > Decimal('0.0'):
         coverage = (matched_value / totals["fixed_income"]) * 100
         risk_metrics["fixed_income"]["duration"]["coverage_pct"] = coverage
-        
-    logger.info(f"Fixed income duration processing complete with {coverage:.2f}% coverage")
+    
+    logger.info(f"Fixed income duration processing complete with {coverage:.2f}% coverage, matched {duration_matches} of {position_count} positions")
 
 def process_hard_currency_risk(
     db: Session,
