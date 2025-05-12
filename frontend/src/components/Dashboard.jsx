@@ -270,7 +270,19 @@ class Dashboard extends React.Component {
     
     formatRiskMetrics = () => {
         const { reportData } = this.state;
-        if (!reportData || !reportData.risk_metrics) return [];
+        console.log("DEBUGGING DASHBOARD: formatRiskMetrics called with reportData:", reportData);
+        
+        if (!reportData) {
+            console.warn("DEBUGGING DASHBOARD: reportData is null or undefined");
+            return [];
+        }
+        
+        if (!reportData.risk_metrics) {
+            console.warn("DEBUGGING DASHBOARD: reportData.risk_metrics is null or undefined");
+            return [];
+        }
+        
+        console.log("DEBUGGING DASHBOARD: risk_metrics structure:", JSON.stringify(reportData.risk_metrics, null, 2));
         
         // Convert the new risk_metrics object structure to an array format for display
         const riskMetricsArray = [];

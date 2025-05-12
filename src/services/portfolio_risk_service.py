@@ -1968,11 +1968,16 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
         
     # Calculate beta adjusted for hard currency
     # Beta adjusted = hard currency beta × gross amount in hard currency
+    logger.info(f"DEBUGGING HC BETA: hard_currency beta structure: {risk_metrics['hard_currency']['beta']}")
+    
     if "value" in risk_metrics["hard_currency"]["beta"] and risk_metrics["hard_currency"]["beta"]["value"] is not None:
         hc_pct = percentages.get("hard_currency", Decimal('0.0'))
+        logger.info(f"DEBUGGING HC BETA: Hard currency percent: {hc_pct}%, beta value: {risk_metrics['hard_currency']['beta']['value']}")
+        
         risk_metrics["hard_currency"]["beta_adjusted"]["value"] = risk_metrics["hard_currency"]["beta"]["value"] * hc_pct / Decimal('100.0')
-        logger.info(f"Calculated hard currency beta adjusted: {risk_metrics['hard_currency']['beta_adjusted']['value']}")
+        logger.info(f"DEBUGGING HC BETA: Calculated hard currency beta adjusted: {risk_metrics['hard_currency']['beta_adjusted']['value']}")
     else:
+        logger.warning(f"DEBUGGING HC BETA: Cannot calculate beta adjusted - missing or null beta value")
         risk_metrics["hard_currency"]["beta_adjusted"]["value"] = Decimal('0.0')
         
     # Alternatives - calculate final beta
