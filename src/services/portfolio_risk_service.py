@@ -739,14 +739,25 @@ def find_matching_risk_stat(
                 if identifier_type not in valid_columns and identifier_type != "ticker_symbol":
                     identifier_type = "position"  # Default to position if invalid column
                 
-                # Build a safer SQL query with valid columns
-                sql = f"""
-                    SELECT {', '.join(columns)}
-                    FROM {table_name}
-                    WHERE {identifier_type} = '{identifier_value}'
-                    AND upload_date = '{latest_date}'
-                    LIMIT 1
-                """
+                # Build appropriate SQL based on match type
+                if identifier_type == "position" and "%" in identifier_value:
+                    # This is a LIKE query for partial position matching
+                    sql = f"""
+                        SELECT {', '.join(columns)}
+                        FROM {table_name}
+                        WHERE LOWER({identifier_type}) LIKE LOWER('{identifier_value}')
+                        AND upload_date = '{latest_date}'
+                        LIMIT 1
+                    """
+                else:
+                    # This is an exact match query
+                    sql = f"""
+                        SELECT {', '.join(columns)}
+                        FROM {table_name}
+                        WHERE LOWER({identifier_type}) = LOWER('{identifier_value}')
+                        AND upload_date = '{latest_date}'
+                        LIMIT 1
+                    """
                 
                 # Execute the raw SQL directly
                 with engine.connect() as connection:
@@ -800,36 +811,36 @@ def find_matching_risk_stat(
     
     # 1. Try by CUSIP (most reliable identifier)
     if safe_cusip:
-        result = execute_query(model_class.cusip == safe_cusip, "cusip", safe_cusip)
+        result = execute_query(True, "cusip", safe_cusip)
         if result:
             return result
     
     # 2. Try by ticker symbol (next most reliable)
     if safe_ticker:
-        result = execute_query(func.lower(model_class.ticker_symbol) == safe_ticker, "ticker", safe_ticker)
+        result = execute_query(True, "ticker_symbol", safe_ticker)
         if result:
             return result
     
     # 3. Try by exact position name match
     if safe_position:
-        result = execute_query(func.lower(model_class.position) == safe_position, "position", safe_position)
+        result = execute_query(True, "position", safe_position)
         if result:
             return result
             
-        # 4. Try by simplest position name
-        # Extract first significant word to improve matching
-        simple_words = [w for w in safe_position.split() if len(w) > 3]
-        if simple_words:
-            simple_word = simple_words[0]
-            # Only try if we have a meaningful word
-            if len(simple_word) > 3:
-                result = execute_query(
-                    func.lower(model_class.position).like(f"%{simple_word}%"), 
-                    "position_simple", 
-                    simple_word
-                )
-                if result:
-                    return result
+        # 4. Try by position name with LIKE queries for more flexible matching
+        # First try the first two words if they exist
+        words = safe_position.split()
+        if len(words) >= 2:
+            first_two_words = f"{words[0]} {words[1]}"
+            result = execute_query(True, "position", f"%{first_two_words}%")
+            if result:
+                return result
+
+        # Then try just the first word if it's long enough
+        if words and len(words[0]) >= 3:
+            result = execute_query(True, "position", f"%{words[0]}%")
+            if result:
+                return result
     
     # Track unmatched securities for reporting
     if position_name:
