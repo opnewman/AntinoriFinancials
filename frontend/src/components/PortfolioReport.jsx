@@ -156,10 +156,10 @@ window.PortfolioReport = ({
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6 bg-blue-50 font-medium">
-                            Beta Adjusted
+                            Beta Adjusted Equity
                         </td>
                         <td className="border px-4 py-2 text-right bg-blue-50">
-                            {risk_metrics && risk_metrics.equity && risk_metrics.equity.beta_adjusted && risk_metrics.equity.beta_adjusted.value ? 
+                            {risk_metrics && risk_metrics.equity && risk_metrics.equity.beta_adjusted && risk_metrics.equity.beta_adjusted.value !== undefined ? 
                                 formatNumber(risk_metrics.equity.beta_adjusted.value) : 
                                 formatNumber(equities.beta_adjusted || "")}
                         </td>
@@ -279,8 +279,8 @@ window.PortfolioReport = ({
                             Duration
                         </td>
                         <td className="border px-4 py-2 text-right bg-red-50">
-                            {risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.duration ? 
-                                formatNumber(risk_metrics.fixed_income.duration) : 
+                            {risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.duration && risk_metrics.fixed_income.duration.value !== undefined ? 
+                                formatNumber(risk_metrics.fixed_income.duration.value) : 
                                 formatNumber(fixed_income.duration || "")}
                             {risk_metrics && risk_metrics.fixed_income && risk_metrics.fixed_income.coverage_pct && 
                                 <span className="text-xs text-gray-500 ml-1">
@@ -453,8 +453,8 @@ window.PortfolioReport = ({
                             HC Beta
                         </td>
                         <td className="border px-4 py-2 text-right bg-yellow-50">
-                            {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta ? 
-                                formatNumber(risk_metrics.hard_currency.beta) : 
+                            {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta && risk_metrics.hard_currency.beta.value !== undefined ? 
+                                formatNumber(risk_metrics.hard_currency.beta.value) : 
                                 formatNumber(hard_currency.beta || "")}
                             {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.coverage_pct && 
                                 <span className="text-xs text-gray-500 ml-1">
@@ -465,10 +465,10 @@ window.PortfolioReport = ({
                     </tr>
                     <tr>
                         <td className="border px-4 py-2 text-left pl-6 bg-yellow-50 font-medium">
-                            Beta adj.
+                            Beta Adjusted HC
                         </td>
                         <td className="border px-4 py-2 text-right bg-yellow-50">
-                            {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta_adjusted && risk_metrics.hard_currency.beta_adjusted.value ? 
+                            {risk_metrics && risk_metrics.hard_currency && risk_metrics.hard_currency.beta_adjusted && risk_metrics.hard_currency.beta_adjusted.value !== undefined ? 
                                 formatNumber(risk_metrics.hard_currency.beta_adjusted.value) : 
                                 formatNumber(hard_currency.beta_adjusted || "")}
                         </td>
