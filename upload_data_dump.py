@@ -16,6 +16,10 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+# Import the precalculation service to trigger risk metrics generation
+sys.path.append('.')  # Add current directory to path
+from src.services.precalculate_service import trigger_precalculation
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -388,6 +392,21 @@ def main():
             logger.info(f"Completion status file created: {completion_file}")
         except Exception as e:
             logger.error(f"Error creating completion file: {str(e)}")
+        
+        # Trigger precalculation of risk metrics for all entities
+        # This will run in the background and not block this process
+        try:
+            logger.info(f"Triggering precalculation of risk metrics...")
+            # Convert string date to date object if necessary
+            if isinstance(result['report_date'], str):
+                report_date_obj = datetime.datetime.strptime(result['report_date'], '%Y-%m-%d').date()
+            else:
+                report_date_obj = result['report_date']
+                
+            trigger_precalculation(report_date_obj)
+            logger.info(f"Precalculation triggered successfully for date: {report_date_obj}")
+        except Exception as e:
+            logger.error(f"Error triggering precalculation: {str(e)}")
         
         sys.exit(0)
     else:
