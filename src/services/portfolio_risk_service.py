@@ -994,6 +994,21 @@ def process_fixed_income_risk(
             
             # Sum up the duration buckets from each subcategory
             for category in ['municipal_bonds', 'investment_grade', 'government_bonds']:
+                # Ensure the category exists
+                if category not in risk_metrics["fixed_income"]:
+                    risk_metrics["fixed_income"][category] = {
+                        "total": Decimal('0.0'),
+                        "short_duration": Decimal('0.0'),
+                        "market_duration": Decimal('0.0'),
+                        "long_duration": Decimal('0.0')
+                    }
+                
+                # Ensure each duration field exists
+                for duration_type in ["short_duration", "market_duration", "long_duration"]:
+                    if duration_type not in risk_metrics["fixed_income"][category]:
+                        risk_metrics["fixed_income"][category][duration_type] = Decimal('0.0')
+                        
+                # Sum the values
                 short_duration_total += risk_metrics["fixed_income"][category]["short_duration"]
                 market_duration_total += risk_metrics["fixed_income"][category]["market_duration"]
                 long_duration_total += risk_metrics["fixed_income"][category]["long_duration"]
@@ -1002,10 +1017,16 @@ def process_fixed_income_risk(
             total_duration_value = short_duration_total + market_duration_total + long_duration_total
             
             # Calculate percentages based on total duration value
+            # Always set the percentage fields even if they're zero
             if total_duration_value > Decimal('0.0'):
                 risk_metrics["fixed_income"]["short_duration_pct"] = (short_duration_total / total_duration_value) * 100
                 risk_metrics["fixed_income"]["market_duration_pct"] = (market_duration_total / total_duration_value) * 100
                 risk_metrics["fixed_income"]["long_duration_pct"] = (long_duration_total / total_duration_value) * 100
+            else:
+                # Set default percentages when no duration data exists
+                risk_metrics["fixed_income"]["short_duration_pct"] = Decimal('0.0')
+                risk_metrics["fixed_income"]["market_duration_pct"] = Decimal('0.0')
+                risk_metrics["fixed_income"]["long_duration_pct"] = Decimal('0.0')
                 
                 logger.info(f"Fixed income duration breakdown: Short: {risk_metrics['fixed_income']['short_duration_pct']:.1f}%, " + 
                           f"Market: {risk_metrics['fixed_income']['market_duration_pct']:.1f}%, " +
@@ -2142,9 +2163,23 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
         portfolio_beta += risk_metrics["equity"]["beta"]["value"] * equity_pct
         
     # Add hard currency contribution to portfolio beta
-    if "value" in risk_metrics["hard_currency"]["beta"] and risk_metrics["hard_currency"]["beta"]["value"] > Decimal('0.0'):
-        hard_currency_pct = percentages.get("hard_currency", Decimal('0.0')) / Decimal('100.0') if "hard_currency" in percentages else Decimal('0.0')
+    # Make sure hard currency beta is calculated even if weighted_sum is 0
+    if "beta" not in risk_metrics["hard_currency"] or "value" not in risk_metrics["hard_currency"]["beta"]:
+        risk_metrics["hard_currency"]["beta"] = {"value": Decimal('0.0'), "coverage_pct": Decimal('0.0')}
+    
+    # Always ensure beta_adjusted exists for hard currency
+    if "beta_adjusted" not in risk_metrics["hard_currency"]:
+        risk_metrics["hard_currency"]["beta_adjusted"] = {"value": Decimal('0.0')}
+    
+    # Calculate hard currency contribution to portfolio beta if we have a value
+    hard_currency_pct = percentages.get("hard_currency", Decimal('0.0')) / Decimal('100.0') if "hard_currency" in percentages else Decimal('0.0')
+    
+    if risk_metrics["hard_currency"]["beta"]["value"] > Decimal('0.0'):
         portfolio_beta += risk_metrics["hard_currency"]["beta"]["value"] * hard_currency_pct
+        
+    # Always calculate beta_adjusted for hard currency
+    risk_metrics["hard_currency"]["beta_adjusted"]["value"] = risk_metrics["hard_currency"]["beta"].get("value", Decimal('0.0')) * hard_currency_pct * Decimal('100.0')
+    logger.info(f"Set hard currency beta_adjusted to {risk_metrics['hard_currency']['beta_adjusted']['value']}")
         
     # Add alternatives contribution to portfolio beta
     if "value" in risk_metrics["alternatives"]["beta"] and risk_metrics["alternatives"]["beta"]["value"] > Decimal('0.0'):

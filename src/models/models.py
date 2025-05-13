@@ -6,6 +6,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import relationship
 from datetime import date, datetime
 import enum
+import json
 
 from src.database import Base
 
@@ -441,3 +442,30 @@ class EgnyteRiskStat(Base):
     __table_args__ = (
         sa.UniqueConstraint('import_date', 'position', 'asset_class', name='uix_egnyte_risk_date_position_asset'),
     )
+
+
+class PrecalculatedRiskMetric(Base):
+    """
+    Precalculated risk metrics for portfolios, clients, and accounts.
+    Stores the result of risk metric calculations for quick retrieval.
+    """
+    __tablename__ = 'precalculated_risk_metrics'
+    
+    id = sa.Column(sa.Integer, primary_key=True)
+    level = sa.Column(sa.String, nullable=False, index=True)  # client, portfolio, account
+    level_key = sa.Column(sa.String, nullable=False, index=True)
+    report_date = sa.Column(sa.Date, nullable=False, index=True)
+    risk_metrics = sa.Column(sa.Text, nullable=False)  # JSON string of risk metrics
+    created_at = sa.Column(sa.DateTime, default=sa.func.now())
+    last_updated = sa.Column(sa.DateTime, default=sa.func.now(), onupdate=sa.func.now())
+    
+    __table_args__ = (
+        sa.UniqueConstraint('level', 'level_key', 'report_date', name='uix_precalc_level_key_date'),
+    )
+    
+    def get_risk_metrics_dict(self):
+        """Convert the stored JSON string to a Python dictionary."""
+        try:
+            return json.loads(self.risk_metrics)
+        except:
+            return {}
