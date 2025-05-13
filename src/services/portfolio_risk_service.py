@@ -1187,13 +1187,24 @@ def process_hard_currency_risk(
                 def load_all_betas():
                     # Run an optimized query to get all betas in a single call
                     # Use proper source table (equity or alternatives) based on asset class
+                    # We need to load from risk_statistic_alternatives since precious metals are classified as alternatives
                     query = text("""
                         SELECT 
                             cusip, ticker_symbol, position, beta, volatility
                         FROM 
-                            risk_statistic_equity
+                            risk_statistic_alternatives
                         WHERE 
                             upload_date <= :latest_date
+                            AND (
+                                position ILIKE '%gold%' 
+                                OR position ILIKE '%silver%' 
+                                OR position ILIKE '%precious%'
+                                OR ticker_symbol ILIKE 'GLD%'
+                                OR ticker_symbol ILIKE 'SLV%'
+                                OR ticker_symbol ILIKE 'IAU%'
+                                OR ticker_symbol ILIKE 'GDX%'
+                                OR ticker_symbol ILIKE 'GDXJ%'
+                            )
                         ORDER BY 
                             upload_date DESC
                     """)
