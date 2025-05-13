@@ -77,7 +77,7 @@ def get_all_entities(db: Session, report_date: datetime.date) -> Dict[str, List[
         logger.error(f"Error getting entities: {str(e)}")
         return {"clients": [], "portfolios": [], "accounts": []}
 
-def process_entity(db: Session, level: str, level_key: str, report_date: datetime.date, timeout: int = 30) -> None:
+def process_entity(db: Session, level: str, level_key: str, report_date: datetime.date, timeout: int = 30, max_positions: int = 500) -> None:
     """
     Process a single entity (client, portfolio, or account) and store its risk metrics.
     
@@ -87,11 +87,23 @@ def process_entity(db: Session, level: str, level_key: str, report_date: datetim
         level_key: The identifier for the specified level
         report_date: The report date
         timeout: Maximum processing time in seconds
+        max_positions: Maximum number of positions to process (for performance)
     """
     # Ensure report_date is a date object
     if isinstance(report_date, str):
         report_date = datetime.datetime.strptime(report_date, '%Y-%m-%d').date()
-    logger.info(f"Precalculating {level} report for {level_key}")
+    
+    # Skip All Clients to avoid timeout
+    if level == "client" and level_key == "All Clients":
+        logger.info(f"Skipping 'All Clients' to avoid timeout during precalculation")
+        return
+        
+    # Use longer timeout for larger clients
+    if level == "client" and level_key in [" The Linden East II Trust (Abigail Wexner)"]:
+        timeout = 60  # Use longer timeout for known large clients
+        max_positions = 1000  # Use higher position limit
+        
+    logger.info(f"Precalculating {level} report for {level_key} (timeout: {timeout}s, max_positions: {max_positions})")
     start_time = time.time()
     
     try:
@@ -109,7 +121,8 @@ def process_entity(db: Session, level: str, level_key: str, report_date: datetim
                 db=db,
                 level=level,
                 level_key=level_key,
-                report_date=report_date
+                report_date=report_date,
+                max_positions=max_positions
             ))
         )
         
@@ -126,29 +139,36 @@ def process_entity(db: Session, level: str, level_key: str, report_date: datetim
             return
             
         risk_metrics = result_queue[0]
-        
+        if not risk_metrics:
+            logger.warning(f"No risk metrics returned for {level} {level_key}")
+            return
+            
         # Convert Decimal to float for JSON storage
         risk_metrics_json = convert_decimal_to_float(risk_metrics)
         
         # Store or update precalculated metrics
-        if existing:
-            existing.risk_metrics = json.dumps(risk_metrics_json)
-            existing.last_updated = datetime.datetime.now()
-        else:
-            new_entry = PrecalculatedRiskMetric(
-                level=level,
-                level_key=level_key,
-                report_date=report_date,
-                risk_metrics=json.dumps(risk_metrics_json),
-                last_updated=datetime.datetime.now()
-            )
-            db.add(new_entry)
+        try:
+            if existing:
+                existing.risk_metrics = json.dumps(risk_metrics_json)
+                existing.last_updated = datetime.datetime.now()
+            else:
+                new_entry = PrecalculatedRiskMetric(
+                    level=level,
+                    level_key=level_key,
+                    report_date=report_date,
+                    risk_metrics=json.dumps(risk_metrics_json),
+                    last_updated=datetime.datetime.now()
+                )
+                db.add(new_entry)
+                
+            # Commit changes
+            db.commit()
             
-        # Commit changes
-        db.commit()
-        
-        end_time = time.time()
-        logger.info(f"Precalculated {level} report for {level_key} in {end_time - start_time:.2f} seconds")
+            end_time = time.time()
+            logger.info(f"Precalculated {level} report for {level_key} in {end_time - start_time:.2f} seconds")
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Database error storing risk metrics for {level} {level_key}: {str(e)}")
     except Exception as e:
         db.rollback()
         logger.error(f"Error precalculating {level} report for {level_key}: {str(e)}")
@@ -228,16 +248,25 @@ def precalculate_all_reports(report_date: Optional[datetime.date] = None) -> Non
                     f"{len(entities['portfolios'])} portfolios, and "
                     f"{len(entities['accounts'])} accounts")
         
-        # Process clients (limit to first 10 for testing)
-        for client in entities["clients"][:10]:
+        # Process clients with progress tracking
+        client_count = len(entities["clients"])
+        for i, client in enumerate(entities["clients"], 1):
+            if i % 10 == 0:
+                logger.info(f"Processing client {i}/{client_count} ({(i/client_count)*100:.1f}%)")
             process_entity(db, "client", client, report_date)
             
-        # Process portfolios (limit to first 10 for testing)
-        for portfolio in entities["portfolios"][:10]:
+        # Process portfolios with progress tracking
+        portfolio_count = len(entities["portfolios"])
+        for i, portfolio in enumerate(entities["portfolios"], 1):
+            if i % 10 == 0:
+                logger.info(f"Processing portfolio {i}/{portfolio_count} ({(i/portfolio_count)*100:.1f}%)")
             process_entity(db, "portfolio", portfolio, report_date)
             
-        # Process accounts (limit to first 10 for testing)
-        for account in entities["accounts"][:10]:
+        # Process accounts with progress tracking
+        account_count = len(entities["accounts"])
+        for i, account in enumerate(entities["accounts"], 1):
+            if i % 10 == 0:
+                logger.info(f"Processing account {i}/{account_count} ({(i/account_count)*100:.1f}%)")
             process_entity(db, "account", account, report_date)
     
     end_time = time.time()

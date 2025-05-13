@@ -225,6 +225,55 @@ def risk_stats_job_status(job_id):
     """
     return get_risk_stats_job_status(job_id)
 
+@app.route("/api/precalculate", methods=["POST"])
+def trigger_precalculation_endpoint():
+    """
+    Manually trigger precalculation of risk metrics for all entities.
+    
+    This endpoint starts a background task to generate precalculated risk metrics
+    for all clients, portfolios, and accounts. This allows faster retrieval of
+    risk metrics in the portfolio report.
+    
+    Query parameters:
+    - date: Optional date to calculate risk metrics for (YYYY-MM-DD format)
+        If not provided, the most recent date with financial position data will be used.
+    
+    Returns:
+        JSON with status of the precalculation request
+    """
+    try:
+        # Get date parameter if provided
+        report_date_str = request.args.get('date')
+        report_date = None
+        
+        if report_date_str:
+            try:
+                report_date = datetime.strptime(report_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({
+                    "success": False,
+                    "error": f"Invalid date format: {report_date_str}. Expected format: YYYY-MM-DD"
+                }), 400
+        
+        # Import the precalculation service
+        from src.services.precalculate_service import trigger_precalculation
+        
+        # Trigger precalculation in background
+        trigger_precalculation(report_date)
+        
+        return jsonify({
+            "success": True,
+            "message": "Precalculation started in background",
+            "date": str(report_date) if report_date else "most recent date"
+        })
+        
+    except Exception as e:
+        logger.exception(f"Error triggering precalculation: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 @app.route("/api/portfolio/risk-metrics", methods=["GET"])
 def get_portfolio_risk_metrics():
     """
