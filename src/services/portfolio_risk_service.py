@@ -1316,24 +1316,81 @@ def process_hard_currency_risk(
                 if processed % 10 == 0:
                     logger.debug(f"Hard currency progress: {processed}/{total_positions} ({(processed/total_positions)*100:.1f}%)")
                 
-                # Find matching risk statistic using ultra-fast cache lookup
+                # Find matching risk statistic using ultra-fast cache lookup with enhanced matching
                 risk_stat = None
                 match_source = None
+                position_found = False
                 
-                # Check in order of reliability for hard currency (similar to fixed income)
-                if position.cusip and position.cusip.lower() in cache_hc['cusip']:
-                    risk_stat = cache_hc['cusip'][position.cusip.lower()]
-                    match_source = 'cusip'
-                    match_counts['cusip'] += 1
-                elif position.ticker_symbol and position.ticker_symbol.lower() in cache_hc['ticker_symbol']:
-                    risk_stat = cache_hc['ticker_symbol'][position.ticker_symbol.lower()]
-                    match_source = 'ticker'
-                    match_counts['ticker'] += 1
-                elif position.position and position.position.lower() in cache_hc['position']:
-                    risk_stat = cache_hc['position'][position.position.lower()]
-                    match_source = 'position'
-                    match_counts['position'] += 1
-                else:
+                # Try CUSIP match (highest priority)
+                if position.cusip and not position_found:
+                    cusip_lower = position.cusip.lower()
+                    if cusip_lower in cache_hc['cusip']:
+                        risk_stat = cache_hc['cusip'][cusip_lower]
+                        match_source = 'cusip'
+                        match_counts['cusip'] += 1
+                        position_found = True
+                
+                # Try ticker match
+                if position.ticker_symbol and not position_found:
+                    ticker_lower = position.ticker_symbol.lower()
+                    
+                    # Try exact match
+                    if ticker_lower in cache_hc['ticker_symbol']:
+                        risk_stat = cache_hc['ticker_symbol'][ticker_lower]
+                        match_source = 'ticker'
+                        match_counts['ticker'] += 1
+                        position_found = True
+                    # Try cleaning the ticker
+                    elif ticker_lower.replace('-', '').replace(' ', '').replace('.', '') in cache_hc['ticker_symbol']:
+                        clean_ticker = ticker_lower.replace('-', '').replace(' ', '').replace('.', '')
+                        risk_stat = cache_hc['ticker_symbol'][clean_ticker]
+                        match_source = 'ticker'
+                        match_counts['ticker'] += 1
+                        position_found = True
+                
+                # Try position name match (least reliable but broadest)
+                if position.position and not position_found:
+                    pos_lower = position.position.lower()
+                    
+                    # Try exact match
+                    if pos_lower in cache_hc['position']:
+                        risk_stat = cache_hc['position'][pos_lower]
+                        match_source = 'position'
+                        match_counts['position'] += 1
+                        position_found = True
+                    else:
+                        # Try normalized position name with extra cleaning
+                        clean_pos = ' '.join(pos_lower.split())  # normalize whitespace
+                        
+                        # Try to match only the first part (up to first comma or parenthesis)
+                        first_part = clean_pos.split(',')[0].split('(')[0].strip()
+                        
+                        if clean_pos in cache_hc['position']:
+                            risk_stat = cache_hc['position'][clean_pos]
+                            match_source = 'position'
+                            match_counts['position'] += 1
+                            position_found = True
+                        elif first_part in cache_hc['position'] and len(first_part) > 5:  # Ensure meaningful match
+                            risk_stat = cache_hc['position'][first_part]
+                            match_source = 'position'
+                            match_counts['position'] += 1
+                            position_found = True
+                        # Last resort for gold/silver positions
+                        elif 'gold' in pos_lower:
+                            if 'gold' in cache_hc['position']:
+                                risk_stat = cache_hc['position']['gold']
+                                match_source = 'position'
+                                match_counts['position'] += 1
+                                position_found = True
+                        elif 'silver' in pos_lower:
+                            if 'silver' in cache_hc['position']:
+                                risk_stat = cache_hc['position']['silver']
+                                match_source = 'position'
+                                match_counts['position'] += 1
+                                position_found = True
+                
+                # No match found in cache, try direct lookup
+                if not position_found:
                     match_counts['none'] += 1
                     # If not in cache, fall back to direct lookup
                     risk_stat = find_matching_risk_stat(
@@ -1341,15 +1398,18 @@ def process_hard_currency_risk(
                         position.position, 
                         position.cusip, 
                         position.ticker_symbol, 
-                        "Hard Currency", 
+                        "Alternatives",  # Changed from "Hard Currency" to match actual asset class
                         latest_risk_stats_date,
                         cache
                     )
                     if risk_stat is not None:
                         match_source = 'direct'
+                        position_found = True
+                        logger.debug(f"Found direct match for hard currency: {position.position}")
                     else:
                         # Track unmatched securities
                         track_unmatched_security(position.position, "Hard Currency")
+                        logger.debug(f"No hard currency beta match found for: {position.position}")
                 
                 # Process the beta if found
                 if risk_stat is not None:
