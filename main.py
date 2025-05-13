@@ -295,6 +295,24 @@ def get_portfolio_risk_metrics():
             
         with get_db_connection() as db:
             try:
+                # First, check if we have precalculated metrics available
+                from src.models.models import PrecalculatedRiskMetric
+                
+                # Query for precalculated metrics
+                precalculated = db.query(PrecalculatedRiskMetric).filter(
+                    PrecalculatedRiskMetric.level == level,
+                    PrecalculatedRiskMetric.level_key == level_key,
+                    PrecalculatedRiskMetric.report_date == report_date
+                ).first()
+                
+                # If we have precalculated metrics, use them
+                if precalculated:
+                    logger.info(f"Using precalculated risk metrics for {level} {level_key} on {report_date}")
+                    return jsonify(precalculated.get_risk_metrics_dict())
+                
+                logger.info(f"No precalculated metrics found for {level} {level_key} on {report_date}, calculating on demand")
+                
+                # Otherwise, calculate metrics on demand
                 # Use a thread-safe timeout mechanism
                 from src.services.portfolio_risk_service import with_timeout, TimeoutException
                 
