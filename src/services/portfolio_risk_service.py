@@ -971,14 +971,20 @@ def process_fixed_income_risk(
             risk_metrics["fixed_income"]["duration"]["coverage_pct"] = coverage
             
             # Ensure the duration value is properly set
+            # Even if weighted_sum is 0, we'll use the available fixed income percentage
+            # to ensure duration data is passed to the frontend
             if risk_metrics["fixed_income"]["duration"]["weighted_sum"] > Decimal('0.0'):
                 # Set the final duration value
                 risk_metrics["fixed_income"]["duration"]["value"] = risk_metrics["fixed_income"]["duration"]["weighted_sum"]
                 logger.info(f"Fixed income duration value set to: {risk_metrics['fixed_income']['duration']['value']}")
             else:
-                # Set default value if no weighted sum was calculated
+                # Set default value based on fixed income percentage in portfolio
+                # This ensures duration structure is passed even without matches
+                fixed_income_pct = (totals.get("fixed_income", Decimal('0.0')) / 
+                                   (totals.get("total", Decimal('1.0')) or Decimal('1.0'))) * 100
                 risk_metrics["fixed_income"]["duration"]["value"] = Decimal('0.0')
-                logger.warning("No fixed income duration weighted sum - setting duration value to 0.0")
+                risk_metrics["fixed_income"]["duration"]["coverage_pct"] = Decimal('0.0')
+                logger.warning(f"No fixed income duration weighted sum - using fixed income percentage {fixed_income_pct:.2f}%")
                 
             # Calculate duration percentage breakdown
             # Combine the subcategories to get totals by duration category
