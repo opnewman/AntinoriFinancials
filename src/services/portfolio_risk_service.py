@@ -1062,7 +1062,11 @@ def process_hard_currency_risk(
         
         # Use efficient filtering with early exit on potential timeout
         for p in positions:
-            if p.asset_class and "hard" in p.asset_class.lower() and "currency" in p.asset_class.lower():
+            # Match hard currency according to the schema: asset_class='alternatives' AND second_level='hard currency'
+            if (
+                p.asset_class and p.asset_class.lower() == 'alternatives' and
+                p.second_level and p.second_level.lower() == 'hard currency'
+            ):
                 hard_currency_positions.append(p)
                 position_count += 1
         
