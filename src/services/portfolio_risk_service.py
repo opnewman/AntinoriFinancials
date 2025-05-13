@@ -852,11 +852,26 @@ def process_fixed_income_risk(
                         
                         # Add to each lookup table
                         if cusip:
+                            # Store with original format
                             cache_fi['cusip'][cusip.lower()] = record_data
+                        
                         if ticker:
+                            # Store original ticker
                             cache_fi['ticker_symbol'][ticker.lower()] = record_data
+                            
+                            # Also store without the "US EQUITY" suffix if present
+                            if " US EQUITY" in ticker:
+                                clean_ticker = ticker.replace(" US EQUITY", "").lower()
+                                cache_fi['ticker_symbol'][clean_ticker] = record_data
+                            
                         if position_name:
+                            # Store original position name
                             cache_fi['position'][position_name.lower()] = record_data
+                            
+                            # Also store a simplified version (remove extra spaces and common suffixes)
+                            clean_position = position_name.lower()
+                            clean_position = ' '.join(clean_position.split())  # normalize whitespace
+                            cache_fi['position'][clean_position] = record_data
                     
                     # Log completion
                     logger.info(f"Built {len(cache_fi['cusip'])} CUSIP lookups, {len(cache_fi['ticker_symbol'])} ticker lookups, and {len(cache_fi['position'])} position lookups")
@@ -922,20 +937,70 @@ def process_fixed_income_risk(
                 risk_stat = None
                 match_source = None
                 
-                # Check in descending order of reliability for fixed income
-                if position.cusip and position.cusip.lower() in cache_fi['cusip']:
-                    risk_stat = cache_fi['cusip'][position.cusip.lower()]
-                    match_source = 'cusip'
-                    match_counts['cusip'] += 1
-                elif position.ticker_symbol and position.ticker_symbol.lower() in cache_fi['ticker_symbol']:
-                    risk_stat = cache_fi['ticker_symbol'][position.ticker_symbol.lower()]
-                    match_source = 'ticker'
-                    match_counts['ticker'] += 1
-                elif position.position and position.position.lower() in cache_fi['position']:
-                    risk_stat = cache_fi['position'][position.position.lower()]
-                    match_source = 'position'
-                    match_counts['position'] += 1
-                else:
+                # Check in descending order of reliability for fixed income with enhanced matching
+                position_found = False
+                
+                # Try CUSIP match (highest priority for fixed income)
+                if position.cusip and not position_found:
+                    cusip_lower = position.cusip.lower()
+                    if cusip_lower in cache_fi['cusip']:
+                        risk_stat = cache_fi['cusip'][cusip_lower]
+                        match_source = 'cusip'
+                        match_counts['cusip'] += 1
+                        position_found = True
+                
+                # Try ticker match
+                if position.ticker_symbol and not position_found:
+                    ticker_lower = position.ticker_symbol.lower()
+                    
+                    # Try exact match
+                    if ticker_lower in cache_fi['ticker_symbol']:
+                        risk_stat = cache_fi['ticker_symbol'][ticker_lower]
+                        match_source = 'ticker'
+                        match_counts['ticker'] += 1
+                        position_found = True
+                    # Try cleaning the ticker
+                    elif ticker_lower.replace('-', '').replace(' ', '').replace('.', '') in cache_fi['ticker_symbol']:
+                        clean_ticker = ticker_lower.replace('-', '').replace(' ', '').replace('.', '')
+                        risk_stat = cache_fi['ticker_symbol'][clean_ticker]
+                        match_source = 'ticker'
+                        match_counts['ticker'] += 1
+                        position_found = True
+                
+                # Try position name match (least reliable but broadest)
+                if position.position and not position_found:
+                    pos_lower = position.position.lower()
+                    
+                    # Try exact match
+                    if pos_lower in cache_fi['position']:
+                        risk_stat = cache_fi['position'][pos_lower]
+                        match_source = 'position'
+                        match_counts['position'] += 1
+                        position_found = True
+                    else:
+                        # Try normalized position name with extra cleaning
+                        clean_pos = ' '.join(pos_lower.split())  # normalize whitespace
+                        
+                        # Remove common phrases from bond names that may cause mismatches
+                        clean_pos = clean_pos.replace(" due ", " ")
+                        clean_pos = clean_pos.replace(" % due ", " ")
+                        
+                        # Try to match only the first part (up to first comma or parenthesis)
+                        first_part = clean_pos.split(',')[0].split('(')[0].strip()
+                        
+                        if clean_pos in cache_fi['position']:
+                            risk_stat = cache_fi['position'][clean_pos]
+                            match_source = 'position'
+                            match_counts['position'] += 1
+                            position_found = True
+                        elif first_part in cache_fi['position'] and len(first_part) > 10:  # Ensure meaningful match
+                            risk_stat = cache_fi['position'][first_part]
+                            match_source = 'position'
+                            match_counts['position'] += 1
+                            position_found = True
+                
+                # No match found
+                if not position_found:
                     match_counts['none'] += 1
                 
                 # Process the duration if found
@@ -1089,13 +1154,20 @@ def process_hard_currency_risk(
         
         # Use efficient filtering with early exit on potential timeout
         for p in positions:
-            # Match hard currency according to the schema: asset_class='alternatives' AND second_level='hard currency'
+            # Match hard currency according to the revised schema:
+            # asset_class='alternatives' AND second_level='Precious Metals' OR
+            # position contains Gold/Silver keywords
             if (
-                p.asset_class and p.asset_class.lower() == 'alternatives' and
-                p.second_level and p.second_level.lower() == 'hard currency'
+                # Primary match: Alternatives + Precious Metals
+                (p.asset_class and p.asset_class.lower() == 'alternatives' and
+                 p.second_level and p.second_level.lower() == 'precious metals')
+                or
+                # Secondary match: Contains "gold" or "silver" in position name
+                (p.position and ('gold' in p.position.lower() or 'silver' in p.position.lower()))
             ):
                 hard_currency_positions.append(p)
                 position_count += 1
+                logger.debug(f"Identified hard currency position: {p.position} ({p.asset_class}/{p.second_level})")
         
         if position_count == 0:
             logger.info("No hard currency positions found for beta calculations")
@@ -1146,13 +1218,43 @@ def process_hard_currency_risk(
                             # Create a simplified record structure
                             record_data = {'beta': beta_value}
                             
-                            # Add to each lookup table
+                            # Add to each lookup table with enhanced matching
                             if cusip:
+                                # Store with original format
                                 cache_hc['cusip'][cusip.lower()] = record_data
+                            
                             if ticker:
+                                # Store original ticker
                                 cache_hc['ticker_symbol'][ticker.lower()] = record_data
+                                
+                                # Also store without the "US EQUITY" suffix if present
+                                if " US EQUITY" in ticker:
+                                    clean_ticker = ticker.replace(" US EQUITY", "").lower()
+                                    cache_hc['ticker_symbol'][clean_ticker] = record_data
+                                    
+                                # Also store various ticker formats
+                                clean_ticker = ticker.lower().replace('-', '').replace(' ', '').replace('.', '')
+                                cache_hc['ticker_symbol'][clean_ticker] = record_data
+                            
                             if position_name:
+                                # Store original position name
                                 cache_hc['position'][position_name.lower()] = record_data
+                                
+                                # Also store a simplified version
+                                clean_pos = position_name.lower()
+                                clean_pos = ' '.join(clean_pos.split())  # normalize whitespace
+                                cache_hc['position'][clean_pos] = record_data
+                                
+                                # For gold/silver positions, add common variations
+                                if 'gold' in position_name.lower():
+                                    cache_hc['position']['gold'] = record_data
+                                    cache_hc['position']['gold etf'] = record_data
+                                    cache_hc['position']['physical gold'] = record_data
+                                
+                                if 'silver' in position_name.lower():
+                                    cache_hc['position']['silver'] = record_data
+                                    cache_hc['position']['silver etf'] = record_data
+                                    cache_hc['position']['physical silver'] = record_data
                     
                     # Log completion
                     logger.info(f"Built {len(cache_hc['cusip'])} CUSIP lookups, {len(cache_hc['ticker_symbol'])} ticker lookups, and {len(cache_hc['position'])} position lookups")
