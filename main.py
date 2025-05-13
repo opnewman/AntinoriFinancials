@@ -2119,6 +2119,7 @@ def generate_portfolio_report():
         # Use the portfolio report service to generate the report
         from src.services.portfolio_report_service import generate_portfolio_report
         from src.services.portfolio_risk_service import calculate_portfolio_risk_metrics
+        from src.models.models import PrecalculatedRiskMetric
 
         with get_db_connection() as db:
             # Get portfolio report data
@@ -2126,25 +2127,40 @@ def generate_portfolio_report():
             
             # Get risk metrics data
             try:
-                # Apply a thread-safe timeout mechanism
-                from src.services.portfolio_risk_service import with_timeout, TimeoutException
+                # First, check if we have precalculated risk metrics
+                precalculated = db.query(PrecalculatedRiskMetric).filter(
+                    PrecalculatedRiskMetric.level == level,
+                    PrecalculatedRiskMetric.level_key == level_key,
+                    PrecalculatedRiskMetric.report_date == report_date
+                ).first()
                 
-                # Create default empty result in case of timeout
-                default_metrics = {
-                    "equity": {"beta": None, "volatility": None, "coverage_pct": 0},
-                    "fixed_income": {"duration": None, "coverage_pct": 0},
-                    "hard_currency": {"beta": None, "coverage_pct": 0},
-                    "alternatives": {"beta": None, "coverage_pct": 0}
-                }
-                
-                # Calculate portfolio risk metrics with thread-safe timeout
-                risk_metrics = with_timeout(
-                    func=calculate_portfolio_risk_metrics,
-                    args=[db, level, level_key, report_date],
-                    kwargs={"max_positions": 100},  # Limit to 100 positions for faster processing
-                    timeout_duration=15,  # 15-second timeout
-                    default=default_metrics  # Return empty metrics on timeout instead of failing
-                )
+                if precalculated:
+                    # Use the precalculated risk metrics
+                    logger.info(f"Using precalculated risk metrics for portfolio report: {level}={level_key}, date={report_date}")
+                    risk_metrics = precalculated.get_risk_metrics_dict()
+                else:
+                    # No precalculated metrics available, calculate on demand
+                    logger.info(f"No precalculated metrics found for {level}={level_key}, date={report_date}. Calculating on demand.")
+                    
+                    # Apply a thread-safe timeout mechanism
+                    from src.services.portfolio_risk_service import with_timeout, TimeoutException
+                    
+                    # Create default empty result in case of timeout
+                    default_metrics = {
+                        "equity": {"beta": None, "volatility": None, "coverage_pct": 0},
+                        "fixed_income": {"duration": None, "coverage_pct": 0},
+                        "hard_currency": {"beta": None, "coverage_pct": 0},
+                        "alternatives": {"beta": None, "coverage_pct": 0}
+                    }
+                    
+                    # Calculate portfolio risk metrics with thread-safe timeout
+                    risk_metrics = with_timeout(
+                        func=calculate_portfolio_risk_metrics,
+                        args=[db, level, level_key, report_date],
+                        kwargs={"max_positions": 100},  # Limit to 100 positions for faster processing
+                        timeout_duration=15,  # 15-second timeout
+                        default=default_metrics  # Return empty metrics on timeout instead of failing
+                    )
                 
                 # Structure the risk metrics in the report data
                 # Log the entire risk metrics object for debugging
