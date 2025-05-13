@@ -575,6 +575,29 @@ window.api = {
      * @param {number} workers - Number of parallel workers (default: 3)
      * @returns {Object} Processing results including timing and counts
      */
+    /**
+     * Trigger precalculation of risk metrics for all entities
+     * This helps improve performance by having metrics calculated ahead of time
+     * 
+     * @param {string} date - Optional date to calculate risk metrics for (YYYY-MM-DD format)
+     * @returns {Object} Response with status of the precalculation request
+     */
+    triggerPrecalculation: async (date = null) => {
+        try {
+            const params = {};
+            if (date) params.date = date;
+            
+            const response = await axios.post(`${API_BASE_URL}/api/precalculate`, null, { params });
+            return response.data;
+        } catch (error) {
+            console.error('Error triggering precalculation:', error);
+            return {
+                success: false,
+                error: error.response?.data?.error || error.message || 'Failed to trigger precalculation'
+            };
+        }
+    },
+    
     updateRiskStatsOptimized: async (useTestFile = false, debugMode = false, batchSize = 1000, workers = 3) => {
         try {
             const params = {};

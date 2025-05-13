@@ -128,13 +128,88 @@ const RiskStatsJobManager = () => {
     }
   };
   
+  // Trigger precalculation for all entities (groups, clients, portfolios, accounts)
+  const triggerPrecalculation = async (date = null) => {
+    try {
+      setJobState(prev => ({ ...prev, isLoading: true, error: null }));
+      
+      const result = await window.api.triggerPrecalculation(date);
+      
+      if (result.success) {
+        // For precalculation jobs, we don't have a job ID since they run in the background
+        // Create a synthetic job object with started status
+        const precalcJob = {
+          success: true,
+          status: 'running',
+          job_type: 'precalculation',
+          message: result.message || 'Precalculation started successfully',
+          started_at: new Date().toISOString()
+        };
+        
+        setJobState(prev => ({ 
+          ...prev, 
+          isLoading: false, 
+          currentJob: precalcJob
+        }));
+        
+        if (typeof toast === 'function') {
+          toast({
+            title: 'Precalculation Started',
+            description: result.message || 'Precalculation started successfully. This may take a few minutes to complete.',
+            status: 'success',
+            duration: 5000,
+            isClosable: true,
+          });
+        } else if (toast.toast) {
+          toast.toast({
+            title: 'Precalculation Started',
+            description: result.message || 'Precalculation started successfully. This may take a few minutes to complete.',
+            status: 'success',
+            duration: 5000,
+            isClosable: true,
+          });
+        }
+        
+        // Check status after a delay to update the job status
+        setTimeout(() => {
+          fetchRiskStatsStatus();
+        }, 10000);
+      } else {
+        throw new Error(result.error || 'Failed to start precalculation');
+      }
+    } catch (error) {
+      setJobState(prev => ({ 
+        ...prev, 
+        isLoading: false, 
+        error: error.message || 'Failed to start precalculation' 
+      }));
+      
+      if (typeof toast === 'function') {
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to start precalculation',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      } else if (toast.toast) {
+        toast.toast({
+          title: 'Error',
+          description: error.message || 'Failed to start precalculation',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    }
+  };
+  
   // Start a high-performance optimized risk stats update (~20 seconds)
   const startOptimizedRiskStatsUpdate = async () => {
     try {
       setJobState(prev => ({ ...prev, isLoading: true, error: null }));
       
       const result = await window.api.updateRiskStatsOptimized();
-      
       if (result.success) {
         // For optimized updates, we don't have a job ID since they complete immediately
         // Create a synthetic job object with completed status
@@ -470,6 +545,15 @@ const RiskStatsJobManager = () => {
             className="px-2 py-1 text-sm border border-blue-500 text-blue-500 rounded font-semibold hover:bg-blue-50"
           >
             Refresh Status
+          </button>
+          
+          <button 
+            onClick={() => triggerPrecalculation()} 
+            className="px-2 py-1 text-sm border border-green-700 text-green-700 rounded font-semibold hover:bg-green-50"
+            disabled={isLoading || (currentJob && ['pending', 'running'].includes(currentJob.status))}
+            title="Precalculate risk metrics for faster retrieval"
+          >
+            Precalculate Reports
           </button>
           
           <button 
