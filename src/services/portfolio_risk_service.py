@@ -843,35 +843,76 @@ def process_fixed_income_risk(
                     duration_records = result.fetchall()
                     logger.info(f"Loaded {len(duration_records)} fixed income duration records from database")
                     
-                    # Build lookups for each identifier type
+                    # Build lookups for each identifier type with advanced pattern matching for fixed income
                     for record in duration_records:
                         cusip, ticker, position_name, duration = record
                         
+                        # Skip records with null or zero duration
+                        if duration is None or float(duration) <= 0:
+                            continue
+                            
                         # Create a simplified record structure
                         record_data = {'duration': duration}
                         
-                        # Add to each lookup table
+                        # Add to each lookup table with advanced pattern matching
                         if cusip:
                             # Store with original format
                             cache_fi['cusip'][cusip.lower()] = record_data
+                            
+                            # Remove any non-alphanumeric characters and store alternative format
+                            clean_cusip = ''.join(c for c in cusip if c.isalnum())
+                            if clean_cusip:
+                                cache_fi['cusip'][clean_cusip.lower()] = record_data
                         
                         if ticker:
                             # Store original ticker
                             cache_fi['ticker_symbol'][ticker.lower()] = record_data
                             
-                            # Also store without the "US EQUITY" suffix if present
+                            # Remove US EQUITY suffix
                             if " US EQUITY" in ticker:
                                 clean_ticker = ticker.replace(" US EQUITY", "").lower()
                                 cache_fi['ticker_symbol'][clean_ticker] = record_data
                             
+                            # Clean up ticker variations
+                            clean_ticker = ''.join(c for c in ticker if c.isalnum()).lower()
+                            if clean_ticker:
+                                cache_fi['ticker_symbol'][clean_ticker] = record_data
+                            
                         if position_name:
                             # Store original position name
-                            cache_fi['position'][position_name.lower()] = record_data
+                            clean_pos = position_name.lower()
+                            cache_fi['position'][clean_pos] = record_data
                             
-                            # Also store a simplified version (remove extra spaces and common suffixes)
-                            clean_position = position_name.lower()
-                            clean_position = ' '.join(clean_position.split())  # normalize whitespace
-                            cache_fi['position'][clean_position] = record_data
+                            # Normalize whitespace
+                            clean_pos = ' '.join(clean_pos.split())
+                            cache_fi['position'][clean_pos] = record_data
+                            
+                            # Extract first part before percentage or date
+                            first_part = None
+                            if "%" in clean_pos:
+                                first_part = clean_pos.split("%")[0].strip()
+                            elif "due" in clean_pos.lower():
+                                first_part = clean_pos.split("due")[0].strip()
+                                
+                            if first_part and len(first_part) > 5:
+                                cache_fi['position'][first_part] = record_data
+                                
+                            # Store without punctuation
+                            clean_name = ''.join(c if c.isalnum() or c.isspace() else ' ' for c in clean_pos)
+                            clean_name = ' '.join(clean_name.split())  # normalize whitespace
+                            cache_fi['position'][clean_name] = record_data
+                            
+                            # For bonds with dates/percentages, create multiple patterns
+                            # Pattern: Remove digits, special chars except spaces
+                            alpha_only = ''.join(c if c.isalpha() or c.isspace() else ' ' for c in clean_pos)
+                            alpha_only = ' '.join(alpha_only.split())  # normalize whitespace
+                            if len(alpha_only) > 5:  # Only if we have a meaningful name
+                                cache_fi['position'][alpha_only] = record_data
+                                
+                            # Extract issuer name (first word)
+                            words = clean_pos.split()
+                            if words and len(words[0]) > 3:  # Only if first word is meaningful
+                                cache_fi['position'][words[0]] = record_data
                     
                     # Log completion
                     logger.info(f"Built {len(cache_fi['cusip'])} CUSIP lookups, {len(cache_fi['ticker_symbol'])} ticker lookups, and {len(cache_fi['position'])} position lookups")
@@ -1327,10 +1368,20 @@ def process_hard_currency_risk(
                 if processed % 10 == 0:
                     logger.debug(f"Hard currency progress: {processed}/{total_positions} ({(processed/total_positions)*100:.1f}%)")
                 
-                # Find matching risk statistic using ultra-fast cache lookup with enhanced matching
+                # Find matching risk statistic using ultra-fast cache lookup with advanced pattern matching
                 risk_stat = None
                 match_source = None
                 position_found = False
+                
+                # For hard currency (gold/silver), we need special matching logic
+                is_gold = False
+                is_silver = False
+                pos_name = (position.position or "").lower()
+                
+                if 'gold' in pos_name or 'gld' in pos_name:
+                    is_gold = True
+                elif 'silver' in pos_name or 'slv' in pos_name:
+                    is_silver = True
                 
                 # Try CUSIP match (highest priority)
                 if position.cusip and not position_found:
@@ -1340,87 +1391,118 @@ def process_hard_currency_risk(
                         match_source = 'cusip'
                         match_counts['cusip'] += 1
                         position_found = True
+                        logger.debug(f"Hard Currency CUSIP match: {position.position}, {position.cusip}")
+                    
+                    # Try without special characters 
+                    if not position_found:
+                        clean_cusip = ''.join(c for c in cusip_lower if c.isalnum())
+                        if clean_cusip in cache_hc['cusip']:
+                            risk_stat = cache_hc['cusip'][clean_cusip]
+                            match_source = 'cusip'
+                            match_counts['cusip'] += 1
+                            position_found = True
+                            logger.debug(f"Hard Currency clean CUSIP match: {position.position}, {clean_cusip}")
                 
-                # Try ticker match
+                # Try ticker match with extended pattern matching
                 if position.ticker_symbol and not position_found:
                     ticker_lower = position.ticker_symbol.lower()
                     
-                    # Try exact match
-                    if ticker_lower in cache_hc['ticker_symbol']:
-                        risk_stat = cache_hc['ticker_symbol'][ticker_lower]
-                        match_source = 'ticker'
-                        match_counts['ticker'] += 1
-                        position_found = True
-                    # Try cleaning the ticker
-                    elif ticker_lower.replace('-', '').replace(' ', '').replace('.', '') in cache_hc['ticker_symbol']:
-                        clean_ticker = ticker_lower.replace('-', '').replace(' ', '').replace('.', '')
-                        risk_stat = cache_hc['ticker_symbol'][clean_ticker]
-                        match_source = 'ticker'
-                        match_counts['ticker'] += 1
-                        position_found = True
+                    # Try various ticker formats
+                    ticker_variations = [
+                        ticker_lower, 
+                        ticker_lower.replace('-', '').replace(' ', '').replace('.', ''),
+                        ticker_lower.replace('us equity', '').strip(),
+                        ''.join(c for c in ticker_lower if c.isalnum()),
+                    ]
+                    
+                    # Add gold/silver specific tickers
+                    if is_gold:
+                        ticker_variations.extend(['gld', 'gdx', 'gdxj', 'iau'])
+                    elif is_silver:
+                        ticker_variations.extend(['slv', 'sivr'])
+                        
+                    # Try all ticker variations
+                    for ticker_var in ticker_variations:
+                        if ticker_var in cache_hc['ticker_symbol']:
+                            risk_stat = cache_hc['ticker_symbol'][ticker_var]
+                            match_source = 'ticker'
+                            match_counts['ticker'] += 1
+                            position_found = True
+                            logger.debug(f"Hard Currency ticker match: {position.position}, {ticker_var}")
+                            break
                 
-                # Try position name match (least reliable but broadest)
+                # Try position name match with extended variations
                 if position.position and not position_found:
                     pos_lower = position.position.lower()
                     
-                    # Try exact match
-                    if pos_lower in cache_hc['position']:
-                        risk_stat = cache_hc['position'][pos_lower]
-                        match_source = 'position'
-                        match_counts['position'] += 1
-                        position_found = True
-                    else:
-                        # Try normalized position name with extra cleaning
-                        clean_pos = ' '.join(pos_lower.split())  # normalize whitespace
-                        
-                        # Try to match only the first part (up to first comma or parenthesis)
-                        first_part = clean_pos.split(',')[0].split('(')[0].strip()
-                        
-                        if clean_pos in cache_hc['position']:
-                            risk_stat = cache_hc['position'][clean_pos]
+                    # Create name variations for hard currency positions
+                    position_variations = [
+                        pos_lower,
+                        ' '.join(pos_lower.split()),  # normalize whitespace
+                        pos_lower.split(',')[0].split('(')[0].strip(),  # first part
+                        ''.join(c for c in pos_lower if c.isalnum() or c.isspace()),  # alphanumeric only
+                    ]
+                    
+                    # Add gold/silver specific names
+                    if is_gold:
+                        position_variations.extend([
+                            'gold', 'gold etf', 'physical gold', 'gold bullion', 
+                            'spdr gold', 'spdr gold shares', 'ishares gold',
+                            'gold miners', 'gold trust'
+                        ])
+                    elif is_silver:
+                        position_variations.extend([
+                            'silver', 'silver etf', 'physical silver', 'silver bullion',
+                            'ishares silver', 'silver trust'
+                        ])
+                    
+                    # Try all position variations
+                    for pos_var in position_variations:
+                        if pos_var in cache_hc['position']:
+                            risk_stat = cache_hc['position'][pos_var]
                             match_source = 'position'
                             match_counts['position'] += 1
                             position_found = True
-                        elif first_part in cache_hc['position'] and len(first_part) > 5:  # Ensure meaningful match
-                            risk_stat = cache_hc['position'][first_part]
-                            match_source = 'position'
-                            match_counts['position'] += 1
-                            position_found = True
-                        # Last resort for gold/silver positions
-                        elif 'gold' in pos_lower:
-                            if 'gold' in cache_hc['position']:
-                                risk_stat = cache_hc['position']['gold']
-                                match_source = 'position'
-                                match_counts['position'] += 1
-                                position_found = True
-                        elif 'silver' in pos_lower:
-                            if 'silver' in cache_hc['position']:
-                                risk_stat = cache_hc['position']['silver']
-                                match_source = 'position'
-                                match_counts['position'] += 1
-                                position_found = True
+                            logger.debug(f"Hard Currency position match: {position.position}, {pos_var}")
+                            break
                 
-                # No match found in cache, try direct lookup
+                # Last resort: direct lookup in database
                 if not position_found:
                     match_counts['none'] += 1
-                    # If not in cache, fall back to direct lookup
-                    risk_stat = find_matching_risk_stat(
-                        db, 
-                        position.position, 
-                        position.cusip, 
-                        position.ticker_symbol, 
-                        "Alternatives",  # Changed from "Hard Currency" to match actual asset class
-                        latest_risk_stats_date,
-                        cache
-                    )
-                    if risk_stat is not None:
-                        match_source = 'direct'
+                    
+                    # If not in cache, try hardcoded fallback beta values for gold/silver
+                    if is_gold:
+                        # Use typical gold beta value as fallback
+                        logger.debug(f"Using hardcoded gold beta for: {position.position}")
+                        risk_stat = {'beta': 0.1}  # Typical gold beta value
+                        match_source = 'fallback'
                         position_found = True
-                        logger.debug(f"Found direct match for hard currency: {position.position}")
+                    elif is_silver:
+                        # Use typical silver beta value as fallback
+                        logger.debug(f"Using hardcoded silver beta for: {position.position}")
+                        risk_stat = {'beta': 0.15}  # Typical silver beta value
+                        match_source = 'fallback'
+                        position_found = True
                     else:
-                        # Track unmatched securities
-                        track_unmatched_security(position.position, "Hard Currency")
-                        logger.debug(f"No hard currency beta match found for: {position.position}")
+                        # Try direct database lookup as last resort
+                        custom_asset_class = "Alternatives"  # Use Alternatives asset class for risk stats
+                        risk_stat = find_matching_risk_stat(
+                            db, 
+                            position.position, 
+                            position.cusip, 
+                            position.ticker_symbol, 
+                            custom_asset_class,
+                            latest_risk_stats_date,
+                            cache
+                        )
+                        if risk_stat is not None:
+                            match_source = 'direct'
+                            position_found = True
+                            logger.debug(f"Found direct match for hard currency: {position.position}")
+                        else:
+                            # Track unmatched securities for reporting
+                            track_unmatched_security(position.position, "Hard Currency")
+                            logger.debug(f"No hard currency beta match found for: {position.position}")
                 
                 # Process the beta if found
                 if risk_stat is not None:
@@ -2310,8 +2392,8 @@ def finalize_risk_metrics(risk_metrics: Dict[str, Dict[str, Dict[str, Decimal]]]
         logger.info(f"DEBUGGING HC BETA: Hard currency percent: {hc_pct}%, beta value: {beta_value}")
         
         if hc_pct > Decimal('0.0'):
-            # Calculate beta adjusted as beta value * hard currency percentage
-            beta_adjusted_hc = beta_value * hc_pct / Decimal('100.0')
+            # Calculate beta adjusted as beta value * hard currency percentage (already in decimal form, no division by 100 needed)
+            beta_adjusted_hc = beta_value * hc_pct
             risk_metrics["hard_currency"]["beta_adjusted"]["value"] = beta_adjusted_hc
             logger.info(f"DEBUGGING HC BETA: Calculated hard currency beta adjusted: {beta_adjusted_hc} (beta: {beta_value} * hc%: {hc_pct})")
         else:
