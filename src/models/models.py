@@ -466,6 +466,8 @@ class PrecalculatedRiskMetric(Base):
     def get_risk_metrics_dict(self):
         """Convert the stored JSON string to a Python dictionary."""
         try:
-            return json.loads(self.risk_metrics)
-        except:
+            # Convert SQLAlchemy column to string if needed
+            risk_metrics_str = str(self.risk_metrics) if self.risk_metrics else "{}"
+            return json.loads(risk_metrics_str)
+        except Exception as e:
             return {}

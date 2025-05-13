@@ -34,6 +34,9 @@ def get_all_entities(db: Session, report_date: datetime.date) -> Dict[str, List[
     Returns:
         Dictionary with entity types as keys and lists of entity IDs as values
     """
+    # Ensure report_date is a date object
+    if isinstance(report_date, str):
+        report_date = datetime.datetime.strptime(report_date, '%Y-%m-%d').date()
     try:
         # Query distinct clients
         client_query = text("""
@@ -85,6 +88,9 @@ def process_entity(db: Session, level: str, level_key: str, report_date: datetim
         report_date: The report date
         timeout: Maximum processing time in seconds
     """
+    # Ensure report_date is a date object
+    if isinstance(report_date, str):
+        report_date = datetime.datetime.strptime(report_date, '%Y-%m-%d').date()
     logger.info(f"Precalculating {level} report for {level_key}")
     start_time = time.time()
     
@@ -166,6 +172,26 @@ def convert_decimal_to_float(data: Any) -> Any:
     else:
         return data
 
+def get_most_recent_date(db: Session) -> Optional[datetime.date]:
+    """
+    Get the most recent date with financial position data.
+    
+    Args:
+        db: Database session
+        
+    Returns:
+        Most recent date or None if no data found
+    """
+    result = db.query(FinancialPosition.date).order_by(
+        FinancialPosition.date.desc()
+    ).first()
+    
+    if result:
+        return result[0]
+    else:
+        logger.error("No financial position data found")
+        return None
+
 def precalculate_all_reports(report_date: Optional[datetime.date] = None) -> None:
     """
     Precalculate reports for all entities as of the given date.
@@ -173,18 +199,13 @@ def precalculate_all_reports(report_date: Optional[datetime.date] = None) -> Non
     Args:
         report_date: The date to calculate reports for (defaults to most recent date)
     """
+    # Get the most recent date if none provided
     if not report_date:
-        # Get the most recent date
         with next(get_db()) as db:
-            report_date = db.query(FinancialPosition.date).order_by(
-                FinancialPosition.date.desc()
-            ).first()
-            
-            if report_date:
-                report_date = report_date[0]
-            else:
-                logger.error("No financial position data found")
+            most_recent = get_most_recent_date(db)
+            if not most_recent:
                 return
+            report_date = most_recent
     
     logger.info(f"Precalculating all reports for date {report_date}")
     start_time = time.time()
@@ -233,4 +254,4 @@ def trigger_precalculation(report_date: Optional[datetime.date] = None) -> None:
     thread = threading.Thread(target=precalculate_all_reports, args=(report_date,))
     thread.daemon = True
     thread.start()
-    return {"status": "Precalculation started in background"}
+    # No return value needed for this function
